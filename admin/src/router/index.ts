@@ -1,0 +1,50 @@
+import { createRouter, createWebHistory } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
+import Login from '../views/Login.vue';
+import Layout from '../views/Layout.vue';
+import Dashboard from '../views/Dashboard.vue';
+import Users from '../views/Users.vue';
+import Appointments from '../views/Appointments.vue';
+import Notifications from '../views/Notifications.vue';
+import Configs from '../views/Configs.vue';
+import OfficialMenu from '../views/OfficialMenu.vue';
+import OfficialAutoReply from '../views/OfficialAutoReply.vue';
+import FollowupForward from '../views/FollowupForward.vue';
+import AdminUsers from '../views/AdminUsers.vue';
+import AuditLogs from '../views/AuditLogs.vue';
+
+export const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/login', component: Login },
+    {
+      path: '/',
+      component: Layout,
+      redirect: '/dashboard',
+      children: [
+        { path: 'dashboard', component: Dashboard },
+        { path: 'users', component: Users },
+        { path: 'appointments', component: Appointments },
+        { path: 'notifications', component: Notifications },
+        { path: 'configs', component: Configs },
+        { path: 'official-menu', component: OfficialMenu },
+        { path: 'official-auto-reply', component: OfficialAutoReply },
+        { path: 'appointment-notify', redirect: '/admin-users' },
+        { path: 'followup-forward', component: FollowupForward },
+        { path: 'admin-users', component: AdminUsers },
+        { path: 'audit-logs', component: AuditLogs }
+      ]
+    }
+  ]
+});
+
+router.beforeEach((to) => {
+  const auth = useAuthStore();
+  if (to.path !== '/login' && !auth.token) {
+    return '/login';
+  }
+  if (to.path === '/login' && auth.token) {
+    return '/dashboard';
+  }
+  return true;
+});

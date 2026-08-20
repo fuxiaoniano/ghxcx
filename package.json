@@ -1,0 +1,19 @@
+{
+  "name": "wechat-appointment-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "微信公众号阅读者挂号服务系统 monorepo",
+  "scripts": {
+    "server:dev": "npm --prefix server run start:dev",
+    "server:test": "npm --prefix server test",
+    "server:typecheck": "npm --prefix server run typecheck",
+    "admin:dev": "npm --prefix admin run dev",
+    "admin:build": "npm --prefix admin run build",
+    "admin:typecheck": "npm --prefix admin run typecheck"
+  },
+  "workspaces": [
+    "server",
+    "admin",
+    "miniprogram"
+  ]
+}

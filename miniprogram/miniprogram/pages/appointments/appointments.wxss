@@ -1,0 +1,47 @@
+.page {
+  min-height: 100vh;
+  padding: 28rpx;
+  box-sizing: border-box;
+}
+
+.item {
+  margin-bottom: 22rpx;
+  padding: 28rpx;
+  background: #ffffff;
+  border-radius: 12rpx;
+  box-shadow: 0 8rpx 24rpx rgba(90, 60, 40, 0.08);
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.no {
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.status {
+  color: #e91510;
+  font-weight: 700;
+}
+
+.info {
+  margin-top: 14rpx;
+  color: #4d4d4d;
+  font-size: 28rpx;
+}
+
+.time {
+  margin-top: 14rpx;
+  color: #8a8a8a;
+  font-size: 24rpx;
+}
+
+.empty {
+  padding: 160rpx 0 80rpx;
+  text-align: center;
+  color: #888;
+}

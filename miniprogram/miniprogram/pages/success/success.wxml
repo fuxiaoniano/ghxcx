@@ -1,0 +1,17 @@
+<view class="page">
+  <view class="success-icon">✓</view>
+  <view class="title">挂号成功</view>
+  <view class="desc">工作人员将在 {{appointment.expectedContactTime || '24 小时内'}} 联系您，请保持电话畅通。</view>
+
+  <view class="detail-card">
+    <view class="row"><text>挂号编号</text><text>{{appointment.appointmentNo}}</text></view>
+    <view class="row"><text>姓名</text><text>{{appointment.name}}</text></view>
+    <view class="row"><text>手机尾号</text><text>{{appointment.phoneTail}}</text></view>
+    <view class="row"><text>预约项目</text><text>{{appointment.missingTeethType}}</text></view>
+    <view class="row"><text>提交时间</text><text>{{appointment.createdAt}}</text></view>
+    <view class="row"><text>预计联系</text><text>{{appointment.expectedContactTime}}</text></view>
+  </view>
+
+  <button class="primary-button" bindtap="goMy">查看我的挂号</button>
+  <button class="back-button" bindtap="goHome">返回首页</button>
+</view>
