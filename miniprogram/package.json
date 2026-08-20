@@ -1,0 +1,12 @@
+{
+  "name": "wechat-appointment-miniprogram",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "miniprogram-api-typings": "^3.12.3",
+    "typescript": "^5.7.2"
+  }
+}

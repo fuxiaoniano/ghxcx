@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/landing/landing",
+    "pages/success/success",
+    "pages/appointments/appointments"
+  ],
+  "window": {
+    "navigationBarTitleText": "挂号咨询",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f3ef"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
