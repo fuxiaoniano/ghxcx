@@ -34,338 +34,173 @@ root/
     prisma/seed.ts
     src/main.ts
     src/modules/auth/
-    sn���$z{-���jםlowupForwardRetryCount?: number;
-  adminRemark?: string;
-  remark?: string;
-  createdAt: string;
-  clinic?: { id: string; name: string } | null;
-  assignedTo?: { id: string; username: string } | null;
-  notifications?: unknown[];
-}
+    src/modules/wechat-mini/
+    src/modules/wechat-official-account/
+    src/modules/appointments/
+    src/modules/notifications/
+    src/modules/admin/
+    src/modules/users/
+    src/modules/configs/
+    src/modules/crypto/
+    src/modules/audit-logs/
+  admin/
+    src/api/
+    src/router/
+    src/stores/
+    src/views/
+```
 
-export interface UserItem {
-  id: string;
-  name?: string;
-  phoneMasked?: string;
-  ageRange?: string;
-  status: string;
-  createdAt: string;
-  wechat: {
-    hasMiniOpenId: boolean;
-    hasOfficialAccountOpenId: boolean;
-    hasUnionId: boolean;
-  };
-}
+## 本地启动
 
-export interface NotificationLog {
-  id: string;
-  channel: string;
-  targetOpenId?: string;
-  templateId?: string;
-  status: string;
-  errorCode?: string;
-  errorMessage?: string;
-  retryCount: number;
-  createdAt: string;
-}
+1. 复制环境变量：
 
-export interface OfficialAccountMenuButton {
-  name: string;
-  type?: 'view' | 'click' | 'miniprogram';
-  url?: string;
-  key?: string;
-  appid?: string;
-  pagepath?: string;
-  sub_button?: OfficialAccountMenuButton[];
-}
+```bash
+copy .env.example .env
+```
 
-export interface OfficialAccountMenuConfig {
-  button: OfficialAccountMenuButton[];
-}
+2. 修改 `.env`。本地先跑通可以保留占位微信配置，系统会在本地测试场景使用 mock；上线前必须填写真实 AppID、AppSecret、Token、模板 ID。
 
-export interface AdminUserItem {
-  id: string;
-  username: string;
-  nickname: string;
-  role: string;
-  permissions: string[];
-  status: string;
-  wechatBound: boolean;
-  oaOpenIdMasked?: string;
-  subscribedOfficialAccount: boolean;
-  notifyEnabled: boolean;
-  wechatBoundAt?: string;
-  lastLoginAt?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+3. 启动 MySQL 和 Redis：
 
-export interface AdminWechatInviteItem {
-  id: string;
-  nickname: string;
-  role: string;
-  permissions: string[];
-  notifyEnabled: boolean;
-  status: string;
-  bindUrl?: string;
-  expiresAt: string;
-  createdAt: string;
-}
+```bash
+docker compose up -d mysql redis
+```
 
-export interface AdminWechatLoginSession {
-  sessionId: string;
-  oauthUrl: string;
-  expiresIn: number;
-  status?: 'PENDING' | 'CONFIRMED' | 'ERROR' | 'EXPIRED';
-  message?: string;
-  token?: string;
-  user?: AdminProfile;
-}
+4. 安装后端依赖并生成 Prisma Client：
 
-export interface ClinicItem {
-  id: string;
-  name: string;
-  address?: string;
-  phone?: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-}
+```bash
+cd server
+npm install
+npx prisma generate
+npx prisma migrate dev --name init
+npm run seed
+npm run start:dev
+```
 
-export interface AppointmentNotifyConfig {
-  enabled: boolean;
-  templateId?: string;
-}
+5. 打开 Swagger 文档：
 
-export interface FollowupForwardConfig {
-  enabled: boolean;
-  url: string;
-  authHeader: string;
-  authScheme: string;
-  authToken: string;
-  hasAuthToken?: boolean;
-  authTokenMasked?: string;
-  timeoutMs: number;
-  includeFullPhone: boolean;
-  extraHeaders: Record<string, string>;
-}
+```text
+http://localhost:3000/docs
+```
 
-export interface OfficialAutoReplyKeywordRule {
-  id: string;
-  keyword: string;
-  matchMode: 'CONTAINS' | 'EXACT';
-  replyContent: string;
-  enabled: boolean;
-  createdAt?: string;
-}
+6. 启动管理后台：
 
-export interface OfficialAutoReplyConfig {
-  enabled: boolean;
-  subscribeReplyEnabled: boolean;
-  subscribeReply: string;
-  messageReplyEnabled: boolean;
-  messageReply: string;
-  keywordReplyEnabled: boolean;
-  keywordRules: OfficialAutoReplyKeywordRule[];
-}
+```bash
+cd admin
+npm install
+npm run dev
+```
 
-export function adminLogin(data: { username: string; password: string }) {
-  return http.post<unknown, { token: string; user: AdminProfile }>('/api/admin/auth/login', data);
-}
+浏览器打开：
 
-export function createAdminWechatLoginSession() {
-  return http.post<unknown, AdminWechatLoginSession>('/api/admin/auth/wechat/session');
-}
+```text
+http://localhost:5173
+```
 
-export function pollAdminWechatLoginSession(sessionId: string) {
-  return http.get<unknown, AdminWechatLoginSession>(`/api/admin/auth/wechat/session/${sessionId}`);
-}
+默认管理员账号密码来自 `.env`：
 
-export function getDashboard() {
-  return http.get<unknown, Record<string, unknown>>('/api/admin/dashboard');
-}
+```text
+ADMIN_INIT_USERNAME
+ADMIN_INIT_PASSWORD
+```
 
-export function getUsers(params: Record<string, unknown>) {
-  return http.get<unknown, PageResult<UserItem>>('/api/admin/users', { params });
-}
+7. 导入小程序：
 
-export function getUserDetail(id: string) {
-  return http.get<unknown, Record<string, unknown>>(`/api/admin/users/${id}`);
-}
+- 打开微信开发者工具
+- 导入目录：`miniprogram/`
+- 修改 `miniprogram/miniprogram/utils/config.ts` 的 `API_BASE_URL`
+- 本地调试时可勾选“不校验合法域名”
+- 真机和上线必须在小程序后台配置 request 合法域名
 
-export function revealUserPhone(id: string) {
-  return http.post<unknown, { phone: string }>(`/api/admin/users/${id}/reveal-phone`);
-}
+## 数据库迁移和 seed
 
-export function getAppointments(params: Record<string, unknown>) {
-  return http.get<unknown, PageResult<AppointmentItem>>('/api/admin/appointments', { params });
-}
+```bash
+cd server
+npx prisma migrate dev --name init
+npm run seed
+```
 
-export function getAppointmentDetail(id: string) {
-  return http.get<unknown, AppointmentItem>(`/api/admin/appointments/${id}`);
-}
+生产环境使用：
 
-export function revealPhone(id: string) {
-  return http.post<unknown, { phone: string }>(`/api/admin/appointments/${id}/reveal-phone`);
-}
+```bash
+npx prisma migrate deploy
+npm run seed
+```
 
-export function updateAppointmentStatus(id: string, status: string) {
-  return http.patch<unknown, AppointmentItem>(`/api/admin/appointments/${id}/status`, { status });
-}
+## 核心接口
 
-export function updateAppointmentRemark(id: string, adminRemark: string) {
-  return http.patch<unknown, AppointmentItem>(`/api/admin/appointments/${id}/remark`, { adminRemark });
-}
+小程序接口：
 
-export function assignAppointment(id: string, adminUserId?: string) {
-  return http.patch<unknown, AppointmentItem>(`/api/admin/appointments/${id}/assign`, { adminUserId });
-}
+- `POST /api/wechat/mini/login`
+- `POST /api/wechat/mini/phone`
+- `POST /api/wechat/mini/bind-official-account`
+- `POST /api/appointments`
+- `GET /api/appointments/my`
+- `GET /api/appointments/my/:id`
+- `GET /api/config/landing-page`
 
-export function resendNotification(id: string) {
-  return http.post<unknown, Record<string, unknown>>(`/api/admin/appointments/${id}/resend-notification`);
-}
+公众号接口：
 
-export function resendFollowupForward(id: string) {
-  return http.post<unknown, Record<string, unknown>>(`/api/admin/appointments/${id}/resend-followup-forward`);
-}
+- `GET /wechat/oa/callback`
+- `POST /wechat/oa/callback`
+- `GET /wechat/oa/oauth`
+- `GET /wechat/oa/oauth/callback`
 
-export function getNotificationLogs(params: Record<string, unknown>) {
-  return http.get<unknown, PageResult<NotificationLog>>('/api/admin/notification-logs', { params });
-}
+后台接口见 Swagger：`/docs`。
 
-export function retryNotification(id: string) {
-  return http.post<unknown, Record<string, unknown>>(`/api/admin/notification-logs/${id}/retry`);
-}
+## 落地页配置生效方式
 
-export function getAuditLogs(params: Record<string, unknown>) {
-  return http.get<unknown, PageResult<Record<string, unknown>>>('/api/admin/audit-logs', { params });
-}
+后台地址：`https://fxnadmin.cqzbskq.com`，进入“系统配置” -> “落地页配置”。
 
-export function getConfigs() {
-  return http.get<unknown, Array<{ key: string; valueJson: Record<string, unknown>; description?: string }>>('/api/admin/configs');
-}
+- 表单上方图片：点击“上传图片”，上传成功后会自动把图片地址加入“图片地址”文本框；也可以手动每行填写一个 HTTPS 图片地址。图片会在表单上方展示，并按手机屏幕宽度自适应。
+- 对外展示开关：“对外展示开关”里可以控制顶部品牌、活动区域、补贴文案、价格卡片、包含项目、表单上方图片、隐私协议文本、提交后提示、底部区域、机构名称、备案号、底部说明、客服电话、我的挂号按钮是否展示。
+- 表单字段：姓名、手机号授权、年龄、缺牙情况、门店、备注、隐私勾选、提交按钮会保留，避免影响用户提交挂号。
+- H5 落地页生效：点击“保存落地页配置”后，刷新 `https://zbsfxn.cqzbskq.com` 立即生效。
+- 小程序生效：普通文案、价格、开关、图片地址保存后，用户重新进入小程序页面会重新拉取配置；本次新增的图片/开关展示能力需要上传并发布新版小程序后，线上小程序才会识别。
+- 小程序图片域名：如果图片使用本系统上传地址，需要在小程序后台把 `https://zbsfxn.cqzbskq.com` 加到 downloadFile 合法域名；request 合法域名也要包含该域名。
 
-export function updateConfigs(configs: Array<{ key: string; valueJson: Record<string, unknown>; description?: string }>) {
-  return http.patch<unknown, unknown>('/api/admin/configs', { configs });
-}
+## 多入口挂号链接
 
-export function uploadLandingAsset(file: File) {
-  const data = new FormData();
-  data.append('file', file);
-  return http.post<unknown, { url: string }>('/api/admin/landing-assets', data, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  });
-}
+后台地址：`https://fxnadmin.cqzbskq.com`，进入“公众号菜单”。
 
-export function getOfficialAccountMenu() {
-  return http.get<unknown, OfficialAccountMenuConfig>('/api/admin/official-account/menu');
-}
+- 在“入口链接生成器”里填写来源标识，例如 `menu_main`、`article_01`、`qr_01`、`service_account_a`。
+- 挂号链接格式：`https://zbsfxn.cqzbskq.com/wechat/oa/oauth?state=landing&source=来源标识`
+- 我的挂号链接格式：`https://zbsfxn.cqzbskq.com/wechat/oa/oauth?state=my&source=来源标识`
+- H5 落地页链接格式：`https://zbsfxn.cqzbskq.com/?source=来源标识`
+- 公众号自定义菜单建议使用“挂号链接”和“我的挂号链接”，这样可以先完成公众号 openid 绑定，再打开小程序。
+- 公众号文章“阅读原文”、二维码、推广页可以使用“挂号链接”；如果当前公众号无法配置网页授权域名，则先使用“H5 落地页链接”，用户点击页面里的“免费挂号”时会进入主服务号 OAuth。
+- `source` 会写入挂号记录的“来源”字段，后台挂号管理和导出 CSV 都能看到。
+- 如果是多个服务号分别直接发起 OAuth，每个服务号都要在自己的公众号后台配置网页授权域名 `zbsfxn.cqzbskq.com`，并且系统后端也要扩展对应 AppID/AppSecret；当前系统默认以主服务号 `OFFICIAL_ACCOUNT_APP_ID` 发起 OAuth。
 
-export function updateOfficialAccountMenu(menu: OfficialAccountMenuConfig) {
-  return http.patch<unknown, OfficialAccountMenuConfig>('/api/admin/official-account/menu', { menu });
-}
+## 微信后台手动配置
 
-export function publishOfficialAccountMenu() {
-  return http.post<unknown, { published: boolean; result: Record<string, unknown> }>('/api/admin/official-account/menu/publish');
-}
+小程序后台需要配置：
 
-export function getOfficialAutoReply() {
-  return http.get<unknown, OfficialAutoReplyConfig>('/api/admin/official-account/auto-reply');
-}
+- request 合法域名：后端 HTTPS 域名，例如 `https://api.example.com`
+- 用户隐私保护指引：说明手机号用于挂号咨询联系
+- 手机号快速验证能力：用于 `open-type="getPhoneNumber"`
+- 订阅消息模板：挂号结果通知
+- 小程序 AppID 和 AppSecret：填入 `.env`
 
-export function updateOfficialAutoReply(autoReply: OfficialAutoReplyConfig) {
-  return http.patch<unknown, OfficialAutoReplyConfig>('/api/admin/official-account/auto-reply', { autoReply });
-}
+公众号后台需要配置：
 
-export function getAdminUsers(params: Record<string, unknown>) {
-  return http.get<unknown, PageResult<AdminUserItem>>('/api/admin/admin-users', { params });
-}
+- 服务器地址 URL：`https://api.example.com/wechat/oa/callback`
+- Token：与 `.env` 的 `OFFICIAL_ACCOUNT_TOKEN` 一致
+- EncodingAESKey：填入 `.env`
+- 消息加解密方式：建议先用明文调通，生产可按实际要求切换
+- 网页授权域名：后端域名，不要带 `https://`
+- 模板消息：挂号成功通知模板
+- 公众号菜单跳转 OAuth 地址：`https://api.example.com/wechat/oa/oauth?state=menu`
+- 公众号 AppID 和 AppSecret：填入 `.env`
 
-export function updateAdminUser(id: string, data: {
-  password?: string;
-  nickname?: string;
-  role?: string;
-  permissions?: string[];
-  status?: string;
-  notifyEnabled?: boolean;
-}) {
-  return http.patch<unknown, AdminUserItem>(`/api/admin/admin-users/${id}`, data);
-}
+微信开放平台：
 
-export function getAdminWechatInvitations() {
-  return http.get<unknown, AdminWechatInviteItem[]>('/api/admin/admin-users/invitations');
-}
+- 如果要使用 UnionID 自动绑定，需要把公众号和小程序绑定到同一个微信开放平台账号。
 
-export function createAdminWechatInvitation(data: {
-  nickname: string;
-  role: string;
-  permissions: string[];
-  notifyEnabled: boolean;
-}) {
-  return http.post<unknown, AdminWechatInviteItem>('/api/admin/admin-users/invitations', data);
-}
+## 常见问题
 
-export function cancelAdminWechatInvitation(id: string) {
-  return http.delete<unknown, { cancelled: boolean }>(`/api/admin/admin-users/invitations/${id}`);
-}
-
-export function createExistingAdminWechatInvitation(id: string) {
-  return http.post<unknown, AdminWechatInviteItem>(`/api/admin/admin-users/${id}/wechat-invitation`);
-}
-
-export function getClinics() {
-  return http.get<unknown, ClinicItem[]>('/api/admin/clinics');
-}
-
-export function createClinic(data: { name: string; address?: string; phone?: string; status?: string }) {
-  return http.post<unknown, ClinicItem>('/api/admin/clinics', data);
-}
-
-export function updateClinic(id: string, data: { name?: string; address?: string; phone?: string; status?: string }) {
-  return http.patch<unknown, ClinicItem>(`/api/admin/clinics/${id}`, data);
-}
-
-export function getAppointmentNotifyConfig() {
-  return http.get<unknown, AppointmentNotifyConfig>('/api/admin/appointment-notify');
-}
-
-export function updateAppointmentNotifyConfig(data: { enabled?: boolean; templateId?: string }) {
-  return http.patch<unknown, AppointmentNotifyConfig>('/api/admin/appointment-notify', data);
-}
-
-export function getFollowupForwardConfig() {
-  return http.get<unknown, FollowupForwardConfig>('/api/admin/followup-forward');
-}
-
-export function updateFollowupForwardConfig(data: Partial<FollowupForwardConfig>) {
-  return http.patch<unknown, FollowupForwardConfig>('/api/admin/followup-forward', data);
-}
-
-export async function exportAppointments(params: Record<string, unknown>) {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') query.set(key, String(value));
-  });
-  const token = localStorage.getItem('admin_token') || '';
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
-  const response = await fetch(`${baseUrl}/api/admin/export/appointments.csv?${query.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    const message = body?.message || '导出失败';
-    ElMessage.error(message);
-    throw new Error(message);
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'appointments.csv';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
+- 后台登录失败：确认 `npm run seed` 已执行，并检查 `.env` 的 `ADMIN_INIT_USERNAME`、`ADMIN_INIT_PASSWORD`。
+- 小程序请求失败：检查 `API_BASE_URL`、后端是否启动、小程序合法域名是否配置。
+- 公众号回调失败：检查 Token、服务器 URL、HTTPS 证书、服务器防火墙。
+- 模板消息失败：看后台“通知记录”的错误码和错误信息，确认 openid、模板 ID、模板字段是否匹配。
+- 手机号搜索搜不到：手机号不会明文落库，完整手机号搜索会转成 hash 精确匹配。

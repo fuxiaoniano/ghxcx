@@ -286,89 +286,88 @@ Page({
             wx.showToast({ title: '手机号已保存', icon: 'success' });
         }
         catch (error) {
-            wx.shn8�h��춻�q�^ticon: 'none' });
-    } finally {
-      this.setData({ manualPhoneSaving: false });
+            wx.showToast({ title: error instanceof Error ? error.message : '手机号保存失败', icon: 'none' });
+        }
+        finally {
+            this.setData({ manualPhoneSaving: false });
+        }
+    },
+    async requestSubscribe() {
+        const templateId = this.data.config.miniSubscribeTemplateId;
+        if (!templateId) {
+            return;
+        }
+        await new Promise((resolve) => {
+            wx.requestSubscribeMessage({
+                tmplIds: [templateId],
+                complete: () => resolve()
+            });
+        });
+    },
+    async submit() {
+        if (this.data.submitting)
+            return;
+        if (!this.data.form.name.trim()) {
+            wx.showToast({ title: '请输入姓名', icon: 'none' });
+            return;
+        }
+        if (!this.data.hasPhone) {
+            this.setData({ showAuthModal: !this.data.manualPhoneMode });
+            wx.showToast({
+                title: this.data.manualPhoneMode ? '请先填写 11 位手机号' : '请先授权手机号后再提交挂号',
+                icon: 'none'
+            });
+            return;
+        }
+        if (!this.data.form.privacyAccepted) {
+            wx.showToast({ title: '请先勾选隐私协议', icon: 'none' });
+            return;
+        }
+        this.setData({ submitting: true });
+        try {
+            await this.requestSubscribe();
+            const clinic = this.data.config.clinics[this.data.clinicIndex - 1];
+            const appointment = await (0, appointments_1.createAppointment)({
+                name: this.data.form.name.trim(),
+                ageRange: this.data.config.formOptions.ageRanges[this.data.ageIndex] || defaultAgeRanges[0],
+                missingTeethType: this.data.config.formOptions.missingTeethTypes[this.data.missingIndex] || defaultMissingTeethTypes[0],
+                clinicId: clinic?.id,
+                remark: this.data.form.remark,
+                source: this.data.source,
+                privacyAccepted: this.data.form.privacyAccepted
+            });
+            wx.redirectTo({ url: `/pages/success/success?id=${appointment.id}` });
+        }
+        catch (error) {
+            wx.showToast({ title: error instanceof Error ? error.message : '提交失败', icon: 'none' });
+        }
+        finally {
+            this.setData({ submitting: false });
+        }
+    },
+    goMyAppointments() {
+        wx.navigateTo({ url: buildAppointmentsUrl('', this.data.source) });
+    },
+    callCustomerService() {
+        const phoneNumber = normalizePhoneNumber(this.data.config.customerServicePhone);
+        if (!phoneNumber) {
+            wx.showToast({ title: '客服电话未配置', icon: 'none' });
+            return;
+        }
+        wx.makePhoneCall({
+            phoneNumber,
+            fail: () => this.copyCustomerServicePhone()
+        });
+    },
+    copyCustomerServicePhone() {
+        const phoneNumber = normalizePhoneNumber(this.data.config.customerServicePhone);
+        if (!phoneNumber) {
+            wx.showToast({ title: '客服电话未配置', icon: 'none' });
+            return;
+        }
+        wx.setClipboardData({
+            data: phoneNumber,
+            success: () => wx.showToast({ title: '电话已复制', icon: 'success' })
+        });
     }
-  },
-
-  async requestSubscribe() {
-    const templateId = this.data.config.miniSubscribeTemplateId;
-    if (!templateId) {
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      wx.requestSubscribeMessage({
-        tmplIds: [templateId],
-        complete: () => resolve()
-      });
-    });
-  },
-
-  async submit() {
-    if (this.data.submitting) return;
-    if (!this.data.form.name.trim()) {
-      wx.showToast({ title: '请输入姓名', icon: 'none' });
-      return;
-    }
-    if (!this.data.hasPhone) {
-      this.setData({ showAuthModal: !this.data.manualPhoneMode });
-      wx.showToast({
-        title: this.data.manualPhoneMode ? '请先填写 11 位手机号' : '请先授权手机号后再提交挂号',
-        icon: 'none'
-      });
-      return;
-    }
-    if (!this.data.form.privacyAccepted) {
-      wx.showToast({ title: '请先勾选隐私协议', icon: 'none' });
-      return;
-    }
-    this.setData({ submitting: true });
-    try {
-      await this.requestSubscribe();
-      const clinic = this.data.config.clinics[this.data.clinicIndex - 1];
-      const appointment = await createAppointment({
-        name: this.data.form.name.trim(),
-        ageRange: this.data.config.formOptions.ageRanges[this.data.ageIndex] || defaultAgeRanges[0],
-        missingTeethType: this.data.config.formOptions.missingTeethTypes[this.data.missingIndex] || defaultMissingTeethTypes[0],
-        clinicId: clinic?.id,
-        remark: this.data.form.remark,
-        source: this.data.source,
-        privacyAccepted: this.data.form.privacyAccepted
-      });
-      wx.redirectTo({ url: `/pages/success/success?id=${appointment.id}` });
-    } catch (error) {
-      wx.showToast({ title: error instanceof Error ? error.message : '提交失败', icon: 'none' });
-    } finally {
-      this.setData({ submitting: false });
-    }
-  },
-
-  goMyAppointments() {
-    wx.navigateTo({ url: buildAppointmentsUrl('', this.data.source) });
-  },
-
-  callCustomerService() {
-    const phoneNumber = normalizePhoneNumber(this.data.config.customerServicePhone);
-    if (!phoneNumber) {
-      wx.showToast({ title: '客服电话未配置', icon: 'none' });
-      return;
-    }
-    wx.makePhoneCall({
-      phoneNumber,
-      fail: () => this.copyCustomerServicePhone()
-    });
-  },
-
-  copyCustomerServicePhone() {
-    const phoneNumber = normalizePhoneNumber(this.data.config.customerServicePhone);
-    if (!phoneNumber) {
-      wx.showToast({ title: '客服电话未配置', icon: 'none' });
-      return;
-    }
-    wx.setClipboardData({
-      data: phoneNumber,
-      success: () => wx.showToast({ title: '电话已复制', icon: 'success' })
-    });
-  }
 });

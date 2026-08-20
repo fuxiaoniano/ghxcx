@@ -276,40 +276,41 @@ export class WechatMiniService {
           }
         });
       });
-      return this.prisu×M»¶‰žËkºwµçg.filingNo)}</div>` : ''}
-      ${display.footerText ? `<div>${this.escape(config.footerText)}</div>` : ''}
-      ${
-        display.customerServicePhone && config.customerServicePhone
-          ? `<div>${this.escape(text.customerServiceLabel)}ï¼š<a class="footer-link" href="tel:${this.escape(this.phoneNumber(config.customerServicePhone))}">${this.escape(config.customerServicePhone)}</a></div>`
-          : ''
-      }
-      ${display.myAppointmentsButton ? `<a class="footer-link" href="/wechat/oa/oauth?state=my${sourceQuery}">${this.escape(text.myAppointmentsButtonText)}</a>` : ''}
-    </footer>`
-        : ''
+      return this.prisma.wechatIdentity.findUniqueOrThrow({
+        where: { id: oaIdentity.id },
+        include: { user: true }
+      });
     }
-  </main>
-</body>
-</html>`;
+    return this.prisma.wechatIdentity.update({
+      where: { id: identity.id },
+      data: {
+        oaOpenId: payload.oaOpenId,
+        unionId: identity.unionId || payload.unionId,
+        subscribedOfficialAccount: true
+      },
+      include: { user: true }
+    });
   }
 
-  private escape(value: unknown) {
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+  private manualPhoneKey(userId: string) {
+    return `mini:manual-phone:${userId}`;
   }
 
-  private sourceQuery(source?: string) {
-    const safeSource = String(source || '')
-      .trim()
-      .replace(/[^a-zA-Z0-9_-]/g, '_')
-      .slice(0, 60);
-    return safeSource ? `&source=${encodeURIComponent(safeSource)}` : '';
+  private isMainlandMobile(phone: string): boolean {
+    return /^1\d{10}$/.test(String(phone || ''));
   }
 
-  private phoneNumber(value: unknown) {
-    return String(value || '').replace(/[^\d+]/g, '');
+  private isMock(code?: string): boolean {
+    const nodeEnv = this.config.get<string>('NODE_ENV');
+    return nodeEnv === 'test' || (nodeEnv !== 'production' && Boolean(code?.startsWith('mock-')));
+  }
+
+  private getMiniCredentials() {
+    const appid = this.config.get<string>('MINI_APP_ID') || '';
+    const secret = this.config.get<string>('MINI_APP_SECRET') || '';
+    if (!appid || !secret || appid.includes('your-mini') || secret.includes('your-mini')) {
+      throw new BusinessException(500100, 'Mini program AppID/AppSecret are not configured');
+    }
+    return { appid, secret };
   }
 }

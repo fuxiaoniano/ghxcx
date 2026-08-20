@@ -329,4 +329,112 @@ export class ConfigsService {
           key: item.key,
           valueJson: item.valueJson,
           description: item.description || ''
-        }ïù¶‰ËkºwµçGDfÆÆ&6²€¢ö–çFÖVçBÀ¢&V6—–VçBæö÷Vä–BÇÂrrÀ¢fÆÆ&6µFW‡BÀ¢t…EEôU%$õ"rÀ¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢~[z^KÙÎK«®Yikš(N{ªn˜	®yú^Xù˜[È.[‹‚p¢“°¢–b†fÆÆ&6²ÓÓÒæ÷F–f–6F–öå7FGW2å5T44U52’7V66W72³Ò°¢VÇ6Rf–ÆVB³Ò°¢Ğ¢Ğ¢&WGW&â²F÷FÃ¢&V6—–VçG2æÆVæwF‚Â7V66W72Âf–ÆVBÂ6¶—VC¢Ó°¢Ğ ¢7–æ2&WG'”æ÷F–f–6F–öâ†Æöt–C¢7G&–ær’°¢6öç7BÆörÒv—BF†—2ç&—6Öææ÷F–f–6F–öäÆöræf–æEVæ—VR‡²v†W&S¢²–C¢Æöt–BÒÒ“°¢–b‚ÆörÇÂÆöræö–çFÖVçD–B’°¢F‡&÷ræWr'W6–æW74W†6WF–öâƒCC"Â~˜	®yú^Šë[Ù^KˆŞZÙYÊh‰nizk9^˜xŞŠùRr“°¢Ğ¢v—BF†—2ç&—6Öææ÷F–f–6F–öäÆörçWFFR‡°¢v†W&S¢²–C¢Æöræ–BÒÀ¢FF¢²&WG'”6÷VçC¢²–æ7&VÖVçC¢ÒĞ¢Ò“°¢6öç7B–ÆöBÒÆörç–ÆöD§6öâ2&V6÷&CÇ7G&–ærÂç“âÂçVÆÃ°¢–b€¢–ÆöCòæ¶–æBÓÓÒu5Ddeôô”åDÔTåEôäõD”4RrÇÀ¢–ÆöCòæ¶–æBÓÓÒu5Ddeôô”åDÔTåEôäõD”4Uô5U5DôÕõDU…BrÇÀ¢–ÆöCòæFFòæf—'7CòçfÇVRÓÓÒ~iÈiky¨Nš(N{ªnKúhòp¢’°¢&WGW&âF†—2ç6VæE7Ffdö–çFÖVçDæ÷F–6R†Æöræö–çFÖVçD–B“°¢Ğ¢&WGW&âF†—2ç6VæDö–çFÖVçE7V66W72†Æöræö–çFÖVçD–B“°¢Ğ ¢&—fFR7–æ26VæDöff–6–Ä66÷VçEFV×ÆFR€¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓà¢’°¢6öç7BvT6öæf–rÒv—BF†—2æ6öæf–w2ævWDÆæF–æuvR‚“°¢6öç7BFV×ÆFT–BĞ¢F†—2æ6öæf–rævWCÇ7G&–æsâ‚tôdd”4”Åô44õTåEõDTÕÄDUôô”åDÔTåEõ5T44U52r’ÇÀ¢vT6öæf–ræöff–6–Ä66÷VçEFV×ÆFT–C°¢6öç7Bö÷Vä–BÒö–çFÖVçBçW6W"æ–FVçF—F–W2æf–æB‚†—FVÒ’Óâ—FVÒæö÷Vä–B“òæö÷Vä–C°¢6öç7B–ÆöBÒF†—2æ'V–ÆDöff–6–Å–ÆöB†ö–çFÖVçBÂö÷Vä–BÇÂrrÂFV×ÆFT–BÇÂrr“°¢–b‚ö÷Vä–B’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢çVÆÂÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢täõôôôõTä”BrÀ¢W'&÷$ÖW76vS¢~yJh‹~iÊ®{¹Zé®XZÎKÉ~Xûr÷Væ–NûÈÎizk9^Xù˜XZÎKÉ~Xû~jŠiÛşkhhòp¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ğ¢–b‚FV×ÆFT–B’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢ö÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢täõõDTÕÄDUô”BrÀ¢W'&÷$ÖW76vS¢~iÊ®˜XŞ{ÚîXZÎKÉ~Xû~jŠiÛşkhhò”Bp¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ğ¢G'’°¢–b‡F†—2æ—4Öö6²‚’’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢ö÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2å5T44U50¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2å5T44U53°¢Ğ¢6öç7B66W75Fö¶VâÒv—BF†—2æöff–6–ÂævWD66W75Fö¶Vâ‚“°¢6öç7B&W7öç6RÒv—B†–÷2ç÷7B€¢‡GG3¢òö’çvV—†–âçæ6öÒö6v’Ö&–âöÖW76vR÷FV×ÆFR÷6VæCö66W75÷Fö¶VãÒG¶66W75Fö¶VçÖÀ¢–Æö@¢“°¢6öç7Bö²Ò&W7öç6RæFFæW'&6öFRÓÓÒ°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢ö÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢ö²òæ÷F–f–6F–öå7FGW2å5T44U52¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢ö²òVæFVf–æVB¢7G&–ær‡&W7öç6RæFFæW'&6öFR’À¢W'&÷$ÖW76vS¢ö²òVæFVf–æVB¢&W7öç6RæFFæW'&×6p¢Ò“°¢&WGW&âö²òæ÷F–f–6F–öå7FGW2å5T44U52¢æ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ò6F6‚†W'&÷"’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢ö÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢t…EEôU%$õ"rÀ¢W'&÷$ÖW76vS¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢~XZÎKÉ~Xû~jŠiÛşkhhşXù˜[È.[‹‚p¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ğ¢Ğ ¢&—fFR7–æ26VæDÖ–æ•7V'67&–&R€¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓà¢’°¢6öç7BvT6öæf–rÒv—BF†—2æ6öæf–w2ævWDÆæF–æuvR‚“°¢6öç7BFV×ÆFT–BĞ¢F†—2æ6öæf–rævWCÇ7G&–æsâ‚tÔ”ä•õ5T%45$”$UõDTÕÄDUôô”åDÔTåEõ5T44U52r’ÇÀ¢vT6öæf–ræÖ–æ•7V'67&–&UFV×ÆFT–C°¢6öç7BÖ–æ”÷Vä–BÒö–çFÖVçBçW6W"æ–FVçF—F–W2æf–æB‚†—FVÒ’Óâ—FVÒæÖ–æ”÷Vä–B“òæÖ–æ”÷Vä–C°¢6öç7B–ÆöBÒF†—2æ'V–ÆDÖ–æ•–ÆöB†ö–çFÖVçBÂÖ–æ”÷Vä–BÇÂrrÂFV×ÆFT–BÇÂrr“°¢–b‚Ö–æ”÷Vä–B’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäÔ”ä•õ$ôu$Õõ5T%45$”$RÀ¢F&vWD÷Vä–C¢çVÆÂÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢täõôÔ”ä•ôõTä”BrÀ¢W'&÷$ÖW76vS¢~yJh‹~k*iÈ[şzˆ¾[¨ò÷Væ–NûÈÎizk9^Xù˜Šê.™ˆ^khhòp¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ğ¢–b‚FV×ÆFT–B’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäÔ”ä•õ$ôu$Õõ5T%45$”$RÀ¢F&vWD÷Vä–C¢Ö–æ”÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢täõõDTÕÄDUô”BrÀ¢W'&÷$ÖW76vS¢~iÊ®˜XŞ{Úî[şzˆ¾[¨şŠê.™ˆ^khhşjŠiÛò”Bp¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ğ¢G'’°¢–b‡F†—2æ—4Öö6²‚’’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäÔ”ä•õ$ôu$Õõ5T%45$”$RÀ¢F&vWD÷Vä–C¢Ö–æ”÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2å5T44U50¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2å5T44U53°¢Ğ¢6öç7B66W75Fö¶VâÒv—BF†—2æÖ–æ’ævWD66W75Fö¶Vâ‚“°¢6öç7B&W7öç6RÒv—B†–÷2ç÷7B€¢‡GG3¢òö’çvV—†–âçæ6öÒö6v’Ö&–âöÖW76vR÷7V'67&–&R÷6VæCö66W75÷Fö¶VãÒG¶66W75Fö¶VçÖÀ¢–Æö@¢“°¢6öç7B6¶—VBÒ&W7öç6RæFFæW'&6öFRÓÓÒC3°¢6öç7Bö²Ò&W7öç6RæFFæW'&6öFRÓÓÒ°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäÔ”ä•õ$ôu$Õõ5T%45$”$RÀ¢F&vWD÷Vä–C¢Ö–æ”÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢ö²òæ÷F–f–6F–öå7FGW2å5T44U52¢6¶—VBòæ÷F–f–6F–öå7FGW2å4´•TB¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢ö²òVæFVf–æVB¢7G&–ær‡&W7öç6RæFFæW'&6öFR’À¢W'&÷$ÖW76vS¢ö²òVæFVf–æVB¢&W7öç6RæFFæW'&×6p¢Ò“°¢&WGW&âö²òæ÷F–f–6F–öå7FGW2å5T44U52¢6¶—VBòæ÷F–f–6F–öå7FGW2å4´•TB¢æ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ò6F6‚†W'&÷"’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäÔ”ä•õ$ôu$Õõ5T%45$”$RÀ¢F&vWD÷Vä–C¢Ö–æ”÷Vä–BÀ¢FV×ÆFT–BÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢t…EEôU%$õ"rÀ¢W'&÷$ÖW76vS¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢~[şzˆ¾[¨şŠê.™ˆ^khhşXù˜[È.[‹‚p¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ğ¢Ğ ¢&—fFR'V–ÆDöff–6–Å–ÆöB€¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓâÀ¢ö÷Vä–C¢7G&–ærÀ¢FV×ÆFT–C¢7G&–æp¢’°¢6öç7B7V&Ö—GFVDBÒF–§2†ö–çFÖVçBæ7&VFVDB’æf÷&ÖB‚u•••’ÔÔÒÔDB„ƒ¦ÖÒr“°¢6öç7B6öçFVçBÒ°¢hÈ.Xû~h‰X©şûÈÎ{ÉnXû~ûÉ¢G¶ö–çFÖVçBæö–çFÖVçDæ÷ÖÀ¢Zy>YŞûÉ¢G¶ö–çFÖVçBææÖWÖÀ¢š(N{ªnšyºîûÉ¢G¶ö–çFÖVçBæÖ—76–æuFVWF…G—WÖÀ¢hùKªNi{n™{NûÉ¢G·7V&Ö—GFVDGÖÀ¢~[z^KÙÎK«®Y[nYÊ‚#B[şi{nXh^ˆN{;¾h*ûÈÎŠû~KùŞhÈyK^ŠùŞyX^˜	®8"p¢Òæ¦ö–â‚uÆâr“° ¢&WGW&â°¢F÷W6W#¢ö÷Vä–BÀ¢FV×ÆFUö–C¢FV×ÆFT–BÀ¢Ö–æ—&öw&Ó¢°¢–C¢F†—2æ6öæf–rævWCÇ7G&–æsâ‚tÔ”ä•ôô”Br’À¢vWFƒ¢vW2÷7V66W72÷7V66W73ö–CÒG¶ö–çFÖVçBæ–GÖ ¢ÒÀ¢FF¢°¢6öçFVçC¢²fÇVS¢6öçFVçBÒÀ¢f—'7C¢²fÇVS¢~hÈ.Xû~h‰X©òrÒÀ¢¶W—v÷&C¢²fÇVS¢ö–çFÖVçBæö–çFÖVçDæòÒÀ¢¶W—v÷&C#¢²fÇVS¢ö–çFÖVçBææÖRÒÀ¢¶W—v÷&C3¢²fÇVS¢ö–çFÖVçBæÖ—76–æuFVWF…G—RÒÀ¢¶W—v÷&CC¢²fÇVS¢7V&Ö—GFVDBÒÀ¢&VÖ&³¢²fÇVS¢~[z^KÙÎK«®Y[nYÊ‚#B[şi{nXh^ˆN{;¾h*ûÈÎŠû~KùŞhÈyK^ŠùŞyX^˜	®8"rĞ¢Ğ¢Ó°¢Ğ ¢&—fFR'V–ÆE7Ffdöff–6–Å–ÆöB€¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓâÀ¢ö÷Vä–C¢7G&–ærÀ¢FV×ÆFT–C¢7G&–ærÀ¢&V6—–VçDæÖS¢7G&–æp¢’°¢6öç7B7V&Ö—GFVDBÒF–§2†ö–çFÖVçBæ7&VFVDB’æf÷&ÖB‚u•••’ÔÔÒÔDB„ƒ¦ÖÒr“°¢6öç7B6Æ–æ–4æÖRÒö–çFÖVçBæ6Æ–æ–3òææÖRÇÂ~iÊ®˜hº™z[©rs°¢6öç7B6öçFVçBÒF†—2æ'V–ÆE7Ffdæ÷F–6UFW‡B†ö–çFÖVçBÂ&V6—–VçDæÖR“° ¢&WGW&â°¢¶–æC¢u5Ddeôô”åDÔTåEôäõD”4RrÀ¢F÷W6W#¢ö÷Vä–BÀ¢FV×ÆFUö–C¢FV×ÆFT–BÀ¢FF¢°¢6öçFVçC¢²fÇVS¢6öçFVçBÒÀ¢f—'7C¢²fÇVS¢~iÈiky¨Nš(N{ªnKúhòrÒÀ¢¶W—v÷&C¢²fÇVS¢ö–çFÖVçBæö–çFÖVçDæòÒÀ¢¶W—v÷&C#¢²fÇVS¢ö–çFÖVçBææÖRÒÀ¢¶W—v÷&C3¢²fÇVS¢ö–çFÖVçBæÖ—76–æuFVWF…G—RÒÀ¢¶W—v÷&CC¢²fÇVS¢7V&Ö—GFVDBÒÀ¢†öæUöçVÖ&W#3¢²fÇVS¢ö–çFÖVçBç†öæTÖ6¶VBÒÀ¢F†–æs#¢²fÇVS¢F†—2çFV×ÆFUF†–ær†ö–çFÖVçBææÖRÇÂ~š(N{ªnZê.h‹rr’ÒÀ¢F†–æsS¢²fÇVS¢F†—2çFV×ÆFUF†–ær†ö–çFÖVçBæÖ—76–æuFVWF…G—RÇÂ~zxŞx™Y*Šú"r’ÒÀ¢&VÖ&³¢²fÇVS¢h˜¾iË®Xû~ûÉ¢G¶ö–çFÖVçBç†öæTÖ6¶VGŞûÉ¾™z[©~ûÉ¢G¶6Æ–æ–4æÖWÖĞ¢Ğ¢Ó°¢Ğ ¢&—fFR'V–ÆDÖ–æ•–ÆöB€¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓâÀ¢Ö–æ”÷Vä–C¢7G&–ærÀ¢FV×ÆFT–C¢7G&–æp¢’°¢&WGW&â°¢F÷W6W#¢Ö–æ”÷Vä–BÀ¢FV×ÆFUö–C¢FV×ÆFT–BÀ¢vS¢vW2÷7V66W72÷7V66W73ö–CÒG¶ö–çFÖVçBæ–GÖÀ¢FF¢°¢F†–æs¢²fÇVS¢ö–çFÖVçBæÖ—76–æuFVWF…G—Rç6Æ–6RƒÂ#’ÒÀ¢‡&6S#¢²fÇVS¢uÇSVcƒUÇSƒSEÇSv6f"rÒÀ¢6†&7FW%÷7G&–æs#¢²fÇVS¢ö–çFÖVçBæö–çFÖVçDæòç6Æ–6RƒÂ3"’ÒÀ¢F–ÖS3¢²fÇVS¢F–§2†ö–çFÖVçBæ7&VFVDB’æf÷&ÖB‚u•••’ÔÔÒÔDB„ƒ¦ÖÒr’ÒÀ¢‡&6SC¢²fÇVS¢uÇSVcƒUÇSƒSEÇSv6f"rĞ¢Ğ¢Ó°¢Ğ ¢&—fFR'V–ÆE7Ffdæ÷F–6UFW‡B€¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓâÀ¢&V6—–VçDæÖS¢7G&–æp¢’°¢6öç7B7V&Ö—GFVDBÒF–§2†ö–çFÖVçBæ7&VFVDB’æf÷&ÖB‚u•••’ÔÔÒÔDB„ƒ¦ÖÒr“°¢6öç7B6Æ–æ–4æÖRÒö–çFÖVçBæ6Æ–æ–3òææÖRÇÂ~iÊ®˜hº™z[©rs°¢&WGW&â°¢ikš(N{ªnhù˜i.ûÉ¢G¶ö–çFÖVçBæö–çFÖVçDæ÷ÖÀ¢hê^iKnK«®ûÉ¢G·&V6—–VçDæÖWÖÀ¢Zy>YŞûÉ¢G¶ö–çFÖVçBææÖWÖÀ¢h˜¾iË®Xû~ûÉ¢G¶ö–çFÖVçBç†öæTÖ6¶VGÖÀ¢[›N›èNjë^ûÉ¢G¶ö–çFÖVçBævU&ævWÖÀ¢{Ë®x™h8^Xk^ûÉ¢G¶ö–çFÖVçBæÖ—76–æuFVWF…G—WÖÀ¢iÉşiÉ¾™z[©~ûÉ¢G¶6Æ–æ–4æÖWÖÀ¢iÚ^k©ûÉ¢G¶ö–çFÖVçBç6÷W&6RÇÂ~iÊ®yúRwÖÀ¢hùKªNi{n™{NûÉ¢G·7V&Ö—GFVDGÖÀ¢ö–çFÖVçBç&VÖ&²òZH~k:ûÉ¢G¶ö–çFÖVçBç&VÖ&·Ö¢rp¢Òæf–ÇFW"„&ööÆVâ’æ¦ö–â‚uÆâr“°¢Ğ ¢&—fFRFV×ÆFUF†–ær‡fÇVS¢7G&–ær’°¢&WGW&â7G&–ær‡fÇVRÇÂrr’ç6Æ–6RƒÂ#“°¢Ğ ¢&—fFR7–æ26VæE7Ffd7W7FöÕFW‡DfÆÆ&6²€¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓâÀ¢ö÷Vä–C¢7G&–ærÀ¢6öçFVçC¢7G&–ærÀ¢&V6öä6öFSó¢7G&–ærÀ¢&V6öäÖW76vSó¢7G&–æp¢’°¢6öç7B–ÆöBÒ°¢¶–æC¢u5Ddeôô”åDÔTåEôäõD”4Uô5U5DôÕõDU…BrÀ¢F÷W6W#¢ö÷Vä–BÀ¢×6wG—S¢wFW‡BrÀ¢FW‡C¢²6öçFVçBÒÀ¢fÆÆ&6´g&öÓ¢°¢6†ææVÃ¢tôdd”4”Åô44õTåEõDTÕÄDRrÀ¢W'&÷$6öFS¢&V6öä6öFRÀ¢W'&÷$ÖW76vS¢&V6öäÖW76vP¢Ğ¢Ó°¢G'’°¢–b‡F†—2æ—4Öö6²‚’’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢ö÷Vä–BÇÂçVÆÂÀ¢FV×ÆFT–C¢t5U5DôÕõDU…EôdÄÄ$4²rÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2å5T44U50¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2å5T44U53°¢Ğ¢6öç7B66W75Fö¶VâÒv—BF†—2æöff–6–ÂævWD66W75Fö¶Vâ‚“°¢6öç7B&W7öç6RÒv—B†–÷2ç÷7B€¢‡GG3¢òö’çvV—†–âçæ6öÒö6v’Ö&–âöÖW76vRö7W7FöÒ÷6VæCö66W75÷Fö¶VãÒG¶66W75Fö¶VçÖÀ¢°¢F÷W6W#¢ö÷Vä–BÀ¢×6wG—S¢wFW‡BrÀ¢FW‡C¢²6öçFVçBĞ¢Ğ¢“°¢6öç7Bö²Ò&W7öç6RæFFæW'&6öFRÓÓÒ°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢ö÷Vä–BÇÂçVÆÂÀ¢FV×ÆFT–C¢t5U5DôÕõDU…EôdÄÄ$4²rÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢ö²òæ÷F–f–6F–öå7FGW2å5T44U52¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢ö²òVæFVf–æVB¢7G&–ær‡&W7öç6RæFFæW'&6öFR’À¢W'&÷$ÖW76vS¢ö²òVæFVf–æVB¢&W7öç6RæFFæW'&×6p¢Ò“°¢&WGW&âö²òæ÷F–f–6F–öå7FGW2å5T44U52¢æ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ò6F6‚†W'&÷"’°¢v—BF†—2æ7&VFTÆör‡°¢ö–çFÖVçBÀ¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÂäôdd”4”Åô44õTåEõDTÕÄDRÀ¢F&vWD÷Vä–C¢ö÷Vä–BÇÂçVÆÂÀ¢FV×ÆFT–C¢t5U5DôÕõDU…EôdÄÄ$4²rÀ¢–ÆöD§6öã¢–ÆöBÀ¢7FGW3¢æ÷F–f–6F–öå7FGW2äd”ÄTBÀ¢W'&÷$6öFS¢t5U5DôÕõDU…Eô…EEôU%$õ"rÀ¢W'&÷$ÖW76vS¢W'&÷"–ç7Fæ6VöbW'&÷"òW'&÷"æÖW76vR¢~[z^KÙÎK«®YZê.iÈŞih~iÊÎkhhşXù˜[È.[‹‚p¢Ò“°¢&WGW&âæ÷F–f–6F–öå7FGW2äd”ÄTC°¢Ğ¢Ğ ¢&—fFR7&VFTÆör†–çWC¢°¢ö–çFÖVçC¢&—6Öäö–çFÖVçDvWE–ÆöCÇ²–æ6ÇVFS¢²6Æ–æ–3¢G'VS²W6W#¢²–æ6ÇVFS¢²–FVçF—F–W3¢G'VRÒÒÒÓã°¢6†ææVÃ¢æ÷F–f–6F–öä6†ææVÃ°¢F&vWD÷Vä–C¢7G&–ærÂçVÆÃ°¢FV×ÆFT–Có¢7G&–æs°¢–ÆöD§6öã¢&—6Öä–çWD§6öåfÇVS°¢7FGW3¢æ÷F–f–6F–öå7FGW3°¢W'&÷$6öFSó¢7G&–æs°¢W'&÷$ÖW76vSó¢7G&–æs°¢Ò’°¢&WGW&âF†—2ç&—6Öææ÷F–f–6F–öäÆöræ7&VFR‡°¢FF¢°¢W6W$–C¢–çWBæö–çFÖVçBçW6W$–BÀ¢ö–çFÖVçD–C¢–çWBæö–çFÖVçBæ–BÀ¢6†ææVÃ¢–çWBæ6†ææVÂÀ¢F&vWD÷Vä–C¢–çWBçF&vWD÷Vä–BÀ¢FV×ÆFT–C¢–çWBçFV×ÆFT–BÀ¢–ÆöD§6öã¢–çWBç–ÆöD§6öâÀ¢7FGW3¢–çWBç7FGW2À¢W'&÷$6öFS¢–çWBæW'&÷$6öFRÀ¢W'&÷$ÖW76vS¢–çWBæW'&÷$ÖW76vRÀ¢6VçDC¢–çWBç7FGW2ÓÓÒæ÷F–f–6F–öå7FGW2å5T44U52òæWrFFR‚’¢VæFVf–æV@¢Ğ¢Ò“°¢Ğ ¢&—fFR—4Öö6²‚“¢&ööÆVâ°¢6öç7BVçbÒF†—2æ6öæf–rævWCÇ7G&–æsâ‚täôDUôTåbr“°¢&WGW&âVçbÓÓÒwFW7Bs°¢Ğ§Ğ 
+        },
+        update: {
+          valueJson: item.valueJson,
+          description: item.description
+        }
+      })
+    );
+    return this.prisma.$transaction(updates);
+  }
+
+  getDefaultLandingPage() {
+    return defaultLandingPage;
+  }
+
+  getDefaultOfficialAccountMenu(): OfficialAccountMenuConfig {
+    const base = this.env.get<string>('SERVER_BASE_URL') || 'https://zbsfxn.cqzbskq.com';
+    const fallbackBase = base.replace(/\/$/, '');
+    const miniAppId = this.env.get<string>('MINI_APP_ID') || 'wx99b598314f56c2f1';
+    return {
+      button: [
+        {
+          name: 'ç«‹å³æŒ‚å·',
+          type: 'miniprogram',
+          appid: miniAppId,
+          pagepath: 'pages/landing/landing?source=official_menu',
+          url: `${fallbackBase}/wechat/oa/oauth?state=landing&source=official_menu`
+        },
+        {
+          name: 'æˆ‘çš„æŒ‚å·',
+          type: 'miniprogram',
+          appid: miniAppId,
+          pagepath: 'pages/appointments/appointments?source=official_menu',
+          url: `${fallbackBase}/wechat/oa/oauth?state=my&source=official_menu`
+        },
+        {
+          name: 'è”ç³»å®¢æœ',
+          type: 'click',
+          key: 'CONTACT_STAFF'
+        }
+      ]
+    };
+  }
+
+  getDefaultOfficialAutoReply() {
+    return defaultOfficialAutoReply;
+  }
+
+  private normalizeFollowupForwardConfig(value?: Partial<FollowupForwardConfig>): FollowupForwardConfig {
+    const url = this.text(value?.url ?? this.env.get<string>('FOLLOWUP_FORWARD_URL'), 500);
+    const authToken = this.text(value?.authToken ?? this.env.get<string>('FOLLOWUP_FORWARD_AUTH_TOKEN'), 500);
+    return {
+      enabled: value?.enabled ?? this.booleanEnv('FOLLOWUP_FORWARD_ENABLED', Boolean(url)),
+      url,
+      authHeader: this.text(value?.authHeader ?? this.env.get<string>('FOLLOWUP_FORWARD_AUTH_HEADER'), 80) || 'Authorization',
+      authScheme:
+        value?.authScheme === undefined
+          ? this.text(this.env.get<string>('FOLLOWUP_FORWARD_AUTH_SCHEME') ?? 'Bearer', 40)
+          : this.text(value.authScheme, 40),
+      authToken,
+      timeoutMs: this.positiveInt(value?.timeoutMs ?? this.env.get<string>('FOLLOWUP_FORWARD_TIMEOUT_MS'), 5000, 1000, 60000),
+      includeFullPhone: value?.includeFullPhone ?? this.booleanEnv('FOLLOWUP_FORWARD_INCLUDE_FULL_PHONE', true),
+      extraHeaders: this.normalizeHeaders(value?.extraHeaders ?? this.envHeaders('FOLLOWUP_FORWARD_EXTRA_HEADERS'))
+    };
+  }
+
+  private text(value: unknown, max: number) {
+    return String(value ?? '').trim().slice(0, max);
+  }
+
+  private positiveInt(value: unknown, fallback: number, min: number, max: number) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return Math.min(max, Math.max(min, Math.floor(parsed)));
+  }
+
+  private booleanEnv(key: string, fallback: boolean) {
+    const value = this.env.get<string>(key);
+    if (value === undefined || value === '') {
+      return fallback;
+    }
+    return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+  }
+
+  private envHeaders(key: string) {
+    const raw = this.env.get<string>(key);
+    if (!raw) {
+      return {};
+    }
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  private normalizeHeaders(value: unknown): Record<string, string> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([name, item]) => Boolean(name.trim()) && (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'))
+        .slice(0, 30)
+        .map(([name, item]) => [name.trim().slice(0, 120), String(item).slice(0, 500)])
+    );
+  }
+}
