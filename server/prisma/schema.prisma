@@ -63,6 +63,23 @@ enum ClinicStatus {
   DISABLED
 }
 
+enum ContentStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AppointmentType {
+  LEGACY_REGISTRATION
+  DOCTOR_APPOINTMENT
+  PACKAGE_APPLICATION
+}
+
+enum DoctorScheduleStatus {
+  AVAILABLE
+  FULL
+  DISABLED
+}
+
 model User {
   id             String            @id @default(cuid()) @db.VarChar(32)
   name           String?           @db.VarChar(64)
@@ -110,7 +127,16 @@ model Appointment {
   phoneMasked                 String                @db.VarChar(32)
   ageRange                    String                @db.VarChar(32)
   missingTeethType            String                @db.VarChar(32)
+  type                        AppointmentType       @default(LEGACY_REGISTRATION)
   clinicId                    String?               @db.VarChar(32)
+  doctorId                    String?               @db.VarChar(32)
+  dentalCategoryId            String?               @db.VarChar(32)
+  dentalProjectId             String?               @db.VarChar(32)
+  packageId                   String?               @db.VarChar(32)
+  appointmentDate             DateTime?             @db.Date
+  appointmentTime             String?               @db.VarChar(32)
+  symptomDescription          String?               @db.Text
+  gender                      String?               @db.VarChar(16)
   source                      String?               @db.VarChar(120)
   status                      AppointmentStatus     @default(PENDING_CONTACT)
   remark                      String?               @db.Text
@@ -130,6 +156,10 @@ model Appointment {
   cancelledAt                 DateTime?
   user                        User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
   clinic                      Clinic?               @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  doctor                      Doctor?               @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  dentalCategory              DentalCategory?       @relation(fields: [dentalCategoryId], references: [id], onDelete: SetNull)
+  dentalProject               DentalProject?        @relation(fields: [dentalProjectId], references: [id], onDelete: SetNull)
+  package                     Package?              @relation(fields: [packageId], references: [id], onDelete: SetNull)
   assignedTo                  AdminUser?            @relation(fields: [assignedToAdminId], references: [id], onDelete: SetNull)
   notifications               NotificationLog[]
 
@@ -138,6 +168,12 @@ model Appointment {
   @@index([status])
   @@index([followupForwardStatus])
   @@index([clinicId])
+  @@index([type])
+  @@index([doctorId])
+  @@index([dentalCategoryId])
+  @@index([dentalProjectId])
+  @@index([packageId])
+  @@index([appointmentDate])
   @@index([createdAt])
   @@map("appointments")
 }
@@ -242,15 +278,175 @@ model SystemConfig {
 }
 
 model Clinic {
-  id           String        @id @default(cuid()) @db.VarChar(32)
-  name         String        @db.VarChar(120)
-  address      String?       @db.VarChar(255)
-  phone        String?       @db.VarChar(32)
-  status       ClinicStatus  @default(ACTIVE)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id           String           @id @default(cuid()) @db.VarChar(32)
+  name         String           @db.VarChar(120)
+  address      String?          @db.VarChar(255)
+  phone        String?          @db.VarChar(32)
+  status       ClinicStatus     @default(ACTIVE)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
   appointments Appointment[]
+  doctors      Doctor[]
+  schedules    DoctorSchedule[]
 
   @@index([status])
   @@map("clinics")
+}
+
+model HomeBanner {
+  id        String        @id @default(cuid()) @db.VarChar(32)
+  imageUrl  String        @db.VarChar(500)
+  title     String        @default("") @db.VarChar(120)
+  linkType  String        @default("NONE") @db.VarChar(32)
+  linkValue String?       @db.VarChar(500)
+  sort      Int           @default(0)
+  status    ContentStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([status, sort])
+  @@map("home_banners")
+}
+
+model HomeAd {
+  id        String        @id @default(cuid()) @db.VarChar(32)
+  imageUrl  String        @db.VarChar(500)
+  title     String        @default("") @db.VarChar(120)
+  sort      Int           @default(0)
+  status    ContentStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([status, sort])
+  @@map("home_ads")
+}
+
+model DentalCategory {
+  id           String          @id @default(cuid()) @db.VarChar(32)
+  name         String          @db.VarChar(80)
+  icon         String?         @db.VarChar(500)
+  sort         Int             @default(0)
+  status       ContentStatus   @default(ACTIVE)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  projects     DentalProject[]
+  doctors      Doctor[]
+  appointments Appointment[]
+
+  @@unique([name])
+  @@index([status, sort])
+  @@map("dental_categories")
+}
+
+model DentalProject {
+  id           String         @id @default(cuid()) @db.VarChar(32)
+  categoryId   String         @db.VarChar(32)
+  name         String         @db.VarChar(100)
+  description  String?        @db.VarChar(500)
+  sort         Int            @default(0)
+  status       ContentStatus  @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  category     DentalCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+
+  @@unique([categoryId, name])
+  @@index([categoryId, status, sort])
+  @@map("dental_projects")
+}
+
+model Doctor {
+  id           String           @id @default(cuid()) @db.VarChar(32)
+  name         String           @db.VarChar(64)
+  avatar       String           @db.VarChar(500)
+  title        String           @db.VarChar(100)
+  departmentId String           @db.VarChar(32)
+  clinicId     String?          @db.VarChar(32)
+  specialty    String           @db.Text
+  description  String           @db.Text
+  images       Json?
+  sort         Int              @default(0)
+  status       ContentStatus    @default(ACTIVE)
+  recommend    Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  department   DentalCategory   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  clinic       Clinic?          @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  schedules    DoctorSchedule[]
+  appointments Appointment[]
+
+  @@index([departmentId, status, sort])
+  @@index([clinicId])
+  @@index([recommend, status, sort])
+  @@map("doctors")
+}
+
+model DoctorSchedule {
+  id          String               @id @default(cuid()) @db.VarChar(32)
+  doctorId    String               @db.VarChar(32)
+  clinicId    String?              @db.VarChar(32)
+  date        DateTime             @db.Date
+  timeSlot    String               @db.VarChar(32)
+  capacity    Int                  @default(1)
+  bookedCount Int                  @default(0)
+  sort        Int                  @default(0)
+  status      DoctorScheduleStatus @default(AVAILABLE)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  doctor      Doctor               @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  clinic      Clinic?              @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+
+  @@unique([doctorId, date, timeSlot])
+  @@index([date, status])
+  @@index([clinicId])
+  @@map("doctor_schedules")
+}
+
+model PackageCategory {
+  id        String        @id @default(cuid()) @db.VarChar(32)
+  name      String        @db.VarChar(80)
+  icon      String?       @db.VarChar(500)
+  sort      Int           @default(0)
+  status    ContentStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  packages  Package[]
+
+  @@unique([name])
+  @@index([status, sort])
+  @@map("package_categories")
+}
+
+model Package {
+  id            String          @id @default(cuid()) @db.VarChar(32)
+  categoryId    String          @db.VarChar(32)
+  title         String          @db.VarChar(160)
+  cover         String          @db.VarChar(500)
+  originalPrice Decimal         @db.Decimal(10, 2)
+  salePrice     Decimal         @db.Decimal(10, 2)
+  salesCount    Int             @default(0)
+  description   String          @db.LongText
+  status        ContentStatus   @default(ACTIVE)
+  sort          Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  category      PackageCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images        PackageImage[]
+  appointments  Appointment[]
+
+  @@index([categoryId, status, sort])
+  @@map("packages")
+}
+
+model PackageImage {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  packageId String   @db.VarChar(32)
+  imageUrl  String   @db.VarChar(500)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  package   Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId, sort])
+  @@map("package_images")
 }
