@@ -16,6 +16,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { AdminModule } from './modules/admin/admin.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PublicPageController } from './public-page.controller';
+import { EnterpriseModule } from './modules/enterprise/enterprise.module';
 
 @Module({
   imports: [
@@ -32,7 +33,8 @@ import { PublicPageController } from './public-page.controller';
     WechatOfficialAccountModule,
     AppointmentsModule,
     AuditLogsModule,
-    AdminModule
+    AdminModule,
+    EnterpriseModule
   ],
   controllers: [PublicPageController],
   providers: [

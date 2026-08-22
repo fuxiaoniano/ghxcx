@@ -22,7 +22,11 @@ async function main() {
         'EXPORT_FULL_PHONE',
         'MANAGE_APPOINTMENTS',
         'MANAGE_CONFIGS',
-        'MANAGE_ADMINS'
+        'MANAGE_ADMINS',
+        'HOME_MANAGE',
+        'DOCTOR_MANAGE',
+        'PACKAGE_MANAGE',
+        'APPOINTMENT_MANAGE'
       ],
       status: AdminStatus.ACTIVE
     },
@@ -35,7 +39,11 @@ async function main() {
         'EXPORT_FULL_PHONE',
         'MANAGE_APPOINTMENTS',
         'MANAGE_CONFIGS',
-        'MANAGE_ADMINS'
+        'MANAGE_ADMINS',
+        'HOME_MANAGE',
+        'DOCTOR_MANAGE',
+        'PACKAGE_MANAGE',
+        'APPOINTMENT_MANAGE'
       ],
       status: AdminStatus.ACTIVE
     }

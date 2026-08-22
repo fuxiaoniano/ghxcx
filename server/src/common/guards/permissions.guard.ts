@@ -25,7 +25,14 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
     const owned = new Set(user.permissions || []);
-    const allowed = required.every((permission) => owned.has(permission));
+    // 新预约权限与线上旧权限双向兼容，避免升级后已有管理员突然失权。
+    const aliases: Record<string, string[]> = {
+      MANAGE_APPOINTMENTS: ['APPOINTMENT_MANAGE'],
+      APPOINTMENT_MANAGE: ['MANAGE_APPOINTMENTS']
+    };
+    const allowed = required.every(
+      (permission) => owned.has(permission) || (aliases[permission] || []).some((alias) => owned.has(alias))
+    );
     if (!allowed) {
       throw new BusinessException(403002, '当前账号无此操作权限', 403);
     }

@@ -5,6 +5,7 @@ import {
   AdminRole,
   AdminStatus,
   AppointmentStatus,
+  AppointmentType,
   ClinicStatus,
   FollowupForwardStatus,
   NotificationChannel,
@@ -365,7 +366,7 @@ export class AdminService {
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
-        include: { clinic: true, assignedTo: true }
+        include: { clinic: true, assignedTo: true, doctor: true, dentalCategory: true, dentalProject: true, package: true }
       })
     ]);
     return {
@@ -379,7 +380,15 @@ export class AdminService {
   async appointmentDetail(id: string) {
     const row = await this.prisma.appointment.findUnique({
       where: { id },
-      include: { clinic: true, assignedTo: true, notifications: { orderBy: { createdAt: 'desc' } } }
+      include: {
+        clinic: true,
+        assignedTo: true,
+        doctor: true,
+        dentalCategory: true,
+        dentalProject: true,
+        package: true,
+        notifications: { orderBy: { createdAt: 'desc' } }
+      }
     });
     if (!row) {
       throw new BusinessException(404502, '挂号记录不存在');
@@ -1202,7 +1211,7 @@ export class AdminService {
     }
     const rows = await this.prisma.appointment.findMany({
       where: this.appointmentWhere(query),
-      include: { clinic: true },
+      include: { clinic: true, doctor: true, dentalCategory: true, dentalProject: true, package: true },
       orderBy: { createdAt: 'desc' },
       take: 5000
     });
@@ -1218,11 +1227,19 @@ export class AdminService {
     }
     const header = [
       '挂号编号',
+      '业务类型',
       '姓名',
       includeFullPhone ? '完整手机号' : '手机号',
       '年龄段',
       '缺牙情况',
       '门店',
+      '预约医生',
+      '科室',
+      '项目/套餐',
+      '预约日期',
+      '预约时间',
+      '性别',
+      '症状描述',
       '来源',
       '状态',
       '回访转发状态',
@@ -1233,11 +1250,19 @@ export class AdminService {
     const lines = rows.map((row) =>
       [
         row.appointmentNo,
+        this.appointmentTypeText(row.type),
         row.name,
         includeFullPhone ? this.crypto.decryptPhone(row.phoneEncrypted) : row.phoneMasked,
         row.ageRange,
         row.missingTeethType,
         row.clinic?.name || '',
+        row.doctor?.name || '',
+        row.dentalCategory?.name || '',
+        row.dentalProject?.name || row.package?.title || '',
+        row.appointmentDate ? dayjs(row.appointmentDate).format('YYYY-MM-DD') : '',
+        row.appointmentTime || '',
+        row.gender || '',
+        row.symptomDescription || '',
         row.source || '',
         row.status,
         this.followupForwardStatusText(row.followupForwardStatus),
@@ -1256,6 +1281,10 @@ export class AdminService {
     if (query.status && Object.values(AppointmentStatus).includes(query.status as AppointmentStatus)) {
       where.status = query.status as AppointmentStatus;
     }
+    if (query.type && Object.values(AppointmentType).includes(query.type as AppointmentType)) {
+      where.type = query.type as AppointmentType;
+    }
+    if (query.doctorId) where.doctorId = query.doctorId;
     if (
       query.followupForwardStatus &&
       Object.values(FollowupForwardStatus).includes(query.followupForwardStatus as FollowupForwardStatus)
@@ -1289,6 +1318,15 @@ export class AdminService {
     phoneMasked: string;
     ageRange: string;
     missingTeethType: string;
+    type: AppointmentType;
+    doctorId?: string | null;
+    dentalCategoryId?: string | null;
+    dentalProjectId?: string | null;
+    packageId?: string | null;
+    appointmentDate?: Date | null;
+    appointmentTime?: string | null;
+    symptomDescription?: string | null;
+    gender?: string | null;
     source?: string | null;
     status: AppointmentStatus;
     followupForwardStatus: FollowupForwardStatus;
@@ -1300,6 +1338,10 @@ export class AdminService {
     createdAt: Date;
     updatedAt: Date;
     clinic?: { id: string; name: string } | null;
+    doctor?: { id: string; name: string; title: string } | null;
+    dentalCategory?: { id: string; name: string } | null;
+    dentalProject?: { id: string; name: string } | null;
+    package?: { id: string; title: string } | null;
     assignedTo?: { id: string; username: string } | null;
   }) {
     return {
@@ -1309,6 +1351,12 @@ export class AdminService {
       phoneMasked: row.phoneMasked,
       ageRange: row.ageRange,
       missingTeethType: row.missingTeethType,
+      type: row.type,
+      typeText: this.appointmentTypeText(row.type),
+      appointmentDate: row.appointmentDate,
+      appointmentTime: row.appointmentTime,
+      symptomDescription: row.symptomDescription,
+      gender: row.gender,
       source: row.source,
       status: row.status,
       statusText: this.statusText(row.status),
@@ -1320,10 +1368,23 @@ export class AdminService {
       followupForwardErrorMessage: row.followupForwardErrorMessage,
       followupForwardRetryCount: row.followupForwardRetryCount || 0,
       clinic: row.clinic ? { id: row.clinic.id, name: row.clinic.name } : null,
+      doctor: row.doctor ? { id: row.doctor.id, name: row.doctor.name, title: row.doctor.title } : null,
+      dentalCategory: row.dentalCategory ? { id: row.dentalCategory.id, name: row.dentalCategory.name } : null,
+      dentalProject: row.dentalProject ? { id: row.dentalProject.id, name: row.dentalProject.name } : null,
+      package: row.package ? { id: row.package.id, title: row.package.title } : null,
       assignedTo: row.assignedTo ? { id: row.assignedTo.id, username: row.assignedTo.username } : null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
     };
+  }
+
+  private appointmentTypeText(type: AppointmentType) {
+    const labels: Record<AppointmentType, string> = {
+      LEGACY_REGISTRATION: '旧挂号',
+      DOCTOR_APPOINTMENT: '医生预约',
+      PACKAGE_APPLICATION: '套餐申请'
+    };
+    return labels[type];
   }
 
   private adminUserItem(row: {
