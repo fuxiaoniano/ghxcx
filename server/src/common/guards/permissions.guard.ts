@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { AdminCurrentUser } from '../decorators/current-user.decorator';
 import { BusinessException } from '../utils/business-exception';
 
@@ -13,7 +13,11 @@ export class PermissionsGuard implements CanActivate {
       context.getHandler(),
       context.getClass()
     ]);
-    if (!required || required.length === 0) {
+    const anyRequired = this.reflector.getAllAndOverride<string[]>(ANY_PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass()
+    ]);
+    if ((!required || required.length === 0) && (!anyRequired || anyRequired.length === 0)) {
       return true;
     }
     const request = context.switchToHttp().getRequest<{ user?: AdminCurrentUser }>();
@@ -30,9 +34,10 @@ export class PermissionsGuard implements CanActivate {
       MANAGE_APPOINTMENTS: ['APPOINTMENT_MANAGE'],
       APPOINTMENT_MANAGE: ['MANAGE_APPOINTMENTS']
     };
-    const allowed = required.every(
-      (permission) => owned.has(permission) || (aliases[permission] || []).some((alias) => owned.has(alias))
-    );
+    const hasPermission = (permission: string) =>
+      owned.has(permission) || (aliases[permission] || []).some((alias) => owned.has(alias));
+    const allowed = (!required || required.every(hasPermission)) &&
+      (!anyRequired || anyRequired.some(hasPermission));
     if (!allowed) {
       throw new BusinessException(403002, '当前账号无此操作权限', 403);
     }

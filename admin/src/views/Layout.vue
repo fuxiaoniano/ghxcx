@@ -18,10 +18,10 @@
           <el-menu-item index="/notifications"><el-icon><Bell /></el-icon><template #title>通知记录</template></el-menu-item>
 
           <div v-show="!sidebarCollapsed" class="nav-group-label nav-group-label--spaced">官网内容</div>
-          <el-menu-item index="/home-manage"><el-icon><Menu /></el-icon><template #title>首页管理</template></el-menu-item>
-          <el-menu-item index="/doctor-manage"><el-icon><UserFilled /></el-icon><template #title>医生管理</template></el-menu-item>
-          <el-menu-item index="/department-manage"><el-icon><Tickets /></el-icon><template #title>科室管理</template></el-menu-item>
-          <el-menu-item index="/package-manage"><el-icon><Setting /></el-icon><template #title>套餐管理</template></el-menu-item>
+          <el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage"><el-icon><Menu /></el-icon><template #title>首页管理</template></el-menu-item>
+          <el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage"><el-icon><UserFilled /></el-icon><template #title>医生管理</template></el-menu-item>
+          <el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage"><el-icon><Tickets /></el-icon><template #title>科室管理</template></el-menu-item>
+          <el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage"><el-icon><Setting /></el-icon><template #title>套餐管理</template></el-menu-item>
 
           <div v-show="!sidebarCollapsed" class="nav-group-label nav-group-label--spaced">运营配置</div>
           <el-menu-item index="/configs"><el-icon><Setting /></el-icon><template #title>系统配置</template></el-menu-item>
@@ -105,6 +105,7 @@ import { useAuthStore } from '../stores/auth';
 const route = useRoute();
 const auth = useAuthStore();
 const sidebarCollapsed = ref(false);
+const canAccess = (permission: string) => auth.hasPermission(permission);
 
 const pageTitles: Record<string, string> = {
   '/dashboard': '仪表盘',

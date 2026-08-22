@@ -19,7 +19,12 @@ export const ADMIN_PERMISSIONS = [
   'EXPORT_FULL_PHONE',
   'MANAGE_APPOINTMENTS',
   'MANAGE_CONFIGS',
-  'MANAGE_ADMINS'
+  'MANAGE_ADMINS',
+  // 企业官网升级权限继续复用原管理员 permissionsJson 字段。
+  'HOME_MANAGE',
+  'DOCTOR_MANAGE',
+  'PACKAGE_MANAGE',
+  'APPOINTMENT_MANAGE'
 ] as const;
 
 export class AdminLoginDto {

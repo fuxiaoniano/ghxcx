@@ -478,6 +478,7 @@ export const updateDentalProject = (id: string, data: Partial<DentalProjectItem>
 export const deleteDentalProject = (id: string) => http.delete(`${enterpriseAdminBase}/dental-projects/${id}`);
 
 export const getDoctorsAdmin = () => http.get<unknown, DoctorItem[]>(`${enterpriseAdminBase}/doctors`);
+export const getEnterpriseClinics = () => http.get<unknown, ClinicItem[]>(`${enterpriseAdminBase}/clinics`);
 export const createDoctorAdmin = (data: Partial<DoctorItem>) => http.post<unknown, DoctorItem>(`${enterpriseAdminBase}/doctors`, data);
 export const updateDoctorAdmin = (id: string, data: Partial<DoctorItem>) => http.patch<unknown, DoctorItem>(`${enterpriseAdminBase}/doctors/${id}`, data);
 export const deleteDoctorAdmin = (id: string) => http.delete(`${enterpriseAdminBase}/doctors/${id}`);

@@ -30,10 +30,10 @@ export const router = createRouter({
         { path: 'users', component: Users },
         { path: 'appointments', component: Appointments },
         { path: 'notifications', component: Notifications },
-        { path: 'home-manage', component: HomeManage },
-        { path: 'doctor-manage', component: DoctorManage },
-        { path: 'department-manage', component: DepartmentManage },
-        { path: 'package-manage', component: PackageManage },
+        { path: 'home-manage', component: HomeManage, meta: { permission: 'HOME_MANAGE' } },
+        { path: 'doctor-manage', component: DoctorManage, meta: { permission: 'DOCTOR_MANAGE' } },
+        { path: 'department-manage', component: DepartmentManage, meta: { permission: 'DOCTOR_MANAGE' } },
+        { path: 'package-manage', component: PackageManage, meta: { permission: 'PACKAGE_MANAGE' } },
         { path: 'configs', component: Configs },
         { path: 'official-menu', component: OfficialMenu },
         { path: 'official-auto-reply', component: OfficialAutoReply },
@@ -52,6 +52,10 @@ router.beforeEach((to) => {
     return '/login';
   }
   if (to.path === '/login' && auth.token) {
+    return '/dashboard';
+  }
+  const requiredPermission = String(to.meta.permission || '');
+  if (requiredPermission && !auth.hasPermission(requiredPermission)) {
     return '/dashboard';
   }
   return true;

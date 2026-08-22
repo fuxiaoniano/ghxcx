@@ -21,4 +21,13 @@ describe('PermissionsGuard', () => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(['APPOINTMENT_MANAGE']) } as unknown as Reflector;
     expect(new PermissionsGuard(reflector).canActivate(context(['MANAGE_APPOINTMENTS']))).toBe(true);
   });
+
+  it('accepts any one of the shared content upload permissions', () => {
+    const reflector = {
+      getAllAndOverride: jest.fn((key: string) => key === 'any_permissions'
+        ? ['HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE']
+        : undefined)
+    } as unknown as Reflector;
+    expect(new PermissionsGuard(reflector).canActivate(context(['DOCTOR_MANAGE']))).toBe(true);
+  });
 });

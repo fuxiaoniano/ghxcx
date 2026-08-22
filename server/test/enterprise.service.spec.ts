@@ -169,6 +169,40 @@ describe('EnterpriseService', () => {
     expect(redis.del).toHaveBeenCalled();
   });
 
+  it('rejects a full schedule without writing an appointment', async () => {
+    const { service, transaction, redis } = fixture();
+    transaction.doctorSchedule.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.createDoctorAppointment('user_1', {
+        doctorId: 'doctor_1',
+        dentalCategoryId: 'category_1',
+        dentalProjectId: 'project_1',
+        appointmentDate: '2099-08-23',
+        appointmentTime: '上午',
+        symptomDescription: '缺牙',
+        privacyAccepted: true
+      })
+    ).rejects.toThrow('该出诊时段已约满');
+    expect(transaction.appointment.create).not.toHaveBeenCalled();
+    expect(redis.del).toHaveBeenCalled();
+  });
+
+  it('rejects a package application for a past date before creating a record', async () => {
+    const { service, prisma, redis } = fixture();
+    prisma.package.findFirst.mockResolvedValue({ id: 'package_1', title: '洁牙套餐', status: ContentStatus.ACTIVE });
+
+    await expect(
+      service.createPackageApplication('user_1', {
+        packageId: 'package_1',
+        appointmentDate: '2000-01-01',
+        privacyAccepted: true
+      })
+    ).rejects.toThrow('预约日期不能早于今天');
+    expect(prisma.appointment.create).not.toHaveBeenCalled();
+    expect(redis.del).toHaveBeenCalled();
+  });
+
   it('returns only masked profile data and official-account subscription state', async () => {
     const { service, prisma } = fixture();
     prisma.user.findUnique.mockResolvedValue({

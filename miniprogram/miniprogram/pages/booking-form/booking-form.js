@@ -4,9 +4,12 @@ const auth_1 = require("../../api/auth");
 const enterprise_1 = require("../../api/enterprise");
 Page({
     data: { doctor: {}, categories: [], projects: [], projectIndex: 0, categoryId: '', projectId: '', scheduleIndex: 0, scheduleLabels: [], hasPhone: false, phoneMasked: '', manualPhone: '', privacyAccepted: false, submitting: false, form: { name: '', gender: '', symptomDescription: '' } },
-    async onLoad(options) { try {
+    async onLoad(options) { const doctorId = options.doctorId || ''; if (!doctorId) {
+        wx.showToast({ title: '缺少预约医生', icon: 'none' });
+        return;
+    } try {
         const login = await (0, auth_1.miniLogin)();
-        const [loadedDoctor, categories] = await Promise.all([(0, enterprise_1.getEnterpriseDoctor)(options.doctorId || ''), (0, enterprise_1.getEnterpriseCategories)()]);
+        const [loadedDoctor, categories] = await Promise.all([(0, enterprise_1.getEnterpriseDoctor)(doctorId), (0, enterprise_1.getEnterpriseCategories)()]);
         const categoryId = options.categoryId || loadedDoctor.departmentId;
         const category = categories.find(item => item.id === categoryId);
         const projects = category?.projects || [];
@@ -20,21 +23,23 @@ Page({
         wx.showToast({ title: error instanceof Error ? error.message : '加载失败', icon: 'none' });
     } },
     onName(event) { this.setData({ 'form.name': event.detail.value }); }, onGender(event) { this.setData({ 'form.gender': event.detail.value }); }, onSymptom(event) { this.setData({ 'form.symptomDescription': event.detail.value }); }, onSchedule(event) { this.setData({ scheduleIndex: Number(event.detail.value) }); }, onProject(event) { const projectIndex = Number(event.detail.value); this.setData({ projectIndex, projectId: this.data.projects[projectIndex]?.id || '' }); }, togglePrivacy() { this.setData({ privacyAccepted: !this.data.privacyAccepted }); }, onManualPhone(event) { this.setData({ manualPhone: String(event.detail.value).replace(/\D/g, '').slice(0, 11) }); },
-    async saveManualPhone() { try {
+    async saveManualPhone() { if (!/^1\d{10}$/.test(this.data.manualPhone))
+        return wx.showToast({ title: '请输入 11 位手机号', icon: 'none' }); try {
         const result = await (0, auth_1.submitManualPhone)(this.data.manualPhone);
         this.setData({ hasPhone: true, phoneMasked: result.phoneMasked });
     }
     catch (error) {
         wx.showToast({ title: error instanceof Error ? error.message : '保存失败', icon: 'none' });
     } }, async getPhone(event) { if (!event.detail.code)
-        return; try {
+        return wx.showToast({ title: '您暂未授权手机号', icon: 'none' }); try {
         const result = await (0, auth_1.authorizePhone)(event.detail.code);
         this.setData({ hasPhone: result.hasPhone, phoneMasked: result.phoneMasked });
     }
     catch (error) {
         wx.showToast({ title: error instanceof Error ? error.message : '授权失败', icon: 'none' });
     } },
-    async submit() { const schedule = this.data.doctor.schedules?.[this.data.scheduleIndex]; if (!schedule)
+    async submit() { const schedule = this.data.doctor.schedules?.[this.data.scheduleIndex]; if (!this.data.doctor.id)
+        return wx.showToast({ title: '医生信息未加载完成', icon: 'none' }); if (!schedule)
         return wx.showToast({ title: '请选择可预约出诊时段', icon: 'none' }); if (!this.data.projectId)
         return wx.showToast({ title: '该科室暂无预约项目', icon: 'none' }); if (!this.data.hasPhone)
         return wx.showToast({ title: '请先授权或填写联系电话', icon: 'none' }); if (!this.data.form.symptomDescription.trim())

@@ -4,7 +4,6 @@ import axios from 'axios';
 import { XMLParser } from 'fast-xml-parser';
 import Redis from 'ioredis';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
 import { WechatMiniService } from '../wechat-mini/wechat-mini.service';

@@ -95,7 +95,13 @@ export class EnterpriseService {
       }
     });
     if (!row) throw new BusinessException(404401, '医生不存在');
-    return { ...this.doctorView(row), schedules: row.schedules };
+    return {
+      ...this.doctorView(row),
+      schedules: row.schedules.map((schedule) => ({
+        ...schedule,
+        date: dayjs(schedule.date).format('YYYY-MM-DD')
+      }))
+    };
   }
 
   async packages(query: Record<string, string>) {
@@ -263,7 +269,7 @@ export class EnterpriseService {
   async enterpriseHomeConfig() {
     const row = await this.prisma.systemConfig.findUnique({ where: { key: 'enterpriseHome' } });
     return {
-      hospitalName: '官方口腔医院',
+      hospitalName: '重庆种博士口腔',
       slogan: '专业口腔诊疗服务',
       logo: '',
       customerServicePath: '',
@@ -278,6 +284,7 @@ export class EnterpriseService {
   adminCategories() { return this.prisma.dentalCategory.findMany({ include: { projects: { orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] } }, orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }); }
   adminProjects() { return this.prisma.dentalProject.findMany({ include: { category: true }, orderBy: [{ categoryId: 'asc' }, { sort: 'asc' }] }); }
   adminDoctors() { return this.prisma.doctor.findMany({ include: { department: true, clinic: true }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }] }); }
+  adminClinics() { return this.prisma.clinic.findMany({ orderBy: [{ status: 'asc' }, { createdAt: 'asc' }] }); }
   adminSchedules(doctorId?: string) { return this.prisma.doctorSchedule.findMany({ where: doctorId ? { doctorId } : {}, include: { doctor: true, clinic: true }, orderBy: [{ date: 'asc' }, { sort: 'asc' }] }); }
   adminPackageCategories() { return this.prisma.packageCategory.findMany({ orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }); }
   adminPackages() { return this.prisma.package.findMany({ include: { category: true, images: { orderBy: { sort: 'asc' } } }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }] }); }
@@ -424,7 +431,7 @@ export class EnterpriseService {
       dentalCategory: row.dentalCategory,
       dentalProject: row.dentalProject,
       package: row.package ? this.packageView(row.package) : null,
-      appointmentDate: row.appointmentDate,
+      appointmentDate: row.appointmentDate ? dayjs(row.appointmentDate).format('YYYY-MM-DD') : null,
       appointmentTime: row.appointmentTime,
       symptomDescription: row.symptomDescription,
       gender: row.gender,

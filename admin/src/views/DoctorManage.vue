@@ -36,7 +36,7 @@
 <script setup lang="ts">
 import { computed,onMounted,reactive,ref } from 'vue';
 import { ElMessage,ElMessageBox } from 'element-plus';
-import { ClinicItem,DentalCategoryItem,DoctorItem,DoctorScheduleItem,createDoctorAdmin,createDoctorSchedule,deleteDoctorAdmin,deleteDoctorSchedule,getClinics,getDentalCategories,getDoctorSchedules,getDoctorsAdmin,updateDoctorAdmin,updateDoctorSchedule,uploadEnterpriseAsset } from '../api/admin';
+import { ClinicItem,DentalCategoryItem,DoctorItem,DoctorScheduleItem,createDoctorAdmin,createDoctorSchedule,deleteDoctorAdmin,deleteDoctorSchedule,getDentalCategories,getDoctorSchedules,getDoctorsAdmin,getEnterpriseClinics,updateDoctorAdmin,updateDoctorSchedule,uploadEnterpriseAsset } from '../api/admin';
 
 // 医生资料和排期共用同一医生 ID，预约端可直接深链并自动选择。
 const doctors=ref<DoctorItem[]>([]),categories=ref<DentalCategoryItem[]>([]),clinics=ref<ClinicItem[]>([]),schedules=ref<DoctorScheduleItem[]>([]);const departmentFilter=ref('');
@@ -44,7 +44,7 @@ const filteredDoctors=computed(()=>departmentFilter.value?doctors.value.filter(i
 const doctorDialog=ref(false),scheduleDrawer=ref(false),scheduleDialog=ref(false),currentDoctor=ref<DoctorItem|null>(null);
 const doctorForm=reactive({id:'',name:'',avatar:'',title:'',departmentId:'',clinicId:'',specialty:'',description:'',imagesText:'',sort:0,recommend:false,active:true});
 const scheduleForm=reactive({id:'',doctorId:'',clinicId:'',date:'',timeSlot:'',capacity:1,sort:0,status:'AVAILABLE'});
-async function load(){[doctors.value,categories.value,clinics.value]=await Promise.all([getDoctorsAdmin(),getDentalCategories(),getClinics()]);}
+async function load(){[doctors.value,categories.value,clinics.value]=await Promise.all([getDoctorsAdmin(),getDentalCategories(),getEnterpriseClinics()]);}
 function editDoctor(row?:DoctorItem){Object.assign(doctorForm,{id:row?.id||'',name:row?.name||'',avatar:row?.avatar||'',title:row?.title||'',departmentId:row?.departmentId||categories.value[0]?.id||'',clinicId:row?.clinicId||'',specialty:row?.specialty||'',description:row?.description||'',imagesText:(row?.images||[]).join('\n'),sort:row?.sort||0,recommend:row?.recommend||false,active:row?.status!=='DISABLED'});doctorDialog.value=true;}
 async function uploadAvatar(options:any){doctorForm.avatar=(await uploadEnterpriseAsset(options.file)).url;}
 async function saveDoctor(){if(!doctorForm.name||!doctorForm.avatar||!doctorForm.title||!doctorForm.departmentId||!doctorForm.specialty||!doctorForm.description)return ElMessage.warning('请完整填写医生必填资料');const data={...doctorForm,images:doctorForm.imagesText.split(/\r?\n/).map(v=>v.trim()).filter(Boolean),status:doctorForm.active?'ACTIVE':'DISABLED'} as any;doctorForm.id?await updateDoctorAdmin(doctorForm.id,data):await createDoctorAdmin(data);doctorDialog.value=false;await load();}
