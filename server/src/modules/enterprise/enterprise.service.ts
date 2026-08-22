@@ -242,6 +242,24 @@ export class EnterpriseService {
     return rows.map((row) => this.appointmentView(row));
   }
 
+  /** 个人中心资料只返回脱敏信息与公众号关注状态。 */
+  async profile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { identities: { select: { subscribedOfficialAccount: true } } }
+    });
+    if (!user) throw new BusinessException(404301, '用户不存在');
+    const config = await this.enterpriseHomeConfig();
+    return {
+      id: user.id,
+      name: user.name,
+      phoneMasked: user.phoneMasked,
+      hasPhone: Boolean(user.phoneEncrypted),
+      subscribedOfficialAccount: user.identities.some((item) => item.subscribedOfficialAccount),
+      officialAccountName: String((config as Record<string, unknown>).officialAccountName || '')
+    };
+  }
+
   async enterpriseHomeConfig() {
     const row = await this.prisma.systemConfig.findUnique({ where: { key: 'enterpriseHome' } });
     return {
@@ -249,6 +267,7 @@ export class EnterpriseService {
       slogan: '专业口腔诊疗服务',
       logo: '',
       customerServicePath: '',
+      officialAccountName: '',
       ...((row?.valueJson && typeof row.valueJson === 'object' ? row.valueJson : {}) as Record<string, unknown>)
     };
   }

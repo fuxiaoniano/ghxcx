@@ -23,3 +23,32 @@ button {
 .primary-button[disabled] {
   opacity: 0.7;
 }
+
+/* 企业官网新增页面专用命名空间，避免影响旧挂号页面。 */
+.enterprise-page {
+  min-height: 100vh;
+  padding: 24rpx 24rpx calc(40rpx + env(safe-area-inset-bottom));
+  color: #172033;
+  background: #f5f8fc;
+  box-sizing: border-box;
+}
+
+.enterprise-card {
+  margin-bottom: 24rpx;
+  padding: 28rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5ebf3;
+  border-radius: 22rpx;
+  box-shadow: 0 8rpx 24rpx rgba(42, 82, 140, 0.06);
+}
+
+.enterprise-section-title { margin: 8rpx 0 24rpx; font-size: 34rpx; font-weight: 700; }
+.enterprise-muted { color: #6f7c91; }
+.enterprise-empty { padding: 100rpx 24rpx; color: #8d98aa; text-align: center; }
+.enterprise-button { min-height: 88rpx; color: #fff; background: #3478f6; border: 0; border-radius: 44rpx; font-size: 30rpx; line-height: 88rpx; }
+.enterprise-button::after { border: 0; }
+.enterprise-button--outline { color: #3478f6; background: #fff; border: 2rpx solid #3478f6; }
+.enterprise-form-row { margin-bottom: 28rpx; }
+.enterprise-form-label { display: block; margin-bottom: 12rpx; color: #39465b; font-size: 28rpx; font-weight: 600; }
+.enterprise-input { min-height: 88rpx; padding: 0 24rpx; background: #f7f9fc; border: 1rpx solid #dfe7f1; border-radius: 14rpx; box-sizing: border-box; }
+.enterprise-textarea { width: 100%; min-height: 180rpx; padding: 22rpx 24rpx; background: #f7f9fc; border: 1rpx solid #dfe7f1; border-radius: 14rpx; box-sizing: border-box; }

@@ -1,0 +1,2 @@
+import { EnterprisePackage,getEnterprisePackage } from '../../api/enterprise';
+Page({data:{packageItem:{} as EnterprisePackage},async onLoad(options:Record<string,string|undefined>){if(!options.id)return;try{this.setData({packageItem:await getEnterprisePackage(options.id)});}catch(error){wx.showToast({title:error instanceof Error?error.message:'加载失败',icon:'none'});}},apply(){wx.navigateTo({url:`/pages/package-apply/package-apply?id=${this.data.packageItem.id}`});}});

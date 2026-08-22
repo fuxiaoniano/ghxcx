@@ -309,4 +309,9 @@ export class EnterpriseHomeConfigDto {
   @IsOptional()
   @MaxLength(500)
   customerServicePath?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  officialAccountName?: string;
 }

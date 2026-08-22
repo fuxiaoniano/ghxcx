@@ -7,6 +7,7 @@
         <el-form-item label="品牌口号"><el-input v-model="homeConfig.slogan" /></el-form-item>
         <el-form-item label="医院 Logo"><image-field v-model="homeConfig.logo" /></el-form-item>
         <el-form-item label="客服路径"><el-input v-model="homeConfig.customerServicePath" placeholder="公众号客服或客服会话路径" /></el-form-item>
+        <el-form-item label="公众号名称"><el-input v-model="homeConfig.officialAccountName" placeholder="用于未关注提示" /></el-form-item>
         <el-form-item><el-button type="primary" @click="saveConfig">保存首页配置</el-button></el-form-item>
       </el-form>
     </el-tab-pane>
@@ -79,7 +80,7 @@ const ImageField = defineComponent({
 });
 
 const tab = ref('config');
-const homeConfig = reactive({ hospitalName: '', slogan: '', logo: '', customerServicePath: '' });
+const homeConfig = reactive({ hospitalName: '', slogan: '', logo: '', customerServicePath: '', officialAccountName: '' });
 const banners = ref<HomeBannerItem[]>([]); const ads = ref<HomeAdItem[]>([]);
 const bannerDialog = ref(false); const adDialog = ref(false);
 const bannerForm = reactive({ id: '', imageUrl: '', title: '', linkType: 'NONE', linkValue: '', sort: 0, active: true });

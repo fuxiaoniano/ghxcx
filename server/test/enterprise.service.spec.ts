@@ -168,4 +168,23 @@ describe('EnterpriseService', () => {
     ).rejects.toThrow('医生与所选科室不匹配');
     expect(redis.del).toHaveBeenCalled();
   });
+
+  it('returns only masked profile data and official-account subscription state', async () => {
+    const { service, prisma } = fixture();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user_1',
+      name: '现有用户',
+      phoneEncrypted: 'encrypted',
+      phoneMasked: '138****8000',
+      identities: [{ subscribedOfficialAccount: true }]
+    });
+    (prisma as any).systemConfig = {
+      findUnique: jest.fn().mockResolvedValue({ valueJson: { officialAccountName: '口腔医院公众号' } })
+    };
+
+    const result = await service.profile('user_1');
+
+    expect(result).toEqual(expect.objectContaining({ phoneMasked: '138****8000', subscribedOfficialAccount: true }));
+    expect(result).not.toHaveProperty('phoneEncrypted');
+  });
 });

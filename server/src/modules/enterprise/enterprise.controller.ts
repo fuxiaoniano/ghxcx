@@ -52,4 +52,9 @@ export class EnterpriseAppointmentsController {
   myRecords(@CurrentUser() user: MiniCurrentUser, @Query() query: Record<string, string>) {
     return this.enterprise.myRecords(user.userId, query);
   }
+
+  @Get('/profile')
+  profile(@CurrentUser() user: MiniCurrentUser) {
+    return this.enterprise.profile(user.userId);
+  }
 }
