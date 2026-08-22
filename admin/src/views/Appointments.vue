@@ -12,6 +12,12 @@
       <el-select v-model="query.status" placeholder="状态" clearable style="width: 150px">
         <el-option v-for="item in statuses" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
+      <el-select v-model="query.type" placeholder="业务类型" clearable style="width: 150px">
+        <el-option v-for="item in appointmentTypes" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-select v-model="query.doctorId" placeholder="预约医生" clearable filterable style="width: 160px">
+        <el-option v-for="item in doctors" :key="item.id" :label="item.name" :value="item.id" />
+      </el-select>
       <el-select v-model="query.followupForwardStatus" placeholder="回访转发" clearable style="width: 150px">
         <el-option v-for="item in followupForwardStatuses" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
@@ -22,10 +28,12 @@
     </div>
     <el-table :data="rows" @row-click="openDetail">
       <el-table-column prop="appointmentNo" label="编号" width="170" />
+      <el-table-column prop="typeText" label="业务类型" width="100" />
       <el-table-column prop="name" label="姓名" />
       <el-table-column prop="phoneMasked" label="手机号" />
-      <el-table-column prop="ageRange" label="年龄段" />
-      <el-table-column prop="missingTeethType" label="缺牙情况" />
+      <el-table-column prop="doctor.name" label="预约医生" width="110" />
+      <el-table-column label="项目/套餐" min-width="140"><template #default="{row}">{{ row.dentalProject?.name || row.package?.title || row.missingTeethType }}</template></el-table-column>
+      <el-table-column label="预约时间" width="150"><template #default="{row}">{{ formatAppointmentTime(row) }}</template></el-table-column>
       <el-table-column prop="clinic.name" label="门店" />
       <el-table-column prop="statusText" label="状态">
         <template #default="{ row }">
@@ -55,12 +63,19 @@
       </div>
       <el-descriptions :column="1" border class="detail-descriptions">
         <el-descriptions-item label="编号">{{ detail.appointmentNo }}</el-descriptions-item>
+        <el-descriptions-item label="业务类型">{{ detail.typeText }}</el-descriptions-item>
         <el-descriptions-item label="姓名">{{ detail.name }}</el-descriptions-item>
         <el-descriptions-item label="手机号">
           <strong class="phone-text">{{ fullPhone || detail.phoneMasked }}</strong>
           <el-button size="small" text type="primary" @click="showFullPhone">查看完整手机号</el-button>
         </el-descriptions-item>
         <el-descriptions-item label="缺牙情况">{{ detail.missingTeethType }}</el-descriptions-item>
+        <el-descriptions-item label="预约医生">{{ detail.doctor?.name || '-' }} {{ detail.doctor?.title || '' }}</el-descriptions-item>
+        <el-descriptions-item label="科室/项目">{{ detail.dentalCategory?.name || '-' }} / {{ detail.dentalProject?.name || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="套餐">{{ detail.package?.title || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="预约日期">{{ formatAppointmentTime(detail) || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="性别">{{ detail.gender || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="症状描述">{{ detail.symptomDescription || '-' }}</el-descriptions-item>
         <el-descriptions-item label="状态">{{ detail.statusText }}</el-descriptions-item>
         <el-descriptions-item label="回访系统">
           <el-tag :type="followupForwardTagType(detail.followupForwardStatus)" effect="light" size="small">
@@ -104,10 +119,12 @@ import { onMounted, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
   AppointmentItem,
+  DoctorItem,
   assignAppointment,
   exportAppointments,
   getAppointmentDetail,
   getAppointments,
+  getDoctorsAdmin,
   resendFollowupForward,
   resendNotification,
   revealPhone,
@@ -131,7 +148,14 @@ const followupForwardStatuses = [
   { value: 'SKIPPED', label: '未启用' }
 ];
 
+const appointmentTypes = [
+  { value: 'LEGACY_REGISTRATION', label: '旧挂号' },
+  { value: 'DOCTOR_APPOINTMENT', label: '医生预约' },
+  { value: 'PACKAGE_APPLICATION', label: '套餐申请' }
+];
+
 const rows = ref<AppointmentItem[]>([]);
+const doctors = ref<DoctorItem[]>([]);
 const total = ref(0);
 const drawer = ref(false);
 const detail = ref<AppointmentItem | null>(null);
@@ -143,6 +167,8 @@ const query = reactive({
   pageSize: 20,
   keyword: '',
   status: '',
+  type: '',
+  doctorId: '',
   followupForwardStatus: '',
   dateFrom: '',
   dateTo: ''
@@ -179,6 +205,11 @@ async function load() {
   const result = await getAppointments(query);
   rows.value = result.list;
   total.value = result.total;
+}
+
+function formatAppointmentTime(row: AppointmentItem) {
+  const date = row.appointmentDate ? row.appointmentDate.slice(0, 10) : '';
+  return [date, row.appointmentTime].filter(Boolean).join(' ');
 }
 
 function changePage(page: number) {
@@ -232,7 +263,10 @@ async function resendFollowup() {
   load();
 }
 
-onMounted(load);
+onMounted(async () => {
+  doctors.value = await getDoctorsAdmin();
+  await load();
+});
 </script>
 
 <style scoped>

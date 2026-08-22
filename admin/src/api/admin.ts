@@ -16,6 +16,12 @@ export interface AppointmentItem {
   phoneMasked: string;
   ageRange: string;
   missingTeethType: string;
+  type: string;
+  typeText: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
+  symptomDescription?: string;
+  gender?: string;
   source?: string;
   status: string;
   statusText: string;
@@ -30,6 +36,10 @@ export interface AppointmentItem {
   remark?: string;
   createdAt: string;
   clinic?: { id: string; name: string } | null;
+  doctor?: { id: string; name: string; title: string } | null;
+  dentalCategory?: { id: string; name: string } | null;
+  dentalProject?: { id: string; name: string } | null;
+  package?: { id: string; title: string } | null;
   assignedTo?: { id: string; username: string } | null;
   notifications?: unknown[];
 }
@@ -158,6 +168,79 @@ export interface OfficialAutoReplyConfig {
   messageReply: string;
   keywordReplyEnabled: boolean;
   keywordRules: OfficialAutoReplyKeywordRule[];
+}
+
+export interface ManagedContent {
+  id: string;
+  sort: number;
+  status: 'ACTIVE' | 'DISABLED';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface HomeBannerItem extends ManagedContent {
+  imageUrl: string;
+  title: string;
+  linkType: string;
+  linkValue?: string;
+}
+
+export interface HomeAdItem extends ManagedContent {
+  imageUrl: string;
+  title: string;
+}
+
+export interface DentalCategoryItem extends ManagedContent {
+  name: string;
+  icon?: string;
+  projects?: DentalProjectItem[];
+}
+
+export interface DentalProjectItem extends ManagedContent {
+  categoryId: string;
+  name: string;
+  description?: string;
+  category?: DentalCategoryItem;
+}
+
+export interface DoctorItem extends ManagedContent {
+  name: string;
+  avatar: string;
+  title: string;
+  departmentId: string;
+  clinicId?: string;
+  specialty: string;
+  description: string;
+  images: string[];
+  recommend: boolean;
+  department?: DentalCategoryItem;
+  clinic?: ClinicItem;
+}
+
+export interface DoctorScheduleItem {
+  id: string;
+  doctorId: string;
+  clinicId?: string;
+  date: string;
+  timeSlot: string;
+  capacity: number;
+  bookedCount: number;
+  sort: number;
+  status: 'AVAILABLE' | 'FULL' | 'DISABLED';
+  doctor?: DoctorItem;
+  clinic?: ClinicItem;
+}
+
+export interface PackageItem extends ManagedContent {
+  categoryId: string;
+  title: string;
+  cover: string;
+  originalPrice: string | number;
+  salePrice: string | number;
+  salesCount: number;
+  description: string;
+  category?: DentalCategoryItem;
+  images?: Array<{ id: string; imageUrl: string; sort: number }>;
 }
 
 export function adminLogin(data: { username: string; password: string }) {
@@ -360,3 +443,57 @@ export async function exportAppointments(params: Record<string, unknown>) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+const enterpriseAdminBase = '/api/admin/enterprise';
+
+export function uploadEnterpriseAsset(file: File) {
+  const data = new FormData();
+  data.append('file', file);
+  return http.post<unknown, { url: string }>(`${enterpriseAdminBase}/assets`, data, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
+export const getEnterpriseHomeConfig = () => http.get<unknown, Record<string, string>>(`${enterpriseAdminBase}/home-config`);
+export const updateEnterpriseHomeConfig = (data: Record<string, string>) => http.patch<unknown, Record<string, string>>(`${enterpriseAdminBase}/home-config`, data);
+
+export const getHomeBanners = () => http.get<unknown, HomeBannerItem[]>(`${enterpriseAdminBase}/banners`);
+export const createHomeBanner = (data: Omit<HomeBannerItem, 'id'>) => http.post<unknown, HomeBannerItem>(`${enterpriseAdminBase}/banners`, data);
+export const updateHomeBanner = (id: string, data: Partial<HomeBannerItem>) => http.patch<unknown, HomeBannerItem>(`${enterpriseAdminBase}/banners/${id}`, data);
+export const deleteHomeBanner = (id: string) => http.delete(`${enterpriseAdminBase}/banners/${id}`);
+
+export const getHomeAds = () => http.get<unknown, HomeAdItem[]>(`${enterpriseAdminBase}/ads`);
+export const createHomeAd = (data: Omit<HomeAdItem, 'id'>) => http.post<unknown, HomeAdItem>(`${enterpriseAdminBase}/ads`, data);
+export const updateHomeAd = (id: string, data: Partial<HomeAdItem>) => http.patch<unknown, HomeAdItem>(`${enterpriseAdminBase}/ads/${id}`, data);
+export const deleteHomeAd = (id: string) => http.delete(`${enterpriseAdminBase}/ads/${id}`);
+
+export const getDentalCategories = () => http.get<unknown, DentalCategoryItem[]>(`${enterpriseAdminBase}/dental-categories`);
+export const createDentalCategory = (data: Partial<DentalCategoryItem>) => http.post<unknown, DentalCategoryItem>(`${enterpriseAdminBase}/dental-categories`, data);
+export const updateDentalCategory = (id: string, data: Partial<DentalCategoryItem>) => http.patch<unknown, DentalCategoryItem>(`${enterpriseAdminBase}/dental-categories/${id}`, data);
+export const deleteDentalCategory = (id: string) => http.delete(`${enterpriseAdminBase}/dental-categories/${id}`);
+
+export const getDentalProjects = () => http.get<unknown, DentalProjectItem[]>(`${enterpriseAdminBase}/dental-projects`);
+export const createDentalProject = (data: Partial<DentalProjectItem>) => http.post<unknown, DentalProjectItem>(`${enterpriseAdminBase}/dental-projects`, data);
+export const updateDentalProject = (id: string, data: Partial<DentalProjectItem>) => http.patch<unknown, DentalProjectItem>(`${enterpriseAdminBase}/dental-projects/${id}`, data);
+export const deleteDentalProject = (id: string) => http.delete(`${enterpriseAdminBase}/dental-projects/${id}`);
+
+export const getDoctorsAdmin = () => http.get<unknown, DoctorItem[]>(`${enterpriseAdminBase}/doctors`);
+export const createDoctorAdmin = (data: Partial<DoctorItem>) => http.post<unknown, DoctorItem>(`${enterpriseAdminBase}/doctors`, data);
+export const updateDoctorAdmin = (id: string, data: Partial<DoctorItem>) => http.patch<unknown, DoctorItem>(`${enterpriseAdminBase}/doctors/${id}`, data);
+export const deleteDoctorAdmin = (id: string) => http.delete(`${enterpriseAdminBase}/doctors/${id}`);
+
+export const getDoctorSchedules = (doctorId?: string) => http.get<unknown, DoctorScheduleItem[]>(`${enterpriseAdminBase}/doctor-schedules`, { params: { doctorId } });
+export const createDoctorSchedule = (data: Partial<DoctorScheduleItem>) => http.post<unknown, DoctorScheduleItem>(`${enterpriseAdminBase}/doctor-schedules`, data);
+export const updateDoctorSchedule = (id: string, data: Partial<DoctorScheduleItem>) => http.patch<unknown, DoctorScheduleItem>(`${enterpriseAdminBase}/doctor-schedules/${id}`, data);
+export const deleteDoctorSchedule = (id: string) => http.delete(`${enterpriseAdminBase}/doctor-schedules/${id}`);
+
+export const getPackageCategories = () => http.get<unknown, DentalCategoryItem[]>(`${enterpriseAdminBase}/package-categories`);
+export const createPackageCategory = (data: Partial<DentalCategoryItem>) => http.post<unknown, DentalCategoryItem>(`${enterpriseAdminBase}/package-categories`, data);
+export const updatePackageCategory = (id: string, data: Partial<DentalCategoryItem>) => http.patch<unknown, DentalCategoryItem>(`${enterpriseAdminBase}/package-categories/${id}`, data);
+export const deletePackageCategory = (id: string) => http.delete(`${enterpriseAdminBase}/package-categories/${id}`);
+
+export const getPackagesAdmin = () => http.get<unknown, PackageItem[]>(`${enterpriseAdminBase}/packages`);
+export const createPackageAdmin = (data: Partial<PackageItem>) => http.post<unknown, PackageItem>(`${enterpriseAdminBase}/packages`, data);
+export const updatePackageAdmin = (id: string, data: Partial<PackageItem>) => http.patch<unknown, PackageItem>(`${enterpriseAdminBase}/packages/${id}`, data);
+export const deletePackageAdmin = (id: string) => http.delete(`${enterpriseAdminBase}/packages/${id}`);
+export const replacePackageImages = (id: string, images: Array<{ id?: string; imageUrl: string; sort: number }>) => http.patch<unknown, Array<{ id: string; imageUrl: string; sort: number }>>(`${enterpriseAdminBase}/packages/${id}/images`, { images });

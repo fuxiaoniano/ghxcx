@@ -190,7 +190,11 @@ const permissionOptions = [
   { value: 'EXPORT_FULL_PHONE', label: '导出完整手机号' },
   { value: 'MANAGE_APPOINTMENTS', label: '管理挂号' },
   { value: 'MANAGE_CONFIGS', label: '管理配置' },
-  { value: 'MANAGE_ADMINS', label: '管理成员' }
+  { value: 'MANAGE_ADMINS', label: '管理成员' },
+  { value: 'HOME_MANAGE', label: '首页管理' },
+  { value: 'DOCTOR_MANAGE', label: '医生与科室管理' },
+  { value: 'PACKAGE_MANAGE', label: '套餐管理' },
+  { value: 'APPOINTMENT_MANAGE', label: '新版预约管理（兼容旧挂号权限）' }
 ];
 
 const rows = ref<AdminUserItem[]>([]);

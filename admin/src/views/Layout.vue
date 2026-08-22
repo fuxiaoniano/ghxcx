@@ -17,6 +17,12 @@
           <el-menu-item index="/users"><el-icon><User /></el-icon><template #title>用户管理</template></el-menu-item>
           <el-menu-item index="/notifications"><el-icon><Bell /></el-icon><template #title>通知记录</template></el-menu-item>
 
+          <div v-show="!sidebarCollapsed" class="nav-group-label nav-group-label--spaced">官网内容</div>
+          <el-menu-item index="/home-manage"><el-icon><Menu /></el-icon><template #title>首页管理</template></el-menu-item>
+          <el-menu-item index="/doctor-manage"><el-icon><UserFilled /></el-icon><template #title>医生管理</template></el-menu-item>
+          <el-menu-item index="/department-manage"><el-icon><Tickets /></el-icon><template #title>科室管理</template></el-menu-item>
+          <el-menu-item index="/package-manage"><el-icon><Setting /></el-icon><template #title>套餐管理</template></el-menu-item>
+
           <div v-show="!sidebarCollapsed" class="nav-group-label nav-group-label--spaced">运营配置</div>
           <el-menu-item index="/configs"><el-icon><Setting /></el-icon><template #title>系统配置</template></el-menu-item>
           <el-menu-item index="/official-menu"><el-icon><Menu /></el-icon><template #title>公众号菜单</template></el-menu-item>
@@ -105,6 +111,10 @@ const pageTitles: Record<string, string> = {
   '/appointments': '挂号管理',
   '/users': '用户管理',
   '/notifications': '通知记录',
+  '/home-manage': '首页管理',
+  '/doctor-manage': '医生管理',
+  '/department-manage': '科室管理',
+  '/package-manage': '套餐管理',
   '/configs': '系统配置',
   '/official-menu': '公众号菜单',
   '/official-auto-reply': '自动回复',

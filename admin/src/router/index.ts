@@ -12,6 +12,10 @@ import OfficialAutoReply from '../views/OfficialAutoReply.vue';
 import FollowupForward from '../views/FollowupForward.vue';
 import AdminUsers from '../views/AdminUsers.vue';
 import AuditLogs from '../views/AuditLogs.vue';
+import HomeManage from '../views/HomeManage.vue';
+import DoctorManage from '../views/DoctorManage.vue';
+import DepartmentManage from '../views/DepartmentManage.vue';
+import PackageManage from '../views/PackageManage.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -26,6 +30,10 @@ export const router = createRouter({
         { path: 'users', component: Users },
         { path: 'appointments', component: Appointments },
         { path: 'notifications', component: Notifications },
+        { path: 'home-manage', component: HomeManage },
+        { path: 'doctor-manage', component: DoctorManage },
+        { path: 'department-manage', component: DepartmentManage },
+        { path: 'package-manage', component: PackageManage },
         { path: 'configs', component: Configs },
         { path: 'official-menu', component: OfficialMenu },
         { path: 'official-auto-reply', component: OfficialAutoReply },
