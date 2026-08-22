@@ -103,7 +103,7 @@ export class EnterpriseAdminController {
   }))
   upload(@UploadedFile() file: any, @Req() request: Request) {
     if (!file) throw new BadRequestException('请先选择图片');
-    const publicBase = process.env.PUBLIC_BASE_URL || `${request.protocol}://${request.get('host')}`;
+    const publicBase = process.env.SERVER_BASE_URL || `${request.protocol}://${request.get('host')}`;
     return { url: `${publicBase.replace(/\/$/, '')}/uploads/enterprise-assets/${file.filename}` };
   }
 
