@@ -5,6 +5,7 @@
     "pages/booking/booking",
     "pages/packages/packages",
     "pages/profile/profile",
+    "pages/official-follow/official-follow",
     "pages/doctor-detail/doctor-detail",
     "pages/booking-doctors/booking-doctors",
     "pages/booking-form/booking-form",
