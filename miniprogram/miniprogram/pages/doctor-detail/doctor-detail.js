@@ -2,19 +2,36 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const enterprise_1 = require("../../api/enterprise");
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+function localDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
 function scheduleDays(schedules) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const groups = new Map();
-    schedules.forEach((schedule) => {
-        const date = schedule.date.slice(0, 10);
-        const day = groups.get(date) || {
+    for (let offset = 0; offset < 14; offset += 1) {
+        const current = new Date(today);
+        current.setDate(today.getDate() + offset);
+        const date = localDate(current);
+        groups.set(date, {
             date,
-            dateLabel: date.slice(5).replace('-', '.'),
-            weekday: WEEKDAYS[new Date(`${date}T00:00:00`).getDay()],
+            dateLabel: `${current.getMonth() + 1}.${String(current.getDate()).padStart(2, '0')}`,
+            weekday: WEEKDAYS[current.getDay()],
+            isToday: offset === 0,
             morningId: '',
             morningAvailable: false,
             afternoonId: '',
             afternoonAvailable: false
-        };
+        });
+    }
+    schedules.forEach((schedule) => {
+        const date = schedule.date.slice(0, 10);
+        const day = groups.get(date);
+        if (!day)
+            return;
         if (schedule.timeSlot === '上午') {
             day.morningId = schedule.id;
             day.morningAvailable = schedule.status === 'AVAILABLE';

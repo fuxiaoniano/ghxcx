@@ -3,7 +3,7 @@
     <view class="hospital-line">{{profile.hospitalName || '口腔医疗服务'}} · 专业诊疗服务</view>
     <view class="user-card">
       <view class="avatar">{{avatarText}}</view>
-      <view>
+      <view class="user-info">
         <view class="user-name">{{profile.name || '微信用户'}}</view>
         <view class="user-phone">{{profile.phoneMasked || '尚未绑定手机号'}}</view>
       </view>
