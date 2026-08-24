@@ -67,7 +67,8 @@ Page({
         wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}` }); },
     bookSchedule(event) {
         const scheduleId = String(event.currentTarget.dataset.id || '');
-        if (!scheduleId || !this.data.doctor.id)
+        const available = event.currentTarget.dataset.available;
+        if (available === false || available === 'false' || !scheduleId || !this.data.doctor.id)
             return;
         wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}&scheduleId=${scheduleId}` });
     }

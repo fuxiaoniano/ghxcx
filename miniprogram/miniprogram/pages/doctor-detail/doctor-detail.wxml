@@ -17,8 +17,8 @@
       <view class="schedule-grid">
         <view class="schedule-day-card" wx:for="{{scheduleDays}}" wx:key="date">
           <view class="day-head"><strong>{{item.dateLabel}}</strong><text>{{item.isToday?'今天':item.weekday}}</text></view>
-          <view class="schedule-slot"><text>上午</text><button class="schedule-button {{item.morningAvailable?'':'disabled'}}" disabled="{{!item.morningAvailable}}" data-id="{{item.morningId}}" bindtap="bookSchedule">{{item.morningAvailable?'预约':'已满'}}</button></view>
-          <view class="schedule-slot"><text>下午</text><button class="schedule-button {{item.afternoonAvailable?'':'disabled'}}" disabled="{{!item.afternoonAvailable}}" data-id="{{item.afternoonId}}" bindtap="bookSchedule">{{item.afternoonAvailable?'预约':'已满'}}</button></view>
+          <view class="schedule-slot"><text>上午</text><view class="schedule-button {{item.morningAvailable?'':'disabled'}}" data-id="{{item.morningId}}" data-available="{{item.morningAvailable}}" bindtap="bookSchedule" aria-role="button" aria-disabled="{{!item.morningAvailable}}"><text>{{item.morningAvailable?'预约':'已满'}}</text></view></view>
+          <view class="schedule-slot"><text>下午</text><view class="schedule-button {{item.afternoonAvailable?'':'disabled'}}" data-id="{{item.afternoonId}}" data-available="{{item.afternoonAvailable}}" bindtap="bookSchedule" aria-role="button" aria-disabled="{{!item.afternoonAvailable}}"><text>{{item.afternoonAvailable?'预约':'已满'}}</text></view></view>
         </view>
       </view>
     </scroll-view>
