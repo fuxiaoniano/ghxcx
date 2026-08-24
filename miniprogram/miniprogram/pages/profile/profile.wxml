@@ -17,10 +17,10 @@
       <view bindtap="openConsultRecords"><text class="record-icon">询</text><text>问诊记录</text></view>
     </view>
     <view class="menu-card enterprise-card">
-      <button class="menu-row" open-type="contact" show-message-card aria-label="在线咨询"><view class="menu-row-content"><text>在线咨询</text><text>›</text></view></button>
-      <view class="menu-row" data-type="privacy" bindtap="openAgreement"><view class="menu-row-content"><text>隐私协议</text><text>›</text></view></view>
-      <view class="menu-row" data-type="user" bindtap="openAgreement"><view class="menu-row-content"><text>用户协议</text><text>›</text></view></view>
-      <button class="menu-row" open-type="contact" show-message-card aria-label="联系客服"><view class="menu-row-content"><text>联系客服</text><text>›</text></view></button>
+      <view class="menu-row"><button class="menu-contact-text" open-type="contact" show-message-card aria-label="在线咨询">在线咨询</button><text class="menu-arrow">›</text></view>
+      <view class="menu-row" data-type="privacy" bindtap="openAgreement"><text class="menu-label">隐私协议</text><text class="menu-arrow">›</text></view>
+      <view class="menu-row" data-type="user" bindtap="openAgreement"><text class="menu-label">用户协议</text><text class="menu-arrow">›</text></view>
+      <view class="menu-row"><button class="menu-contact-text" open-type="contact" show-message-card aria-label="联系客服">联系客服</button><text class="menu-arrow">›</text></view>
     </view>
   </view>
 </view>
