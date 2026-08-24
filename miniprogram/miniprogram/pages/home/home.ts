@@ -1,5 +1,33 @@
 import { EnterpriseHome, getEnterpriseHome } from '../../api/enterprise';
 
+const ALL_CATEGORY = {id:'all',name:'全部',icon:'/assets/category-all.png'};
+const CATEGORY_ICON_BY_NAME: Record<string,string> = {
+  '口腔正畸':'/assets/category-orthodontics.png',
+  '口腔修复':'/assets/category-restoration.png',
+  '口腔种植':'/assets/category-implant.png',
+  '儿童口腔':'/assets/category-child.png',
+  '牙周病':'/assets/category-periodontal.png',
+  '牙体牙髓':'/assets/category-pulp.png',
+  '口腔黏膜':'/assets/category-mucosa.png',
+  '预防保健':'/assets/category-prevention.png',
+  '颌面外科':'/assets/category-surgery.png',
+  '全部':'/assets/category-all.png',
+};
+
+/** 后台暂不可用时的诊疗项目兜底，保持参考图的两行五列完整布局。 */
+const DEFAULT_CATEGORIES = [
+  {id:'default-orthodontics',name:'口腔正畸',icon:'/assets/category-orthodontics.png'},
+  {id:'default-restoration',name:'口腔修复',icon:'/assets/category-restoration.png'},
+  {id:'default-implant',name:'口腔种植',icon:'/assets/category-implant.png'},
+  {id:'default-child',name:'儿童口腔',icon:'/assets/category-child.png'},
+  {id:'default-periodontal',name:'牙周病',icon:'/assets/category-periodontal.png'},
+  {id:'default-pulp',name:'牙体牙髓',icon:'/assets/category-pulp.png'},
+  {id:'default-mucosa',name:'口腔黏膜',icon:'/assets/category-mucosa.png'},
+  {id:'default-prevention',name:'预防保健',icon:'/assets/category-prevention.png'},
+  {id:'default-surgery',name:'颌面外科',icon:'/assets/category-surgery.png'},
+  ALL_CATEGORY,
+];
+
 /** 后台尚未配置或接口短暂不可用时，仍展示企业首页和真实轮播图片。 */
 const DEFAULT_HOME: EnterpriseHome = {
   config: {
@@ -24,12 +52,26 @@ const DEFAULT_HOME: EnterpriseHome = {
       linkValue: '/pages/doctors/doctors',
     },
   ],
-  ads: [],
-  categories: [],
+  ads: [
+    {
+      id: 'default-ad-1',
+      imageUrl: '/assets/home-ad-default-1.jpg',
+      title: '舒适化种植诊疗',
+    },
+    {
+      id: 'default-ad-2',
+      imageUrl: '/assets/home-ad-default-2.jpg',
+      title: '数字化正畸诊疗',
+    },
+  ],
+  categories: DEFAULT_CATEGORIES,
   doctors: [],
 };
 
 function normalizeHome(home: EnterpriseHome): EnterpriseHome {
+  const categories=home.categories.length
+    ? [...home.categories.map((item)=>({...item,icon:item.icon||CATEGORY_ICON_BY_NAME[item.name]||''})),...(home.categories.some((item)=>item.id==='all'||item.name==='全部')?[]:[ALL_CATEGORY])]
+    : [];
   return {
     ...home,
     config: {
@@ -38,8 +80,10 @@ function normalizeHome(home: EnterpriseHome): EnterpriseHome {
       hospitalName: home.config.hospitalName || DEFAULT_HOME.config.hospitalName,
       slogan: home.config.slogan || DEFAULT_HOME.config.slogan,
     },
-    // 后台存在启用轮播时完全以后台数据为准，否则使用本地安全兜底。
-    banners: home.banners.length ? home.banners : DEFAULT_HOME.banners,
+    // 接口成功后完全尊重后台启用状态；本地默认内容只用于接口失败时兜底。
+    banners: home.banners,
+    ads: home.ads,
+    categories,
   };
 }
 
@@ -47,7 +91,7 @@ Page({
   data:{loading:true,home:DEFAULT_HOME},
   onLoad(){this.load();},onPullDownRefresh(){this.load().finally(()=>wx.stopPullDownRefresh());},
   async load(){try{this.setData({loading:true});this.setData({home:normalizeHome(await getEnterpriseHome())});}catch{wx.showToast({title:'部分内容暂未加载',icon:'none'});}finally{this.setData({loading:false});}},
-  openCategory(event:WechatMiniprogram.TouchEvent){wx.setStorageSync('bookingPreset',{categoryId:event.currentTarget.dataset.id});wx.switchTab({url:'/pages/booking/booking'});},
+  openCategory(event:WechatMiniprogram.TouchEvent){const categoryId=event.currentTarget.dataset.id;if(categoryId==='all'){wx.removeStorageSync('bookingPreset');}else{wx.setStorageSync('bookingPreset',{categoryId});}wx.switchTab({url:'/pages/booking/booking'});},
   openDoctor(event:WechatMiniprogram.TouchEvent){wx.navigateTo({url:`/pages/doctor-detail/doctor-detail?id=${event.currentTarget.dataset.id}`});},
   bookDoctor(event:WechatMiniprogram.TouchEvent){wx.navigateTo({url:`/pages/booking-form/booking-form?doctorId=${event.currentTarget.dataset.id}`});},
   openBanner(event:WechatMiniprogram.TouchEvent){const item=this.data.home.banners[Number(event.currentTarget.dataset.index)];if(!item?.linkValue)return;if(item.linkType==='PAGE'){const tabs=['/pages/home/home','/pages/doctors/doctors','/pages/booking/booking','/pages/packages/packages','/pages/profile/profile'];tabs.includes(item.linkValue)?wx.switchTab({url:item.linkValue}):wx.navigateTo({url:item.linkValue});}},
