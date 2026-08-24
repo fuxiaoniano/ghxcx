@@ -207,14 +207,26 @@ export interface DoctorItem extends ManagedContent {
   name: string;
   avatar: string;
   title: string;
+  displayText?: string;
   departmentId: string;
+  departmentIds?: string[];
   clinicId?: string;
   specialty: string;
   description: string;
   images: string[];
   recommend: boolean;
   department?: DentalCategoryItem;
+  departments?: DentalCategoryItem[];
   clinic?: ClinicItem;
+}
+
+export interface MediaAssetItem {
+  id: string;
+  name: string;
+  url: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
 }
 
 export interface DoctorScheduleItem {
@@ -449,10 +461,13 @@ const enterpriseAdminBase = '/api/admin/enterprise';
 export function uploadEnterpriseAsset(file: File) {
   const data = new FormData();
   data.append('file', file);
-  return http.post<unknown, { url: string }>(`${enterpriseAdminBase}/assets`, data, {
+  return http.post<unknown, MediaAssetItem>(`${enterpriseAdminBase}/assets`, data, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 }
+
+export const getMediaAssets = () => http.get<unknown, MediaAssetItem[]>(`${enterpriseAdminBase}/assets`);
+export const deleteMediaAsset = (id: string) => http.delete(`${enterpriseAdminBase}/assets/${id}`);
 
 export const getEnterpriseHomeConfig = () => http.get<unknown, Record<string, string>>(`${enterpriseAdminBase}/home-config`);
 export const updateEnterpriseHomeConfig = (data: Record<string, string>) => http.patch<unknown, Record<string, string>>(`${enterpriseAdminBase}/home-config`, data);

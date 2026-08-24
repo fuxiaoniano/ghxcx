@@ -280,7 +280,12 @@ export class NotificationsService {
       this.config.get<string>('MINI_SUBSCRIBE_TEMPLATE_APPOINTMENT_SUCCESS') ||
       pageConfig.miniSubscribeTemplateId;
     const miniOpenId = appointment.user.identities.find((item) => item.miniOpenId)?.miniOpenId;
-    const payload = this.buildMiniPayload(appointment, miniOpenId || '', templateId || '');
+    const payload = this.buildMiniPayload(
+      appointment,
+      miniOpenId || '',
+      templateId || '',
+      pageConfig.institutionName
+    );
     if (!miniOpenId) {
       await this.createLog({
         appointment,
@@ -417,18 +422,21 @@ export class NotificationsService {
   private buildMiniPayload(
     appointment: Prisma.AppointmentGetPayload<{ include: { clinic: true; user: { include: { identities: true } } } }>,
     miniOpenId: string,
-    templateId: string
+    templateId: string,
+    institutionName: string
   ) {
+    const department = appointment.clinic?.name || appointment.missingTeethType || '口腔咨询';
     return {
       touser: miniOpenId,
       template_id: templateId,
       page: `pages/success/success?id=${appointment.id}`,
       data: {
-        thing1: { value: appointment.missingTeethType.slice(0, 20) },
-        phrase2: { value: '\u5f85\u8054\u7cfb' },
-        character_string2: { value: appointment.appointmentNo.slice(0, 32) },
-        time3: { value: dayjs(appointment.createdAt).format('YYYY-MM-DD HH:mm') },
-        phrase4: { value: '\u5f85\u8054\u7cfb' }
+        // 字段名必须与微信后台模板完全一致，否则微信返回 47003。
+        thing1: { value: this.templateThing('您的挂号已提交，请保持电话畅通') },
+        phrase2: { value: String(appointment.name || '用户').slice(0, 5) },
+        thing5: { value: this.templateThing(department) },
+        date14: { value: dayjs(appointment.createdAt).format('YYYY-MM-DD HH:mm') },
+        thing4: { value: this.templateThing(institutionName || '口腔医疗机构') }
       }
     };
   }

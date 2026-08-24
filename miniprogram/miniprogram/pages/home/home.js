@@ -1,30 +1,30 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const enterprise_1 = require("../../api/enterprise");
-const ALL_CATEGORY = { id: 'all', name: '全部', icon: '/assets/category-all.png' };
+const ALL_CATEGORY = { id: 'all', name: '全部', icon: '/assets/category-all.svg' };
 const CATEGORY_ICON_BY_NAME = {
-    '口腔正畸': '/assets/category-orthodontics.png',
-    '口腔修复': '/assets/category-restoration.png',
-    '口腔种植': '/assets/category-implant.png',
-    '儿童口腔': '/assets/category-child.png',
-    '牙周病': '/assets/category-periodontal.png',
-    '牙体牙髓': '/assets/category-pulp.png',
-    '口腔黏膜': '/assets/category-mucosa.png',
-    '预防保健': '/assets/category-prevention.png',
-    '颌面外科': '/assets/category-surgery.png',
-    '全部': '/assets/category-all.png',
+    '口腔正畸': '/assets/category-orthodontics.svg',
+    '口腔修复': '/assets/category-restoration.svg',
+    '口腔种植': '/assets/category-implant.svg',
+    '儿童口腔': '/assets/category-child.svg',
+    '牙周病': '/assets/category-periodontal.svg',
+    '牙体牙髓': '/assets/category-pulp.svg',
+    '口腔黏膜': '/assets/category-mucosa.svg',
+    '预防保健': '/assets/category-prevention.svg',
+    '颌面外科': '/assets/category-surgery.svg',
+    '全部': '/assets/category-all.svg',
 };
 /** 后台暂不可用时的诊疗项目兜底，保持参考图的两行五列完整布局。 */
 const DEFAULT_CATEGORIES = [
-    { id: 'default-orthodontics', name: '口腔正畸', icon: '/assets/category-orthodontics.png' },
-    { id: 'default-restoration', name: '口腔修复', icon: '/assets/category-restoration.png' },
-    { id: 'default-implant', name: '口腔种植', icon: '/assets/category-implant.png' },
-    { id: 'default-child', name: '儿童口腔', icon: '/assets/category-child.png' },
-    { id: 'default-periodontal', name: '牙周病', icon: '/assets/category-periodontal.png' },
-    { id: 'default-pulp', name: '牙体牙髓', icon: '/assets/category-pulp.png' },
-    { id: 'default-mucosa', name: '口腔黏膜', icon: '/assets/category-mucosa.png' },
-    { id: 'default-prevention', name: '预防保健', icon: '/assets/category-prevention.png' },
-    { id: 'default-surgery', name: '颌面外科', icon: '/assets/category-surgery.png' },
+    { id: 'default-orthodontics', name: '口腔正畸', icon: '/assets/category-orthodontics.svg' },
+    { id: 'default-restoration', name: '口腔修复', icon: '/assets/category-restoration.svg' },
+    { id: 'default-implant', name: '口腔种植', icon: '/assets/category-implant.svg' },
+    { id: 'default-child', name: '儿童口腔', icon: '/assets/category-child.svg' },
+    { id: 'default-periodontal', name: '牙周病', icon: '/assets/category-periodontal.svg' },
+    { id: 'default-pulp', name: '牙体牙髓', icon: '/assets/category-pulp.svg' },
+    { id: 'default-mucosa', name: '口腔黏膜', icon: '/assets/category-mucosa.svg' },
+    { id: 'default-prevention', name: '预防保健', icon: '/assets/category-prevention.svg' },
+    { id: 'default-surgery', name: '颌面外科', icon: '/assets/category-surgery.svg' },
     ALL_CATEGORY,
 ];
 /** 后台尚未配置或接口短暂不可用时，仍展示企业首页和真实轮播图片。 */

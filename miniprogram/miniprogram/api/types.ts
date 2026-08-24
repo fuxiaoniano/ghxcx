@@ -99,8 +99,6 @@ export interface Appointment {
   ageRange: string;
   missingTeethType: string;
   clinic: ClinicOption | null;
-  status: string;
-  statusText: string;
   remark?: string;
   source?: string;
   createdAt: string;

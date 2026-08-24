@@ -322,15 +322,16 @@ model HomeAd {
 }
 
 model DentalCategory {
-  id           String          @id @default(cuid()) @db.VarChar(32)
-  name         String          @db.VarChar(80)
-  icon         String?         @db.VarChar(500)
-  sort         Int             @default(0)
-  status       ContentStatus   @default(ACTIVE)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id           String             @id @default(cuid()) @db.VarChar(32)
+  name         String             @db.VarChar(80)
+  icon         String?            @db.VarChar(500)
+  sort         Int                @default(0)
+  status       ContentStatus      @default(ACTIVE)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   projects     DentalProject[]
   doctors      Doctor[]
+  doctorLinks  DoctorDepartment[]
   appointments Appointment[]
 
   @@unique([name])
@@ -356,22 +357,24 @@ model DentalProject {
 }
 
 model Doctor {
-  id           String           @id @default(cuid()) @db.VarChar(32)
-  name         String           @db.VarChar(64)
-  avatar       String           @db.VarChar(500)
-  title        String           @db.VarChar(100)
-  departmentId String           @db.VarChar(32)
-  clinicId     String?          @db.VarChar(32)
-  specialty    String           @db.Text
-  description  String           @db.Text
+  id           String             @id @default(cuid()) @db.VarChar(32)
+  name         String             @db.VarChar(64)
+  avatar       String             @db.VarChar(500)
+  title        String             @db.VarChar(100)
+  displayText  String?            @db.VarChar(120)
+  departmentId String             @db.VarChar(32)
+  clinicId     String?            @db.VarChar(32)
+  specialty    String             @db.Text
+  description  String             @db.Text
   images       Json?
-  sort         Int              @default(0)
-  status       ContentStatus    @default(ACTIVE)
-  recommend    Boolean          @default(false)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  department   DentalCategory   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  clinic       Clinic?          @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  sort         Int                @default(0)
+  status       ContentStatus      @default(ACTIVE)
+  recommend    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  department   DentalCategory     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  departments  DoctorDepartment[]
+  clinic       Clinic?            @relation(fields: [clinicId], references: [id], onDelete: SetNull)
   schedules    DoctorSchedule[]
   appointments Appointment[]
 
@@ -379,6 +382,19 @@ model Doctor {
   @@index([clinicId])
   @@index([recommend, status, sort])
   @@map("doctors")
+}
+
+model DoctorDepartment {
+  id           String         @id @default(cuid()) @db.VarChar(32)
+  doctorId     String         @db.VarChar(32)
+  departmentId String         @db.VarChar(32)
+  createdAt    DateTime       @default(now())
+  doctor       Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  department   DentalCategory @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@unique([doctorId, departmentId])
+  @@index([departmentId, doctorId])
+  @@map("doctor_departments")
 }
 
 model DoctorSchedule {
@@ -449,4 +465,18 @@ model PackageImage {
 
   @@index([packageId, sort])
   @@map("package_images")
+}
+
+model MediaAsset {
+  id              String   @id @default(cuid()) @db.VarChar(32)
+  name            String   @db.VarChar(255)
+  url             String   @db.VarChar(500)
+  mimeType        String   @db.VarChar(100)
+  size            Int
+  uploaderAdminId String?  @db.VarChar(32)
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([uploaderAdminId])
+  @@map("media_assets")
 }

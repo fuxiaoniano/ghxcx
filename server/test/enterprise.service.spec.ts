@@ -16,6 +16,7 @@ describe('EnterpriseService', () => {
       name: '李医生',
       title: '主任医师',
       departmentId: 'category_1',
+      departments: [{ departmentId: 'category_1', department: { id: 'category_1', name: '种植科' } }],
       clinicId: 'clinic_1',
       status: ContentStatus.ACTIVE,
       clinic: { id: 'clinic_1', name: '总院' },
@@ -62,6 +63,10 @@ describe('EnterpriseService', () => {
     const prisma = {
       user: { findUnique: jest.fn().mockResolvedValue(user) },
       doctor: { findFirst: jest.fn().mockResolvedValue(doctor) },
+      doctorSchedule: {
+        createMany: jest.fn().mockResolvedValue({ count: 28 }),
+        findMany: jest.fn().mockResolvedValue([])
+      },
       dentalProject: { findFirst: jest.fn().mockResolvedValue(project) },
       package: { findFirst: jest.fn() },
       appointment: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -114,6 +119,45 @@ describe('EnterpriseService', () => {
     expect(notifications.sendAppointmentSuccess).toHaveBeenCalledWith('appointment_1');
     expect(followup.forwardAppointment).toHaveBeenCalledWith('appointment_1');
     expect(result.typeText).toBe('医生预约');
+    expect(result).not.toHaveProperty('status');
+    expect(result).not.toHaveProperty('statusText');
+  });
+
+  it('accepts an appointment through a secondary department linked to the doctor', async () => {
+    const { service, prisma, transaction } = fixture();
+    prisma.doctor.findFirst.mockResolvedValue({
+      id: 'doctor_1',
+      departmentId: 'other_category',
+      clinicId: 'clinic_1',
+      status: ContentStatus.ACTIVE,
+      clinic: { id: 'clinic_1', name: '总院' },
+      department: { id: 'other_category', name: '综合科' },
+      departments: [{ departmentId: 'category_1' }]
+    });
+
+    await service.createDoctorAppointment('user_1', {
+      doctorId: 'doctor_1', dentalCategoryId: 'category_1', dentalProjectId: 'project_1',
+      appointmentDate: '2099-08-23', appointmentTime: '上午', symptomDescription: '缺牙', privacyAccepted: true
+    });
+
+    expect(transaction.appointment.create).toHaveBeenCalled();
+  });
+
+  it('creates the default morning and afternoon schedule for the next 14 days', async () => {
+    const { service, prisma } = fixture();
+
+    await service.doctorDetail('doctor_1');
+
+    expect(prisma.doctorSchedule.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ timeSlot: '上午', capacity: 20 }),
+          expect.objectContaining({ timeSlot: '下午', capacity: 20 })
+        ]),
+        skipDuplicates: true
+      })
+    );
+    expect(prisma.doctorSchedule.createMany.mock.calls[0][0].data).toHaveLength(28);
   });
 
   it('creates a package consultation without creating a payment order', async () => {
@@ -218,7 +262,11 @@ describe('EnterpriseService', () => {
 
     const result = await service.profile('user_1');
 
-    expect(result).toEqual(expect.objectContaining({ phoneMasked: '138****8000', subscribedOfficialAccount: true }));
+    expect(result).toEqual(expect.objectContaining({
+      phoneMasked: '138****8000',
+      subscribedOfficialAccount: true,
+      hospitalName: '重庆种博士口腔'
+    }));
     expect(result).not.toHaveProperty('phoneEncrypted');
   });
 });

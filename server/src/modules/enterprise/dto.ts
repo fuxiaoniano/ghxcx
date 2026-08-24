@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -172,8 +173,18 @@ export class DoctorDto extends SortStatusDto {
   title!: string;
 
   @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  displayText?: string;
+
+  @IsString()
   @IsNotEmpty()
   departmentId!: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  departmentIds?: string[];
 
   @IsString()
   @IsOptional()
@@ -214,6 +225,7 @@ export class DoctorScheduleDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(32)
+  @IsIn(['上午', '下午'])
   timeSlot!: string;
 
   @IsInt()

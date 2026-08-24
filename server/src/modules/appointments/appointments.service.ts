@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
-import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
 import { CreateAppointmentDto } from './dto';
@@ -59,7 +58,8 @@ export class AppointmentsService {
 
     void this.followupForwarder.forwardAppointment(appointment.id).catch(() => undefined);
 
-    await Promise.all([
+    // 微信接口偶发超时不能拖慢或改变已经成功落库的挂号结果。
+    void Promise.all([
       this.notifications.sendAppointmentSuccess(appointment.id).catch(() => undefined),
       this.notifications.sendStaffAppointmentNotice(appointment.id).catch(() => undefined)
     ]);
@@ -105,7 +105,6 @@ export class AppointmentsService {
     phoneMasked: string;
     ageRange: string;
     missingTeethType: string;
-    status: AppointmentStatus;
     remark?: string | null;
     source?: string | null;
     createdAt: Date;
@@ -127,8 +126,6 @@ export class AppointmentsService {
             phone: appointment.clinic.phone
           }
         : null,
-      status: appointment.status,
-      statusText: this.statusText(appointment.status),
       remark: appointment.remark,
       source: appointment.source,
       createdAt: appointment.createdAt,
@@ -136,15 +133,4 @@ export class AppointmentsService {
     };
   }
 
-  private statusText(status: AppointmentStatus) {
-    const map: Record<AppointmentStatus, string> = {
-      PENDING_CONTACT: '待联系',
-      CONTACTED: '已联系',
-      CONFIRMED: '已确认',
-      VISITED: '已到诊',
-      CANCELLED: '已取消',
-      INVALID: '无效线索'
-    };
-    return map[status];
-  }
 }

@@ -10,4 +10,4 @@ Page({ data: { categories: [], doctors: [], departmentId: '', loading: true }, o
     }
     finally {
         this.setData({ loading: false });
-    } }, selectDepartment(event) { this.setData({ departmentId: event.currentTarget.dataset.id || '' }); this.load(); }, openDetail(event) { wx.navigateTo({ url: `/pages/doctor-detail/doctor-detail?id=${event.currentTarget.dataset.id}` }); }, book(event) { wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${event.currentTarget.dataset.id}` }); } });
+    } }, selectDepartment(event) { this.setData({ departmentId: event.currentTarget.dataset.id || '' }); this.load(); }, openDetail(event) { wx.navigateTo({ url: `/pages/doctor-detail/doctor-detail?id=${event.currentTarget.dataset.id}&categoryId=${this.data.departmentId}` }); }, book(event) { wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${event.currentTarget.dataset.id}&categoryId=${this.data.departmentId}` }); } });

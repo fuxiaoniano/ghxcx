@@ -1,5 +1,5 @@
 <template>
-  <div class="page-heading"><div><h1 class="page-title">科室管理</h1><p>维护预约流程左侧科室和右侧治疗项目</p></div></div>
+  <div class="page-heading"><div><h1 class="page-title">科室与项目</h1><p>科室名称和图标会同步显示在小程序首页及预约页面</p></div></div>
   <el-tabs v-model="tab" class="content-panel">
     <el-tab-pane label="科室" name="categories">
       <div class="toolbar"><el-button type="primary" @click="editCategory()">新增科室</el-button></div>
@@ -21,7 +21,7 @@
   </el-tabs>
 
   <el-dialog v-model="categoryDialog" :title="categoryForm.id?'编辑科室':'新增科室'" width="520px">
-    <el-form label-width="90px"><el-form-item label="名称" required><el-input v-model="categoryForm.name" /></el-form-item><el-form-item label="图标地址"><el-input v-model="categoryForm.icon" /></el-form-item><el-form-item label="排序"><el-input-number v-model="categoryForm.sort" /></el-form-item><el-form-item label="状态"><el-switch v-model="categoryForm.active" active-text="启用" /></el-form-item></el-form>
+    <el-form label-width="100px"><el-form-item label="首页展示名" required><el-input v-model="categoryForm.name" maxlength="80" show-word-limit /></el-form-item><el-form-item label="科室图标"><MediaPicker v-model="categoryForm.icon" ratio-hint="1:1，建议 256×256 像素透明底图" /></el-form-item><el-form-item label="首页排序"><el-input-number v-model="categoryForm.sort" /></el-form-item><el-form-item label="对外展示"><el-switch v-model="categoryForm.active" active-text="启用" /></el-form-item></el-form>
     <template #footer><el-button @click="categoryDialog=false">取消</el-button><el-button type="primary" @click="saveCategory">保存</el-button></template>
   </el-dialog>
   <el-dialog v-model="projectDialog" :title="projectForm.id?'编辑项目':'新增项目'" width="560px">
@@ -34,6 +34,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { DentalCategoryItem, DentalProjectItem, createDentalCategory, createDentalProject, deleteDentalCategory, deleteDentalProject, getDentalCategories, getDentalProjects, updateDentalCategory, updateDentalProject } from '../api/admin';
+import MediaPicker from '../components/MediaPicker.vue';
 
 // 科室和项目保持独立实体，避免用前端硬编码模拟层级。
 const tab=ref('categories'); const categories=ref<DentalCategoryItem[]>([]); const projects=ref<DentalProjectItem[]>([]); const categoryFilter=ref('');

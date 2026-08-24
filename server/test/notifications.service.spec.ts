@@ -45,7 +45,7 @@ describe('NotificationsService', () => {
     const official = { getAccessToken: jest.fn() };
     const mini = { getAccessToken: jest.fn() };
     const configs = {
-      getLandingPage: jest.fn().mockResolvedValue({}),
+      getLandingPage: jest.fn().mockResolvedValue({ institutionName: '测试口腔机构' }),
       getAppointmentNotifyConfig: jest.fn().mockResolvedValue({ enabled: true, templateId: 'staff-template' })
     };
     return {
@@ -87,7 +87,7 @@ describe('NotificationsService', () => {
     );
   });
 
-  it('fills phrase2 for mini subscribe templates that use appointment status as keyword2', async () => {
+  it('uses the exact fields configured by the mini-program appointment template', async () => {
     const { service, prisma } = createService([{ miniOpenId: 'mini-openid' }]);
 
     await service.sendAppointmentSuccess('appt_1');
@@ -98,7 +98,11 @@ describe('NotificationsService', () => {
           channel: NotificationChannel.MINI_PROGRAM_SUBSCRIBE,
           payloadJson: expect.objectContaining({
             data: expect.objectContaining({
-              phrase2: { value: '待联系' }
+              thing1: { value: '您的挂号已提交，请保持电话畅通' },
+              phrase2: { value: '张三' },
+              thing5: { value: '单颗缺失' },
+              date14: { value: '2026-07-06 08:00' },
+              thing4: { value: '测试口腔机构' }
             })
           })
         })

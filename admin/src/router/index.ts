@@ -16,6 +16,7 @@ import HomeManage from '../views/HomeManage.vue';
 import DoctorManage from '../views/DoctorManage.vue';
 import DepartmentManage from '../views/DepartmentManage.vue';
 import PackageManage from '../views/PackageManage.vue';
+import MediaLibrary from '../views/MediaLibrary.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -34,6 +35,7 @@ export const router = createRouter({
         { path: 'doctor-manage', component: DoctorManage, meta: { permission: 'DOCTOR_MANAGE' } },
         { path: 'department-manage', component: DepartmentManage, meta: { permission: 'DOCTOR_MANAGE' } },
         { path: 'package-manage', component: PackageManage, meta: { permission: 'PACKAGE_MANAGE' } },
+        { path: 'media-library', component: MediaLibrary },
         { path: 'configs', component: Configs },
         { path: 'official-menu', component: OfficialMenu },
         { path: 'official-auto-reply', component: OfficialAutoReply },

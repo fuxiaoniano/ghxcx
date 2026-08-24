@@ -93,6 +93,14 @@ export class EnterpriseAdminController {
   @Delete('/packages/:id') @Permissions('PACKAGE_MANAGE') deletePackage(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.enterprise.deletePackage(id, this.audit(user, req)); }
   @Patch('/packages/:id/images') @Permissions('PACKAGE_MANAGE') replaceImages(@Param('id') id: string, @Body() dto: PackageImagesDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.enterprise.replacePackageImages(id, dto.images, this.audit(user, req)); }
 
+  @Get('/assets')
+  @AnyPermissions('HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE')
+  assets() { return this.enterprise.mediaAssets(); }
+
+  @Delete('/assets/:id')
+  @AnyPermissions('HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE')
+  deleteAsset(@Param('id') id: string) { return this.enterprise.deleteMediaAsset(id); }
+
   @Post('/assets')
   @AnyPermissions('HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE')
   @UseInterceptors(FileInterceptor('file', {
@@ -104,14 +112,20 @@ export class EnterpriseAdminController {
       callback(valid ? null : new BadRequestException('请上传 jpg、png、webp 或 gif 图片'), valid);
     }
   }))
-  upload(@UploadedFile() file: any, @Req() request: Request) {
+  async upload(@UploadedFile() file: any, @Req() request: Request, @CurrentUser() user: AdminCurrentUser) {
     if (!file) throw new BadRequestException('请先选择图片');
     // Multer 默认文件名没有后缀；保留已校验的扩展名，确保微信 image 组件获得正确 MIME 类型。
     const extension = extname(file.originalname || '').toLowerCase();
     const filename = `${file.filename}${extension}`;
     renameSync(file.path, join(assetDir, filename));
     const publicBase = process.env.SERVER_BASE_URL || `${request.protocol}://${request.get('host')}`;
-    return { url: `${publicBase.replace(/\/$/, '')}/uploads/enterprise-assets/${filename}` };
+    return this.enterprise.createMediaAsset({
+      name: file.originalname,
+      url: `${publicBase.replace(/\/$/, '')}/uploads/enterprise-assets/${filename}`,
+      mimeType: file.mimetype,
+      size: file.size,
+      uploaderAdminId: user.adminUserId
+    });
   }
 
   private audit(user: AdminCurrentUser, request: Request) {

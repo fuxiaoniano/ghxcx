@@ -3,7 +3,6 @@
     <view class="item" wx:for="{{list}}" wx:key="id" bindtap="openDetail" data-id="{{item.id}}">
       <view class="top">
         <text class="no">{{item.appointmentNo}}</text>
-        <text class="status">{{item.statusText}}</text>
       </view>
       <view class="info">{{item.name}} ｜ {{item.phoneMasked}}</view>
       <view class="info">{{item.ageRange}} ｜ {{item.missingTeethType}}</view>

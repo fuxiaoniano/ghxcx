@@ -1,1 +1,26 @@
-<view class="profile-page"><view class="profile-hero"><view class="hospital-line">重庆种博士口腔 · 专业诊疗服务</view><view class="user-card"><view class="avatar">{{avatarText}}</view><view><view class="user-name">{{profile.name || '微信用户'}}</view><view class="user-phone">{{profile.phoneMasked || '尚未绑定手机号'}}</view></view></view></view><view class="profile-body"><view class="record-grid enterprise-card"><view bindtap="openLegacy"><text class="record-icon">挂</text><text>挂号记录</text></view><view bindtap="openDoctorRecords"><text class="record-icon">约</text><text>预约记录</text></view><view bindtap="openPackageRecords"><text class="record-icon">套</text><text>购买记录</text></view><view bindtap="openConsultRecords"><text class="record-icon">询</text><text>问诊记录</text></view></view><view class="menu-card enterprise-card"><button wx:if="{{profile.subscribedOfficialAccount}}" class="menu-row" open-type="contact" show-message-card><text>在线咨询</text><text>›</text></button><view wx:else class="menu-row" bindtap="openOfficialFollow"><text>在线咨询</text><text>先关注公众号 ›</text></view><view class="menu-row" data-type="privacy" bindtap="openAgreement"><text>隐私协议</text><text>›</text></view><view class="menu-row" data-type="user" bindtap="openAgreement"><text>用户协议</text><text>›</text></view><button wx:if="{{profile.subscribedOfficialAccount}}" class="menu-row" open-type="contact"><text>联系客服</text><text>›</text></button><view wx:else class="menu-row" bindtap="openOfficialFollow"><text>联系客服</text><text>先关注公众号 ›</text></view></view><view wx:if="{{!profile.subscribedOfficialAccount}}" class="follow-card enterprise-card" bindtap="openOfficialFollow"><view>关注公众号</view><view class="enterprise-muted">点击进入关注页面，关注后可在线咨询并接收预约通知</view></view></view></view>
+<view class="profile-page">
+  <view class="profile-hero">
+    <view class="hospital-line">{{profile.hospitalName || '口腔医疗服务'}} · 专业诊疗服务</view>
+    <view class="user-card">
+      <view class="avatar">{{avatarText}}</view>
+      <view>
+        <view class="user-name">{{profile.name || '微信用户'}}</view>
+        <view class="user-phone">{{profile.phoneMasked || '尚未绑定手机号'}}</view>
+      </view>
+    </view>
+  </view>
+  <view class="profile-body">
+    <view class="record-grid enterprise-card">
+      <view bindtap="openLegacy"><text class="record-icon">挂</text><text>挂号记录</text></view>
+      <view bindtap="openDoctorRecords"><text class="record-icon">约</text><text>预约记录</text></view>
+      <view bindtap="openPackageRecords"><text class="record-icon">套</text><text>购买记录</text></view>
+      <view bindtap="openConsultRecords"><text class="record-icon">询</text><text>问诊记录</text></view>
+    </view>
+    <view class="menu-card enterprise-card">
+      <button class="menu-row" open-type="contact" show-message-card><text>在线咨询</text><text>›</text></button>
+      <view class="menu-row" data-type="privacy" bindtap="openAgreement"><text>隐私协议</text><text>›</text></view>
+      <view class="menu-row" data-type="user" bindtap="openAgreement"><text>用户协议</text><text>›</text></view>
+      <button class="menu-row" open-type="contact" show-message-card><text>联系客服</text><text>›</text></button>
+    </view>
+  </view>
+</view>

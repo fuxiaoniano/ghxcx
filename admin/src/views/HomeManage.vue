@@ -5,7 +5,7 @@
       <el-form label-width="110px" style="max-width: 720px">
         <el-form-item label="医院名称"><el-input v-model="homeConfig.hospitalName" /></el-form-item>
         <el-form-item label="品牌口号"><el-input v-model="homeConfig.slogan" /></el-form-item>
-        <el-form-item label="医院 Logo"><image-field v-model="homeConfig.logo" /></el-form-item>
+        <el-form-item label="医院 Logo"><MediaPicker v-model="homeConfig.logo" ratio-hint="1:1，建议 400×400 像素透明底图" /></el-form-item>
         <el-form-item label="客服路径"><el-input v-model="homeConfig.customerServicePath" placeholder="公众号客服或客服会话路径" /></el-form-item>
         <el-form-item label="公众号名称"><el-input v-model="homeConfig.officialAccountName" placeholder="用于未关注提示" /></el-form-item>
         <el-form-item><el-button type="primary" @click="saveConfig">保存首页配置</el-button></el-form-item>
@@ -37,7 +37,7 @@
 
   <el-dialog v-model="bannerDialog" :title="bannerForm.id ? '编辑轮播图' : '新增轮播图'" width="620px">
     <el-form label-width="90px">
-      <el-form-item label="图片" required><image-field v-model="bannerForm.imageUrl" /></el-form-item>
+      <el-form-item label="图片" required><MediaPicker v-model="bannerForm.imageUrl" ratio-hint="2:1，建议 1500×750 像素" /></el-form-item>
       <el-form-item label="标题"><el-input v-model="bannerForm.title" /></el-form-item>
       <el-form-item label="跳转类型"><el-select v-model="bannerForm.linkType"><el-option label="不跳转" value="NONE" /><el-option label="小程序页面" value="PAGE" /><el-option label="网页" value="WEB" /></el-select></el-form-item>
       <el-form-item label="跳转地址"><el-input v-model="bannerForm.linkValue" /></el-form-item>
@@ -49,7 +49,7 @@
 
   <el-dialog v-model="adDialog" :title="adForm.id ? '编辑广告' : '新增广告'" width="620px">
     <el-form label-width="90px">
-      <el-form-item label="图片" required><image-field v-model="adForm.imageUrl" /></el-form-item>
+      <el-form-item label="图片" required><MediaPicker v-model="adForm.imageUrl" ratio-hint="3:1，建议 1500×500 像素" /></el-form-item>
       <el-form-item label="标题"><el-input v-model="adForm.title" /></el-form-item>
       <el-form-item label="排序"><el-input-number v-model="adForm.sort" /></el-form-item>
       <el-form-item label="状态"><el-switch v-model="adForm.active" active-text="显示" /></el-form-item>
@@ -59,25 +59,14 @@
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h, onMounted, reactive, ref } from 'vue';
-import { ElButton, ElInput, ElMessage, ElMessageBox, ElUpload } from 'element-plus';
+import { onMounted, reactive, ref } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   HomeAdItem, HomeBannerItem, createHomeAd, createHomeBanner, deleteHomeAd, deleteHomeBanner,
   getEnterpriseHomeConfig, getHomeAds, getHomeBanners, updateEnterpriseHomeConfig, updateHomeAd,
-  updateHomeBanner, uploadEnterpriseAsset
+  updateHomeBanner
 } from '../api/admin';
-
-// 新后台页面统一使用原鉴权 HTTP 客户端与通用图片上传接口。
-const ImageField = defineComponent({
-  props: { modelValue: { type: String, default: '' } }, emits: ['update:modelValue'],
-  setup(props, { emit }) {
-    const upload = async (options: any) => { const result = await uploadEnterpriseAsset(options.file); emit('update:modelValue', result.url); };
-    return () => h('div', { class: 'image-field' }, [
-      h(ElInput, { modelValue: props.modelValue, 'onUpdate:modelValue': (value: string) => emit('update:modelValue', value), placeholder: '图片地址' }),
-      h(ElUpload, { showFileList: false, httpRequest: upload, accept: 'image/*' }, () => h(ElButton, { type: 'primary', plain: true }, () => '上传图片'))
-    ]);
-  }
-});
+import MediaPicker from '../components/MediaPicker.vue';
 
 const tab = ref('config');
 const homeConfig = reactive({ hospitalName: '', slogan: '', logo: '', customerServicePath: '', officialAccountName: '' });

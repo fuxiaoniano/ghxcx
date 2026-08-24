@@ -1,18 +1,71 @@
-import { miniLogin } from '../../api/auth';
-import { EnterpriseDoctor, getEnterpriseDoctor, getEnterpriseProfile } from '../../api/enterprise';
+import { EnterpriseDoctor, EnterpriseSchedule, getEnterpriseDoctor } from '../../api/enterprise';
+
+interface ScheduleDay {
+  date: string;
+  dateLabel: string;
+  weekday: string;
+  morningId: string;
+  morningAvailable: boolean;
+  afternoonId: string;
+  afternoonAvailable: boolean;
+}
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+function scheduleDays(schedules: EnterpriseSchedule[]): ScheduleDay[] {
+  const groups = new Map<string, ScheduleDay>();
+  schedules.forEach((schedule) => {
+    const date = schedule.date.slice(0, 10);
+    const day = groups.get(date) || {
+      date,
+      dateLabel: date.slice(5).replace('-', '.'),
+      weekday: WEEKDAYS[new Date(`${date}T00:00:00`).getDay()],
+      morningId: '',
+      morningAvailable: false,
+      afternoonId: '',
+      afternoonAvailable: false
+    };
+    if (schedule.timeSlot === '上午') {
+      day.morningId = schedule.id;
+      day.morningAvailable = schedule.status === 'AVAILABLE';
+    }
+    if (schedule.timeSlot === '下午') {
+      day.afternoonId = schedule.id;
+      day.afternoonAvailable = schedule.status === 'AVAILABLE';
+    }
+    groups.set(date, day);
+  });
+  return [...groups.values()];
+}
 
 Page({
-  data:{doctor:{} as EnterpriseDoctor,loading:true,subscribedOfficialAccount:false,officialAccountName:'重庆种博士口腔'},
-  async onLoad(options:Record<string,string|undefined>){
-    const doctorId=options.id||'';
-    if(!doctorId){wx.showToast({title:'缺少医生信息',icon:'none'});return;}
-    void this.loadConsultState();
-    try{this.setData({doctor:await getEnterpriseDoctor(doctorId)});}catch(error){wx.showToast({title:error instanceof Error?error.message:'加载失败',icon:'none'});}finally{this.setData({loading:false});}
+  data: { doctor: {} as EnterpriseDoctor, scheduleDays: [] as ScheduleDay[], categoryId: '', loading: true },
+
+  async onLoad(options: Record<string, string | undefined>) {
+    const doctorId = options.id || '';
+    if (!doctorId) {
+      wx.showToast({ title: '缺少医生信息', icon: 'none' });
+      return;
+    }
+    try {
+      const doctor = await getEnterpriseDoctor(doctorId);
+      this.setData({ doctor, categoryId: options.categoryId || doctor.departmentId, scheduleDays: scheduleDays(doctor.schedules || []) });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '加载失败', icon: 'none' });
+    } finally {
+      this.setData({ loading: false });
+    }
   },
-  /** 咨询入口复用现有登录用户的公众号关注状态。 */
-  async loadConsultState(){
-    try{await miniLogin();const profile=await getEnterpriseProfile();this.setData({subscribedOfficialAccount:profile.subscribedOfficialAccount,officialAccountName:profile.officialAccountName||'重庆种博士口腔'});}catch{this.setData({subscribedOfficialAccount:false});}
+
+  book() {
+    if (this.data.doctor.id) wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}` });
   },
-  book(){if(this.data.doctor.id)wx.navigateTo({url:`/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}`});},
-  openOfficialFollow(){const name=encodeURIComponent(this.data.officialAccountName);wx.navigateTo({url:`/pages/official-follow/official-follow?name=${name}`});}
+
+  bookSchedule(event: WechatMiniprogram.TouchEvent) {
+    const scheduleId = String(event.currentTarget.dataset.id || '');
+    if (!scheduleId || !this.data.doctor.id) return;
+    wx.navigateTo({
+      url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}&scheduleId=${scheduleId}`
+    });
+  }
 });

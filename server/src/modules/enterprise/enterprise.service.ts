@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import {
-  AppointmentStatus,
   AppointmentType,
   ContentStatus,
   DoctorScheduleStatus,
@@ -46,7 +45,7 @@ export class EnterpriseService {
       this.prisma.dentalCategory.findMany({ where: { status: ContentStatus.ACTIVE }, orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }),
       this.prisma.doctor.findMany({
         where: { status: ContentStatus.ACTIVE, recommend: true },
-        include: { department: true, clinic: true },
+        include: { department: true, departments: { include: { department: true } }, clinic: true },
         orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }],
         take: 10
       })
@@ -69,12 +68,14 @@ export class EnterpriseService {
     const rows = await this.prisma.doctor.findMany({
       where: {
         status: ContentStatus.ACTIVE,
-        ...(query.departmentId ? { departmentId: query.departmentId } : {}),
+        ...(query.departmentId
+          ? { OR: [{ departmentId: query.departmentId }, { departments: { some: { departmentId: query.departmentId } } }] }
+          : {}),
         ...(keyword
           ? { OR: [{ name: { contains: keyword } }, { title: { contains: keyword } }, { specialty: { contains: keyword } }] }
           : {})
       },
-      include: { department: true, clinic: true },
+      include: { department: true, departments: { include: { department: true } }, clinic: true },
       orderBy: [{ sort: 'asc' }, { recommend: 'desc' }, { createdAt: 'desc' }]
     });
     return rows.map((row) => this.doctorView(row));
@@ -85,19 +86,25 @@ export class EnterpriseService {
       where: { id, status: ContentStatus.ACTIVE },
       include: {
         department: true,
+        departments: { include: { department: true } },
         clinic: true,
-        schedules: {
-          where: { status: { not: DoctorScheduleStatus.DISABLED }, date: { gte: dayjs().startOf('day').toDate() } },
-          include: { clinic: true },
-          orderBy: [{ date: 'asc' }, { sort: 'asc' }],
-          take: 60
-        }
       }
     });
     if (!row) throw new BusinessException(404401, '医生不存在');
+    await this.ensureDefaultSchedules(row.id, row.clinicId);
+    const schedules = await this.prisma.doctorSchedule.findMany({
+      where: {
+        doctorId: row.id,
+        status: { not: DoctorScheduleStatus.DISABLED },
+        date: { gte: dayjs().startOf('day').toDate(), lte: dayjs().add(13, 'day').endOf('day').toDate() },
+        timeSlot: { in: ['上午', '下午'] }
+      },
+      include: { clinic: true },
+      orderBy: [{ date: 'asc' }, { sort: 'asc' }]
+    });
     return {
       ...this.doctorView(row),
-      schedules: row.schedules.map((schedule) => ({
+      schedules: schedules.map((schedule) => ({
         ...schedule,
         date: dayjs(schedule.date).format('YYYY-MM-DD')
       }))
@@ -140,13 +147,16 @@ export class EnterpriseService {
         this.requireUserWithPhone(userId),
         this.prisma.doctor.findFirst({
           where: { id: dto.doctorId, status: ContentStatus.ACTIVE },
-          include: { clinic: true, department: true }
+          include: { clinic: true, department: true, departments: true }
         }),
         this.prisma.dentalProject.findFirst({
           where: { id: dto.dentalProjectId, categoryId: dto.dentalCategoryId, status: ContentStatus.ACTIVE }
         })
       ]);
-      if (!doctor || doctor.departmentId !== dto.dentalCategoryId) throw new BusinessException(400403, '医生与所选科室不匹配');
+      const doctorDepartmentIds = doctor
+        ? new Set([doctor.departmentId, ...(doctor.departments || []).map((item) => item.departmentId)])
+        : new Set<string>();
+      if (!doctor || !doctorDepartmentIds.has(dto.dentalCategoryId)) throw new BusinessException(400403, '医生与所选科室不匹配');
       if (!project) throw new BusinessException(400404, '预约项目不存在或已停用');
       const date = dayjs(dto.appointmentDate).startOf('day');
       if (!date.isValid() || date.isBefore(dayjs().startOf('day'))) throw new BusinessException(400405, '预约日期不能早于今天');
@@ -262,6 +272,7 @@ export class EnterpriseService {
       phoneMasked: user.phoneMasked,
       hasPhone: Boolean(user.phoneEncrypted),
       subscribedOfficialAccount: user.identities.some((item) => item.subscribedOfficialAccount),
+      hospitalName: String((config as Record<string, unknown>).hospitalName || ''),
       officialAccountName: String((config as Record<string, unknown>).officialAccountName || '')
     };
   }
@@ -283,11 +294,30 @@ export class EnterpriseService {
   adminAds() { return this.prisma.homeAd.findMany({ orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }] }); }
   adminCategories() { return this.prisma.dentalCategory.findMany({ include: { projects: { orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] } }, orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }); }
   adminProjects() { return this.prisma.dentalProject.findMany({ include: { category: true }, orderBy: [{ categoryId: 'asc' }, { sort: 'asc' }] }); }
-  adminDoctors() { return this.prisma.doctor.findMany({ include: { department: true, clinic: true }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }] }); }
+  adminDoctors() { return this.prisma.doctor.findMany({ include: { department: true, departments: { include: { department: true } }, clinic: true }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }] }); }
   adminClinics() { return this.prisma.clinic.findMany({ orderBy: [{ status: 'asc' }, { createdAt: 'asc' }] }); }
-  adminSchedules(doctorId?: string) { return this.prisma.doctorSchedule.findMany({ where: doctorId ? { doctorId } : {}, include: { doctor: true, clinic: true }, orderBy: [{ date: 'asc' }, { sort: 'asc' }] }); }
+  async adminSchedules(doctorId?: string) {
+    if (doctorId) {
+      const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId }, select: { clinicId: true } });
+      if (doctor) await this.ensureDefaultSchedules(doctorId, doctor.clinicId);
+    }
+    return this.prisma.doctorSchedule.findMany({ where: doctorId ? { doctorId } : {}, include: { doctor: true, clinic: true }, orderBy: [{ date: 'asc' }, { sort: 'asc' }] });
+  }
   adminPackageCategories() { return this.prisma.packageCategory.findMany({ orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }); }
   adminPackages() { return this.prisma.package.findMany({ include: { category: true, images: { orderBy: { sort: 'asc' } } }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }] }); }
+  mediaAssets() { return this.prisma.mediaAsset.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }); }
+
+  createMediaAsset(data: { name: string; url: string; mimeType: string; size: number; uploaderAdminId?: string }) {
+    return this.prisma.mediaAsset.create({ data });
+  }
+
+  async deleteMediaAsset(id: string) {
+    const asset = await this.prisma.mediaAsset.findUnique({ where: { id } });
+    if (!asset) throw new BusinessException(404411, '图片素材不存在');
+    // 仅从素材库移除记录，不删除实体文件，避免已使用该 URL 的页面出现断图。
+    await this.prisma.mediaAsset.delete({ where: { id } });
+    return { id, deleted: true };
+  }
 
   async createBanner(data: any, audit: AuditContext) { const row = await this.prisma.homeBanner.create({ data: this.clean(data) }); await this.audit('CREATE', 'home_banners', row.id, undefined, row, audit); return row; }
   async updateBanner(id: string, data: any, audit: AuditContext) { return this.updateSimple('homeBanner', 'home_banners', id, data, audit); }
@@ -297,13 +327,48 @@ export class EnterpriseService {
   async deleteAd(id: string, audit: AuditContext) { return this.deleteSimple('homeAd', 'home_ads', id, audit); }
   async createCategory(data: any, audit: AuditContext) { const row = await this.prisma.dentalCategory.create({ data: this.clean(data) }); await this.audit('CREATE', 'dental_categories', row.id, undefined, row, audit); return row; }
   async updateCategory(id: string, data: any, audit: AuditContext) { return this.updateSimple('dentalCategory', 'dental_categories', id, data, audit); }
-  async deleteCategory(id: string, audit: AuditContext) { const used = await this.prisma.dentalCategory.findUnique({ where: { id }, include: { _count: { select: { doctors: true, projects: true, appointments: true } } } }); if (!used) throw new BusinessException(404410, '科室不存在'); if (used._count.doctors + used._count.projects + used._count.appointments > 0) return this.updateCategory(id, { status: ContentStatus.DISABLED }, audit); return this.deleteSimple('dentalCategory', 'dental_categories', id, audit); }
+  async deleteCategory(id: string, audit: AuditContext) { const used = await this.prisma.dentalCategory.findUnique({ where: { id }, include: { _count: { select: { doctors: true, doctorLinks: true, projects: true, appointments: true } } } }); if (!used) throw new BusinessException(404410, '科室不存在'); if (used._count.doctors + used._count.doctorLinks + used._count.projects + used._count.appointments > 0) return this.updateCategory(id, { status: ContentStatus.DISABLED }, audit); return this.deleteSimple('dentalCategory', 'dental_categories', id, audit); }
   async createProject(data: any, audit: AuditContext) { const row = await this.prisma.dentalProject.create({ data: this.clean(data) }); await this.audit('CREATE', 'dental_projects', row.id, undefined, row, audit); return row; }
   async updateProject(id: string, data: any, audit: AuditContext) { return this.updateSimple('dentalProject', 'dental_projects', id, data, audit); }
   async deleteProject(id: string, audit: AuditContext) { const count = await this.prisma.appointment.count({ where: { dentalProjectId: id } }); if (count) return this.updateProject(id, { status: ContentStatus.DISABLED }, audit); return this.deleteSimple('dentalProject', 'dental_projects', id, audit); }
 
-  async createDoctor(data: DoctorDto, audit: AuditContext) { const row = await this.prisma.doctor.create({ data: { ...this.clean(data), images: data.images || [] } as any }); await this.audit('CREATE', 'doctors', row.id, undefined, row, audit); return row; }
-  async updateDoctor(id: string, data: DoctorDto, audit: AuditContext) { return this.updateSimple('doctor', 'doctors', id, { ...this.clean(data), images: data.images || [] }, audit); }
+  async createDoctor(data: DoctorDto, audit: AuditContext) {
+    const departmentIds = this.doctorDepartmentIds(data);
+    const { departmentIds: _departmentIds, ...doctorData } = this.clean(data);
+    const row = await this.prisma.doctor.create({
+      data: {
+        ...doctorData,
+        departmentId: departmentIds[0],
+        images: data.images || [],
+        departments: { create: departmentIds.map((departmentId) => ({ departmentId })) }
+      } as any,
+      include: { department: true, departments: { include: { department: true } }, clinic: true }
+    });
+    await this.audit('CREATE', 'doctors', row.id, undefined, row, audit);
+    return row;
+  }
+
+  async updateDoctor(id: string, data: DoctorDto, audit: AuditContext) {
+    const before = await this.prisma.doctor.findUnique({ where: { id }, include: { departments: true } });
+    if (!before) throw new BusinessException(404410, '管理内容不存在');
+    const departmentIds = this.doctorDepartmentIds(data);
+    const { departmentIds: _departmentIds, ...doctorData } = this.clean(data);
+    const row = await this.prisma.$transaction(async (transaction) => {
+      await transaction.doctorDepartment.deleteMany({ where: { doctorId: id } });
+      return transaction.doctor.update({
+        where: { id },
+        data: {
+          ...doctorData,
+          departmentId: departmentIds[0],
+          images: data.images || [],
+          departments: { create: departmentIds.map((departmentId) => ({ departmentId })) }
+        } as any,
+        include: { department: true, departments: { include: { department: true } }, clinic: true }
+      });
+    });
+    await this.audit('UPDATE', 'doctors', id, before, row, audit);
+    return row;
+  }
   async deleteDoctor(id: string, audit: AuditContext) { const count = await this.prisma.appointment.count({ where: { doctorId: id } }); if (count) return this.updateSimple('doctor', 'doctors', id, { status: ContentStatus.DISABLED }, audit); return this.deleteSimple('doctor', 'doctors', id, audit); }
   async createSchedule(data: DoctorScheduleDto, audit: AuditContext) { const row = await this.prisma.doctorSchedule.create({ data: { ...this.clean(data), date: dayjs(data.date).startOf('day').toDate() } as any }); await this.audit('CREATE', 'doctor_schedules', row.id, undefined, row, audit); return row; }
   async updateSchedule(id: string, data: DoctorScheduleDto, audit: AuditContext) { return this.updateSimple('doctorSchedule', 'doctor_schedules', id, { ...this.clean(data), date: dayjs(data.date).startOf('day').toDate() }, audit); }
@@ -402,14 +467,42 @@ export class EnterpriseService {
 
   private async afterAppointmentCreated(id: string) {
     void this.followupForwarder.forwardAppointment(id).catch(() => undefined);
-    await Promise.all([
+    // 预约已成功写库后，通知异步执行；微信故障不会影响用户看到成功结果。
+    void Promise.all([
       this.notifications.sendAppointmentSuccess(id).catch(() => undefined),
       this.notifications.sendStaffAppointmentNotice(id).catch(() => undefined)
     ]);
   }
 
+  private doctorDepartmentIds(data: DoctorDto) {
+    const ids = [...new Set([...(data.departmentIds || []), data.departmentId].filter(Boolean))];
+    if (!ids.length) throw new BusinessException(400406, '请至少选择一个科室');
+    return ids;
+  }
+
+  private async ensureDefaultSchedules(doctorId: string, clinicId: string | null) {
+    const rows = Array.from({ length: 14 }, (_, offset) => dayjs().add(offset, 'day')).flatMap((date) =>
+      ['上午', '下午'].map((timeSlot, sort) => ({
+        doctorId,
+        clinicId,
+        date: date.startOf('day').toDate(),
+        timeSlot,
+        capacity: 20,
+        sort,
+        status: DoctorScheduleStatus.AVAILABLE
+      }))
+    );
+    await this.prisma.doctorSchedule.createMany({ data: rows, skipDuplicates: true });
+  }
+
   private doctorView(row: any) {
-    return { ...row, images: Array.isArray(row.images) ? row.images : [], hospital: row.clinic?.name || '' };
+    return {
+      ...row,
+      displayText: row.displayText || row.title,
+      images: Array.isArray(row.images) ? row.images : [],
+      departments: Array.isArray(row.departments) ? row.departments.map((item: any) => item.department) : [],
+      hospital: row.clinic?.name || ''
+    };
   }
 
   private packageView(row: any) {
@@ -424,8 +517,6 @@ export class EnterpriseService {
       typeText: this.typeText(row.type),
       name: row.name,
       phoneMasked: row.phoneMasked,
-      status: row.status,
-      statusText: this.statusText(row.status),
       clinic: row.clinic,
       doctor: row.doctor,
       dentalCategory: row.dentalCategory,
@@ -444,7 +535,4 @@ export class EnterpriseService {
     return { LEGACY_REGISTRATION: '旧挂号', DOCTOR_APPOINTMENT: '医生预约', PACKAGE_APPLICATION: '套餐申请' }[type];
   }
 
-  private statusText(status: AppointmentStatus) {
-    return { PENDING_CONTACT: '待联系', CONTACTED: '已联系', CONFIRMED: '已确认', VISITED: '已到诊', CANCELLED: '已取消', INVALID: '无效线索' }[status];
-  }
 }

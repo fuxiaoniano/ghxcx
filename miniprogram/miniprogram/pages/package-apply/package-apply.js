@@ -2,15 +2,16 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const auth_1 = require("../../api/auth");
 const enterprise_1 = require("../../api/enterprise");
+const config_1 = require("../../api/config");
 const now = new Date();
 const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-Page({ data: { packageItem: {}, name: '', date: '', today, hasPhone: false, phoneMasked: '', manualPhone: '', privacyAccepted: false, submitting: false }, async onLoad(options) { const id = options.id || ''; if (!id) {
+Page({ data: { packageItem: {}, name: '', date: '', today, hasPhone: false, phoneMasked: '', manualPhone: '', miniSubscribeTemplateId: '', privacyAccepted: false, submitting: false }, async onLoad(options) { const id = options.id || ''; if (!id) {
         wx.showToast({ title: '缺少套餐信息', icon: 'none' });
         return;
     } try {
         const login = await (0, auth_1.miniLogin)();
-        const packageItem = await (0, enterprise_1.getEnterprisePackage)(id);
-        this.setData({ packageItem, hasPhone: login.hasPhone, phoneMasked: login.phoneMasked || '' });
+        const [packageItem, pageConfig] = await Promise.all([(0, enterprise_1.getEnterprisePackage)(id), (0, config_1.getLandingPageConfig)()]);
+        this.setData({ packageItem, hasPhone: login.hasPhone, phoneMasked: login.phoneMasked || '', miniSubscribeTemplateId: pageConfig.miniSubscribeTemplateId || '' });
     }
     catch (error) {
         wx.showToast({ title: error instanceof Error ? error.message : '加载失败', icon: 'none' });
@@ -28,12 +29,14 @@ Page({ data: { packageItem: {}, name: '', date: '', today, hasPhone: false, phon
     }
     catch (error) {
         wx.showToast({ title: error instanceof Error ? error.message : '授权失败', icon: 'none' });
-    } }, async submit() { if (!this.data.packageItem.id)
+    } }, requestSubscribe() { const templateId = this.data.miniSubscribeTemplateId; if (!templateId)
+        return Promise.resolve(); return new Promise((resolve) => wx.requestSubscribeMessage({ tmplIds: [templateId], complete: () => resolve() })); }, async submit() { if (!this.data.packageItem.id)
         return wx.showToast({ title: '套餐信息未加载完成', icon: 'none' }); if (!this.data.date)
         return wx.showToast({ title: '请选择预约日期', icon: 'none' }); if (!this.data.hasPhone)
         return wx.showToast({ title: '请先绑定联系电话', icon: 'none' }); if (!this.data.privacyAccepted)
         return wx.showToast({ title: '请先同意隐私协议', icon: 'none' }); if (this.data.submitting)
         return; this.setData({ submitting: true }); try {
+        await this.requestSubscribe();
         const appointment = await (0, enterprise_1.createPackageApplication)({ packageId: this.data.packageItem.id, appointmentDate: this.data.date, name: this.data.name.trim(), privacyAccepted: true, source: 'enterprise_package_mini' });
         wx.setStorageSync('enterpriseAppointment', appointment);
         wx.redirectTo({ url: '/pages/enterprise-success/enterprise-success' });
