@@ -8,7 +8,7 @@
         <el-image :src="asset.url" fit="cover" :preview-src-list="[asset.url]" />
         <strong :title="asset.name">{{ asset.name }}</strong>
         <span>{{ formatSize(asset.size) }} · {{ formatTime(asset.createdAt) }}</span>
-        <div><el-button text type="primary" @click="copy(asset.url)">复制地址</el-button><el-button text type="danger" @click="remove(asset)">移出图片库</el-button></div>
+        <div><el-button text type="primary" @click="copy(asset.url)">复制地址</el-button><el-button text type="danger" @click="remove(asset)">删除图片</el-button></div>
       </div>
     </div>
   </div>
@@ -23,7 +23,7 @@ const assets = ref<MediaAssetItem[]>([]);
 const load = async () => { assets.value = await getMediaAssets(); };
 async function upload(options: any) { const file=options.file as File;if(file.size>8*1024*1024)return ElMessage.warning('图片不能超过 8MB');await uploadEnterpriseAsset(file);ElMessage.success('上传成功');await load(); }
 async function copy(url:string){await navigator.clipboard.writeText(url);ElMessage.success('图片地址已复制');}
-async function remove(asset:MediaAssetItem){await ElMessageBox.confirm('移出后已使用此图片的页面仍可显示，但素材库不再列出。','移出图片库',{type:'warning'});await deleteMediaAsset(asset.id);await load();}
+async function remove(asset:MediaAssetItem){await ElMessageBox.confirm('删除后将同时移除服务器上的图片原文件；正在使用该图片的页面会无法显示。确认继续吗？','删除图片及原文件',{type:'warning',confirmButtonText:'确认删除',cancelButtonText:'取消'});await deleteMediaAsset(asset.id);ElMessage.success('图片及原文件已删除');await load();}
 const formatSize=(size:number)=>size>1024*1024?`${(size/1024/1024).toFixed(1)} MB`:`${Math.ceil(size/1024)} KB`;
 const formatTime=(value:string)=>new Date(value).toLocaleDateString('zh-CN');
 onMounted(load);

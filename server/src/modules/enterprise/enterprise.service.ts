@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
+import { unlink } from 'fs/promises';
+import { basename, join, resolve, sep } from 'path';
 import {
   AppointmentType,
   ContentStatus,
@@ -314,9 +316,52 @@ export class EnterpriseService {
   async deleteMediaAsset(id: string) {
     const asset = await this.prisma.mediaAsset.findUnique({ where: { id } });
     if (!asset) throw new BusinessException(404411, '图片素材不存在');
-    // 仅从素材库移除记录，不删除实体文件，避免已使用该 URL 的页面出现断图。
+
+    const filePath = this.resolveMediaAssetPath(asset.url);
+    try {
+      // 先删除文件，失败时保留数据库记录，管理员可以在修复磁盘权限后再次操作。
+      await unlink(filePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw new BusinessException(500411, '删除图片原文件失败，请检查服务器文件权限');
+      }
+    }
     await this.prisma.mediaAsset.delete({ where: { id } });
-    return { id, deleted: true };
+    return { id, deleted: true, fileDeleted: true };
+  }
+
+  private resolveMediaAssetPath(assetUrl: string) {
+    let pathname = '';
+    try {
+      pathname = new URL(assetUrl, 'http://localhost').pathname;
+    } catch {
+      throw new BusinessException(400411, '图片文件地址无效，已拒绝删除');
+    }
+
+    const prefix = '/uploads/enterprise-assets/';
+    if (!pathname.startsWith(prefix)) {
+      throw new BusinessException(400411, '图片不属于系统上传目录，已拒绝删除');
+    }
+
+    let filename = '';
+    try {
+      filename = decodeURIComponent(pathname.slice(prefix.length));
+    } catch {
+      throw new BusinessException(400411, '图片文件名无效，已拒绝删除');
+    }
+    if (
+      filename !== basename(filename) ||
+      !/^[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp|gif)$/i.test(filename)
+    ) {
+      throw new BusinessException(400411, '图片文件名无效，已拒绝删除');
+    }
+
+    const directory = resolve(process.env.ENTERPRISE_ASSET_DIR || join(process.cwd(), 'uploads', 'enterprise-assets'));
+    const filePath = resolve(directory, filename);
+    if (!filePath.startsWith(`${directory}${sep}`)) {
+      throw new BusinessException(400411, '图片文件路径越界，已拒绝删除');
+    }
+    return filePath;
   }
 
   async createBanner(data: any, audit: AuditContext) { const row = await this.prisma.homeBanner.create({ data: this.clean(data) }); await this.audit('CREATE', 'home_banners', row.id, undefined, row, audit); return row; }

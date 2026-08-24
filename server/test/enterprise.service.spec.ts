@@ -1,4 +1,7 @@
 import { AppointmentStatus, AppointmentType, ContentStatus, DoctorScheduleStatus } from '@prisma/client';
+import { access, mkdtemp, rm, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { EnterpriseService } from '../src/modules/enterprise/enterprise.service';
 
 describe('EnterpriseService', () => {
@@ -69,6 +72,7 @@ describe('EnterpriseService', () => {
       },
       dentalProject: { findFirst: jest.fn().mockResolvedValue(project) },
       package: { findFirst: jest.fn() },
+      mediaAsset: { findUnique: jest.fn(), delete: jest.fn() },
       appointment: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
     };
@@ -268,5 +272,43 @@ describe('EnterpriseService', () => {
       hospitalName: '重庆种博士口腔'
     }));
     expect(result).not.toHaveProperty('phoneEncrypted');
+  });
+
+  it('deletes the media library record and its original uploaded file', async () => {
+    const { service, prisma } = fixture();
+    const previousDirectory = process.env.ENTERPRISE_ASSET_DIR;
+    const directory = await mkdtemp(join(tmpdir(), 'enterprise-assets-'));
+    const filename = 'asset-delete-test.png';
+    const filePath = join(directory, filename);
+    process.env.ENTERPRISE_ASSET_DIR = directory;
+    await writeFile(filePath, 'image');
+    prisma.mediaAsset.findUnique.mockResolvedValue({
+      id: 'asset_1',
+      url: `https://example.com/uploads/enterprise-assets/${filename}`
+    });
+    prisma.mediaAsset.delete.mockResolvedValue({ id: 'asset_1' });
+
+    try {
+      await expect(service.deleteMediaAsset('asset_1')).resolves.toEqual({
+        id: 'asset_1', deleted: true, fileDeleted: true
+      });
+      await expect(access(filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(prisma.mediaAsset.delete).toHaveBeenCalledWith({ where: { id: 'asset_1' } });
+    } finally {
+      if (previousDirectory === undefined) delete process.env.ENTERPRISE_ASSET_DIR;
+      else process.env.ENTERPRISE_ASSET_DIR = previousDirectory;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to delete files outside the managed enterprise asset directory', async () => {
+    const { service, prisma } = fixture();
+    prisma.mediaAsset.findUnique.mockResolvedValue({
+      id: 'asset_2',
+      url: 'https://example.com/uploads/landing-assets/unrelated.png'
+    });
+
+    await expect(service.deleteMediaAsset('asset_2')).rejects.toThrow('图片不属于系统上传目录');
+    expect(prisma.mediaAsset.delete).not.toHaveBeenCalled();
   });
 });
