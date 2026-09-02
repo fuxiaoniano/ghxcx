@@ -1,7 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const enterprise_1 = require("../../api/enterprise");
-Page({ data: { categories: [], packages: [], activeId: '', loading: true }, onLoad() { this.load(); }, onPullDownRefresh() { this.load().finally(() => wx.stopPullDownRefresh()); }, async load() { try {
+Page({ data: { categories: [], packages: [], activeId: '', loading: true, refreshing: false }, onLoad() { this.load(); }, async refresh() { this.setData({ refreshing: true }); try {
+        await this.load();
+    }
+    finally {
+        this.setData({ refreshing: false });
+    } }, async load() { try {
         const result = await (0, enterprise_1.getEnterprisePackages)(this.data.activeId);
         this.setData({ categories: result.categories, packages: result.packages, activeId: this.data.activeId || result.categories[0]?.id || '' });
         if (!this.data.activeId && result.categories[0]) {
