@@ -54,7 +54,7 @@
       <el-form-item label="图片" required><MediaPicker v-model="adForm.imageUrl" ratio-hint="3:1，建议 1500×500 像素" /></el-form-item>
       <el-form-item label="标题"><el-input v-model="adForm.title" /></el-form-item>
       <el-form-item label="跳转类型"><el-select v-model="adForm.linkType"><el-option label="不跳转" value="NONE" /><el-option label="小程序页面" value="PAGE" /></el-select></el-form-item>
-      <el-form-item v-if="adForm.linkType === 'PAGE'" label="页面路径" required><div class="field-stack"><el-input v-model="adForm.linkValue" placeholder="例如：/pages/packages/packages" /><div class="field-tip">填写已注册的小程序页面路径，TabBar 页面和普通页面均支持。</div></div></el-form-item>
+      <el-form-item v-if="adForm.linkType === 'PAGE'" label="页面路径" required><div class="field-stack"><el-input v-model="adForm.linkValue" placeholder="例如：/pages/packages/packages" /><div class="field-tip">填写已注册的小程序页面路径，TabBar 页面和普通页面均支持。<RouterLink to="/mini-program-links">查看并复制全部页面路径</RouterLink></div></div></el-form-item>
       <el-form-item label="排序"><el-input-number v-model="adForm.sort" /></el-form-item>
       <el-form-item label="状态"><el-switch v-model="adForm.active" active-text="显示" /></el-form-item>
     </el-form>
@@ -90,4 +90,4 @@ async function removeAd(row: HomeAdItem) { await ElMessageBox.confirm('确认删
 onMounted(load);
 </script>
 
-<style scoped>.thumb{width:120px;height:64px;border-radius:6px}.image-field{display:flex;width:100%;gap:10px}.image-field .el-input{flex:1}.field-stack{width:100%}.field-tip{margin-top:6px;color:var(--admin-text-muted);font-size:12px;line-height:1.5}.page-heading p{margin:0 0 18px;color:var(--admin-text-secondary)}</style>
+<style scoped>.thumb{width:120px;height:64px;border-radius:6px}.image-field{display:flex;width:100%;gap:10px}.image-field .el-input{flex:1}.field-stack{width:100%}.field-tip{margin-top:6px;color:var(--admin-text-muted);font-size:12px;line-height:1.5}.field-tip a{margin-left:8px;color:var(--admin-primary);text-decoration:none}.page-heading p{margin:0 0 18px;color:var(--admin-text-secondary)}</style>
