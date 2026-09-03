@@ -495,6 +495,7 @@ export const updateDentalProject = (id: string, data: Partial<DentalProjectItem>
 export const deleteDentalProject = (id: string) => http.delete(`${enterpriseAdminBase}/dental-projects/${id}`);
 
 export const getDoctorsAdmin = () => http.get<unknown, DoctorItem[]>(`${enterpriseAdminBase}/doctors`);
+export const getPublishedDoctors = () => http.get<unknown, DoctorItem[]>('/api/enterprise/doctors');
 export const getEnterpriseClinics = () => http.get<unknown, ClinicItem[]>(`${enterpriseAdminBase}/clinics`);
 export const createDoctorAdmin = (data: Partial<DoctorItem>) => http.post<unknown, DoctorItem>(`${enterpriseAdminBase}/doctors`, data);
 export const updateDoctorAdmin = (id: string, data: Partial<DoctorItem>) => http.patch<unknown, DoctorItem>(`${enterpriseAdminBase}/doctors/${id}`, data);
@@ -511,6 +512,8 @@ export const updatePackageCategory = (id: string, data: Partial<DentalCategoryIt
 export const deletePackageCategory = (id: string) => http.delete(`${enterpriseAdminBase}/package-categories/${id}`);
 
 export const getPackagesAdmin = () => http.get<unknown, PackageItem[]>(`${enterpriseAdminBase}/packages`);
+export const getPublishedPackages = () =>
+  http.get<unknown, { categories: DentalCategoryItem[]; packages: PackageItem[] }>('/api/enterprise/packages');
 export const createPackageAdmin = (data: Partial<PackageItem>) => http.post<unknown, PackageItem>(`${enterpriseAdminBase}/packages`, data);
 export const updatePackageAdmin = (id: string, data: Partial<PackageItem>) => http.patch<unknown, PackageItem>(`${enterpriseAdminBase}/packages/${id}`, data);
 export const deletePackageAdmin = (id: string) => http.delete(`${enterpriseAdminBase}/packages/${id}`);

@@ -63,8 +63,100 @@
   <section class="content-panel">
     <div class="section-heading">
       <div>
-        <h2>需要业务 ID 的页面</h2>
-        <p>模板中的中文占位内容必须替换成后台对应数据的真实 ID</p>
+        <h2>选择内容生成完整路径</h2>
+        <p>选择线上已启用的医生或套餐后，系统会自动填入真实 ID</p>
+      </div>
+    </div>
+
+    <div v-loading="linkOptionsLoading" class="generator-grid">
+      <div class="generator-panel">
+        <div class="generator-heading">
+          <div>
+            <h3>医生页面</h3>
+            <p>选择医生后生成详情页和预约表单路径</p>
+          </div>
+          <el-select
+            v-model="selectedDoctorId"
+            filterable
+            clearable
+            placeholder="请选择医生"
+            no-data-text="暂无已启用医生"
+          >
+            <el-option
+              v-for="doctor in doctors"
+              :key="doctor.id"
+              :label="`${doctor.name}${doctor.title ? ` · ${doctor.title}` : ''}`"
+              :value="doctor.id"
+            />
+          </el-select>
+        </div>
+
+        <template v-if="selectedDoctor">
+          <div class="selected-record">
+            <span>医生 ID</span>
+            <code>{{ selectedDoctor.id }}</code>
+            <el-button link type="primary" :icon="CopyDocument" @click="copyText(selectedDoctor.id, '医生 ID')">复制 ID</el-button>
+          </div>
+          <div v-for="item in doctorPages" :key="item.name" class="generated-link-row">
+            <div class="generated-link-name">
+              <strong>{{ item.name }}</strong>
+              <span>{{ item.scene }}</span>
+            </div>
+            <code :title="item.path">{{ item.path }}</code>
+            <div class="copy-actions">
+              <el-button plain size="small" type="primary" :icon="CopyDocument" @click="copyText(item.path, `${item.name}后台路径`)">后台路径</el-button>
+              <el-button plain size="small" :icon="CopyDocument" @click="copyText(toPagePath(item.path), `${item.name} PagePath`)">PagePath</el-button>
+            </div>
+          </div>
+        </template>
+        <div v-else class="selection-empty">请先选择一位医生</div>
+      </div>
+
+      <div class="generator-panel">
+        <div class="generator-heading">
+          <div>
+            <h3>套餐页面</h3>
+            <p>选择套餐后生成详情页和申请表单路径</p>
+          </div>
+          <el-select
+            v-model="selectedPackageId"
+            filterable
+            clearable
+            placeholder="请选择套餐"
+            no-data-text="暂无已启用套餐"
+          >
+            <el-option v-for="item in packages" :key="item.id" :label="item.title" :value="item.id" />
+          </el-select>
+        </div>
+
+        <template v-if="selectedPackage">
+          <div class="selected-record">
+            <span>套餐 ID</span>
+            <code>{{ selectedPackage.id }}</code>
+            <el-button link type="primary" :icon="CopyDocument" @click="copyText(selectedPackage.id, '套餐 ID')">复制 ID</el-button>
+          </div>
+          <div v-for="item in packagePages" :key="item.name" class="generated-link-row">
+            <div class="generated-link-name">
+              <strong>{{ item.name }}</strong>
+              <span>{{ item.scene }}</span>
+            </div>
+            <code :title="item.path">{{ item.path }}</code>
+            <div class="copy-actions">
+              <el-button plain size="small" type="primary" :icon="CopyDocument" @click="copyText(item.path, `${item.name}后台路径`)">后台路径</el-button>
+              <el-button plain size="small" :icon="CopyDocument" @click="copyText(toPagePath(item.path), `${item.name} PagePath`)">PagePath</el-button>
+            </div>
+          </div>
+        </template>
+        <div v-else class="selection-empty">请先选择一个套餐</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="content-panel">
+    <div class="section-heading">
+      <div>
+        <h2>其他参数页面</h2>
+        <p>以下路径需按说明填入对应记录 ID</p>
       </div>
     </div>
     <div class="template-grid">
@@ -88,9 +180,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { CopyDocument } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import {
+  DoctorItem,
+  PackageItem,
+  getPublishedDoctors,
+  getPublishedPackages
+} from '../api/admin';
 
 interface PageLinkItem {
   name: string;
@@ -100,6 +198,11 @@ interface PageLinkItem {
 
 const miniAppId = import.meta.env.VITE_MINI_APP_ID || 'wx99b598314f56c2f1';
 const entrySource = ref('article_01');
+const doctors = ref<DoctorItem[]>([]);
+const packages = ref<PackageItem[]>([]);
+const selectedDoctorId = ref('');
+const selectedPackageId = ref('');
+const linkOptionsLoading = ref(false);
 const publicBase = window.location.origin.includes('fxnadmin.')
   ? window.location.origin.replace('fxnadmin.', 'zbsfxn.')
   : 'https://zbsfxn.cqzbskq.com';
@@ -120,13 +223,22 @@ const directPages: PageLinkItem[] = [
 ];
 
 const parameterPages: PageLinkItem[] = [
-  { name: '医生详情', path: '/pages/doctor-detail/doctor-detail?id=医生ID', scene: '需要医生 ID' },
   { name: '选择医生', path: '/pages/booking-doctors/booking-doctors?categoryId=科室ID&projectId=项目ID', scene: '需要科室与项目 ID' },
-  { name: '医生预约表单', path: '/pages/booking-form/booking-form?doctorId=医生ID', scene: '需要医生 ID' },
-  { name: '套餐详情', path: '/pages/package-detail/package-detail?id=套餐ID', scene: '需要套餐 ID' },
-  { name: '套餐申请', path: '/pages/package-apply/package-apply?id=套餐ID', scene: '需要套餐 ID' },
-  { name: '挂号成功详情', path: '/pages/success/success?id=挂号ID', scene: '需要挂号 ID，且只能查看本人数据' }
+  { name: '挂号成功详情', path: '/pages/success/success?id=挂号ID', scene: '挂号 ID 可在挂号详情中复制，且只能查看本人数据' }
 ];
+
+const selectedDoctor = computed(() => doctors.value.find((item) => item.id === selectedDoctorId.value));
+const selectedPackage = computed(() => packages.value.find((item) => item.id === selectedPackageId.value));
+
+const doctorPages = computed<PageLinkItem[]>(() => selectedDoctorId.value ? [
+  { name: '医生详情', path: `/pages/doctor-detail/doctor-detail?id=${selectedDoctorId.value}`, scene: selectedDoctor.value?.name || '' },
+  { name: '医生预约表单', path: `/pages/booking-form/booking-form?doctorId=${selectedDoctorId.value}`, scene: '自动预选该医生' }
+] : []);
+
+const packagePages = computed<PageLinkItem[]>(() => selectedPackageId.value ? [
+  { name: '套餐详情', path: `/pages/package-detail/package-detail?id=${selectedPackageId.value}`, scene: selectedPackage.value?.title || '' },
+  { name: '套餐申请', path: `/pages/package-apply/package-apply?id=${selectedPackageId.value}`, scene: '自动关联该套餐' }
+] : []);
 
 const safeSource = computed(() =>
   entrySource.value.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60) || 'admin_link'
@@ -149,6 +261,20 @@ function toPagePath(path: string) {
   return path.replace(/^\//, '');
 }
 
+async function loadLinkOptions() {
+  linkOptionsLoading.value = true;
+  try {
+    const [doctorResult, packageResult] = await Promise.allSettled([
+      getPublishedDoctors(),
+      getPublishedPackages()
+    ]);
+    if (doctorResult.status === 'fulfilled') doctors.value = doctorResult.value;
+    if (packageResult.status === 'fulfilled') packages.value = packageResult.value.packages;
+  } finally {
+    linkOptionsLoading.value = false;
+  }
+}
+
 async function copyText(value: string, label: string) {
   try {
     await navigator.clipboard.writeText(value);
@@ -164,6 +290,8 @@ async function copyText(value: string, label: string) {
   }
   ElMessage.success(`${label}已复制`);
 }
+
+onMounted(loadLinkOptions);
 </script>
 
 <style scoped>
@@ -172,7 +300,10 @@ async function copyText(value: string, label: string) {
 .app-id-panel,
 .external-heading,
 .external-row,
-.template-item {
+.template-item,
+.generator-heading,
+.selected-record,
+.generated-link-row {
   display: flex;
   align-items: center;
 }
@@ -195,7 +326,9 @@ async function copyText(value: string, label: string) {
 .page-heading p,
 .section-heading p,
 .external-name span,
-.template-item span {
+.template-item span,
+.generator-heading p,
+.generated-link-name span {
   margin: 0;
   color: var(--admin-text-muted);
   font-size: 13px;
@@ -308,6 +441,89 @@ code {
   flex: 0 0 auto;
 }
 
+.generator-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.generator-panel {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+}
+
+.generator-heading {
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.generator-heading h3 {
+  margin: 0 0 4px;
+  color: var(--admin-text);
+  font-size: 16px;
+}
+
+.generator-heading .el-select {
+  width: min(240px, 48%);
+}
+
+.selected-record {
+  min-width: 0;
+  gap: 8px;
+  padding: 9px 11px;
+  background: #f4f7f9;
+  border-radius: 4px;
+}
+
+.selected-record span {
+  flex: 0 0 auto;
+  color: var(--admin-text-secondary);
+  font-size: 13px;
+}
+
+.selected-record code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generated-link-row {
+  min-width: 0;
+  gap: 10px;
+  padding-top: 13px;
+}
+
+.generated-link-name {
+  display: flex;
+  min-width: 110px;
+  flex: 0 0 110px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.generated-link-row > code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selection-empty {
+  display: flex;
+  height: 92px;
+  align-items: center;
+  justify-content: center;
+  color: var(--admin-text-muted);
+  font-size: 13px;
+}
+
 @media (max-width: 960px) {
   .external-row {
     align-items: stretch;
@@ -321,6 +537,10 @@ code {
   .template-grid {
     grid-template-columns: 1fr;
   }
+
+  .generator-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 700px) {
@@ -328,6 +548,22 @@ code {
   .external-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .generator-heading,
+  .generated-link-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .generator-heading .el-select,
+  .generated-link-name {
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .generated-link-row .copy-actions {
+    justify-content: flex-start;
   }
 }
 </style>

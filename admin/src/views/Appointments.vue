@@ -63,6 +63,13 @@
       </div>
       <el-descriptions :column="1" border class="detail-descriptions">
         <el-descriptions-item label="编号">{{ detail.appointmentNo }}</el-descriptions-item>
+        <el-descriptions-item label="记录 ID">
+          <div class="record-id-line">
+            <code>{{ detail.id }}</code>
+            <el-button link type="primary" :icon="CopyDocument" @click.stop="copyRecordId">复制 ID</el-button>
+          </div>
+          <p class="record-id-tip">用于生成挂号详情路径；该详情只能由提交挂号的用户本人查看。</p>
+        </el-descriptions-item>
         <el-descriptions-item label="业务类型">{{ detail.typeText }}</el-descriptions-item>
         <el-descriptions-item label="姓名">{{ detail.name }}</el-descriptions-item>
         <el-descriptions-item label="手机号">
@@ -116,6 +123,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue';
+import { CopyDocument } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import {
   AppointmentItem,
@@ -230,6 +238,24 @@ async function showFullPhone() {
   fullPhone.value = result.phone;
 }
 
+async function copyRecordId() {
+  if (!detail.value) return;
+  const value = detail.value.id;
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    textarea.remove();
+  }
+  ElMessage.success('记录 ID 已复制');
+}
+
 async function saveStatus() {
   if (!detail.value) return;
   detail.value = await updateAppointmentStatus(detail.value.id, detail.value.status);
@@ -335,6 +361,27 @@ onMounted(async () => {
   margin-right: 8px;
   font-size: 16px;
   font-variant-numeric: tabular-nums;
+}
+
+.record-id-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.record-id-line code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #244357;
+  font-family: Consolas, Monaco, monospace;
+}
+
+.record-id-tip {
+  margin: 4px 0 0;
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .follow-form :deep(.el-form-item__content) {
