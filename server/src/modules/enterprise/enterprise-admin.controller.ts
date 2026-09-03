@@ -22,6 +22,7 @@ import { AdminCurrentUser, CurrentUser } from '../../common/decorators/current-u
 import { AnyPermissions, Permissions } from '../../common/decorators/permissions.decorator';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { normalizeUploadFilename } from '../../common/utils/upload-filename';
 import {
   AdDto,
   BannerDto,
@@ -114,13 +115,14 @@ export class EnterpriseAdminController {
   }))
   async upload(@UploadedFile() file: any, @Req() request: Request, @CurrentUser() user: AdminCurrentUser) {
     if (!file) throw new BadRequestException('请先选择图片');
+    const originalName = normalizeUploadFilename(file.originalname || '');
     // Multer 默认文件名没有后缀；保留已校验的扩展名，确保微信 image 组件获得正确 MIME 类型。
-    const extension = extname(file.originalname || '').toLowerCase();
+    const extension = extname(originalName).toLowerCase();
     const filename = `${file.filename}${extension}`;
     renameSync(file.path, join(assetDir, filename));
     const publicBase = process.env.SERVER_BASE_URL || `${request.protocol}://${request.get('host')}`;
     return this.enterprise.createMediaAsset({
-      name: file.originalname,
+      name: originalName,
       url: `${publicBase.replace(/\/$/, '')}/uploads/enterprise-assets/${filename}`,
       mimeType: file.mimetype,
       size: file.size,

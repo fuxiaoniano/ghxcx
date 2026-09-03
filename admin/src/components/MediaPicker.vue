@@ -15,7 +15,7 @@
       <el-empty v-else-if="!assets.length" description="暂无图片素材，请先上传" />
       <div v-else class="asset-grid">
         <button v-for="asset in assets" :key="asset.id" type="button" class="asset-item" @click="choose(asset.url)">
-          <el-image :src="asset.url" fit="cover" />
+          <el-image :src="asset.url" fit="cover" lazy />
           <span :title="asset.name">{{ asset.name }}</span>
         </button>
       </div>

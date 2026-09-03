@@ -5,7 +5,7 @@
     <el-empty v-if="!assets.length" description="暂无图片素材" />
     <div v-else class="asset-grid">
       <div v-for="asset in assets" :key="asset.id" class="asset-card">
-        <el-image :src="asset.url" fit="cover" :preview-src-list="[asset.url]" />
+        <el-image :src="asset.url" fit="cover" lazy :preview-src-list="[asset.url]" />
         <strong :title="asset.name">{{ asset.name }}</strong>
         <span>{{ formatSize(asset.size) }} · {{ formatTime(asset.createdAt) }}</span>
         <div><el-button text type="primary" @click="copy(asset.url)">复制地址</el-button><el-button text type="danger" @click="remove(asset)">删除图片</el-button></div>

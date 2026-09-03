@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
+import { normalizeUploadFilename } from '../../common/utils/upload-filename';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FollowupForwarderService } from '../followup-forwarder/followup-forwarder.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
@@ -307,7 +308,10 @@ export class EnterpriseService {
   }
   adminPackageCategories() { return this.prisma.packageCategory.findMany({ orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }); }
   adminPackages() { return this.prisma.package.findMany({ include: { category: true, images: { orderBy: { sort: 'asc' } } }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }] }); }
-  mediaAssets() { return this.prisma.mediaAsset.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }); }
+  async mediaAssets() {
+    const assets = await this.prisma.mediaAsset.findMany({ orderBy: { createdAt: 'desc' }, take: 500 });
+    return assets.map((asset) => ({ ...asset, name: normalizeUploadFilename(asset.name) }));
+  }
 
   createMediaAsset(data: { name: string; url: string; mimeType: string; size: number; uploaderAdminId?: string }) {
     return this.prisma.mediaAsset.create({ data });

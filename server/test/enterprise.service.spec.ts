@@ -77,7 +77,7 @@ describe('EnterpriseService', () => {
       homeAd: { findMany: jest.fn() },
       dentalCategory: { findMany: jest.fn() },
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
-      mediaAsset: { findUnique: jest.fn(), delete: jest.fn() },
+      mediaAsset: { findMany: jest.fn(), findUnique: jest.fn(), delete: jest.fn() },
       appointment: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
     };
@@ -335,6 +335,18 @@ describe('EnterpriseService', () => {
       else process.env.ENTERPRISE_ASSET_DIR = previousDirectory;
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it('returns readable names for media assets uploaded with a Latin-1 multipart filename', async () => {
+    const { service, prisma } = fixture();
+    const original = '深度洁牙.jpg';
+    prisma.mediaAsset.findMany.mockResolvedValue([
+      { id: 'asset_1', name: Buffer.from(original, 'utf8').toString('latin1'), url: 'https://example.com/a.jpg' }
+    ]);
+
+    await expect(service.mediaAssets()).resolves.toEqual([
+      expect.objectContaining({ id: 'asset_1', name: original })
+    ]);
   });
 
   it('refuses to delete files outside the managed enterprise asset directory', async () => {
