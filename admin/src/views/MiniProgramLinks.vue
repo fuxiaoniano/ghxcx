@@ -28,11 +28,11 @@
           <code class="path-code">{{ row.path }}</code>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="230" fixed="right">
+      <el-table-column label="复制" width="200" align="center">
         <template #default="{ row }">
           <div class="copy-actions">
-            <el-button text type="primary" :icon="CopyDocument" @click="copyText(row.path, '后台路径')">复制后台路径</el-button>
-            <el-button text :icon="CopyDocument" @click="copyText(toPagePath(row.path), 'PagePath')">复制 PagePath</el-button>
+            <el-button plain size="small" type="primary" :icon="CopyDocument" @click="copyText(row.path, '后台路径')">后台路径</el-button>
+            <el-button plain size="small" :icon="CopyDocument" @click="copyText(toPagePath(row.path), 'PagePath')">PagePath</el-button>
           </div>
         </template>
       </el-table-column>
@@ -246,11 +246,13 @@ code {
 .copy-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 6px;
   white-space: nowrap;
 }
 
 .copy-actions :deep(.el-button + .el-button) {
-  margin-left: 4px;
+  margin-left: 0;
 }
 
 .source-input {
