@@ -188,6 +188,8 @@ export interface HomeBannerItem extends ManagedContent {
 export interface HomeAdItem extends ManagedContent {
   imageUrl: string;
   title: string;
+  linkType: string;
+  linkValue?: string;
 }
 
 export interface DentalCategoryItem extends ManagedContent {

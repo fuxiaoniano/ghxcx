@@ -312,6 +312,8 @@ model HomeAd {
   id        String        @id @default(cuid()) @db.VarChar(32)
   imageUrl  String        @db.VarChar(500)
   title     String        @default("") @db.VarChar(120)
+  linkType  String        @default("NONE") @db.VarChar(32)
+  linkValue String?       @db.VarChar(500)
   sort      Int           @default(0)
   status    ContentStatus @default(ACTIVE)
   createdAt DateTime      @default(now())

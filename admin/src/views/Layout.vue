@@ -185,6 +185,7 @@ const roleLabel = computed(() => {
 .navigation {
   flex: 1;
   padding: 14px 10px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -252,13 +253,40 @@ const roleLabel = computed(() => {
   color: #ffffff;
 }
 
-.is-collapsed .navigation :deep(.el-menu-item) {
+.is-collapsed .brand,
+.is-collapsed .sidebar-footer {
+  justify-content: center;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.is-collapsed .navigation {
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.is-collapsed .navigation::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.is-collapsed .navigation :deep(.el-menu--collapse) {
+  width: 56px;
+}
+
+.is-collapsed .navigation :deep(.el-menu-item),
+.is-collapsed .navigation :deep(.el-sub-menu__title) {
   justify-content: center;
   padding: 0 !important;
 }
 
-.is-collapsed .navigation :deep(.el-menu-item .el-icon) {
-  margin: 0;
+.is-collapsed .navigation :deep(.el-menu-item > .el-icon),
+.is-collapsed .navigation :deep(.el-sub-menu__title > .el-icon) {
+  margin: 0 !important;
+}
+
+.is-collapsed .navigation :deep(.el-sub-menu__icon-arrow) {
+  display: none;
 }
 
 .sidebar-footer {

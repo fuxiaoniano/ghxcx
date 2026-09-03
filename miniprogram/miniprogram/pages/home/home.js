@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const enterprise_1 = require("../../api/enterprise");
 const ALL_CATEGORY = { id: 'all', name: '全部', icon: '/assets/category-all.svg' };
+const TAB_PAGES = ['/pages/home/home', '/pages/doctors/doctors', '/pages/booking/booking', '/pages/packages/packages', '/pages/profile/profile'];
 const CATEGORY_ICON_BY_NAME = {
     '口腔正畸': '/assets/category-orthodontics.svg',
     '口腔修复': '/assets/category-restoration.svg',
@@ -56,11 +57,15 @@ const DEFAULT_HOME = {
             id: 'default-ad-1',
             imageUrl: '/assets/home-ad-default-1.jpg',
             title: '舒适化种植诊疗',
+            linkType: 'PAGE',
+            linkValue: '/pages/booking/booking',
         },
         {
             id: 'default-ad-2',
             imageUrl: '/assets/home-ad-default-2.jpg',
             title: '数字化正畸诊疗',
+            linkType: 'PAGE',
+            linkValue: '/pages/packages/packages',
         },
     ],
     categories: DEFAULT_CATEGORIES,
@@ -84,6 +89,17 @@ function normalizeHome(home) {
         categories,
     };
 }
+function openConfiguredPage(item) {
+    if (item?.linkType !== 'PAGE')
+        return;
+    const value = String(item.linkValue || '').trim();
+    if (!value)
+        return;
+    const url = value.startsWith('/') ? value : `/${value}`;
+    const pagePath = url.split('?')[0];
+    const fail = () => wx.showToast({ title: '跳转页面暂不可用', icon: 'none' });
+    TAB_PAGES.includes(pagePath) ? wx.switchTab({ url: pagePath, fail }) : wx.navigateTo({ url, fail });
+}
 Page({
     data: { loading: true, home: DEFAULT_HOME },
     onLoad() { this.load(); }, onPullDownRefresh() { this.load().finally(() => wx.stopPullDownRefresh()); },
@@ -105,10 +121,7 @@ Page({
     } wx.switchTab({ url: '/pages/booking/booking' }); },
     openDoctor(event) { wx.navigateTo({ url: `/pages/doctor-detail/doctor-detail?id=${event.currentTarget.dataset.id}` }); },
     bookDoctor(event) { wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${event.currentTarget.dataset.id}` }); },
-    openBanner(event) { const item = this.data.home.banners[Number(event.currentTarget.dataset.index)]; if (!item?.linkValue)
-        return; if (item.linkType === 'PAGE') {
-        const tabs = ['/pages/home/home', '/pages/doctors/doctors', '/pages/booking/booking', '/pages/packages/packages', '/pages/profile/profile'];
-        tabs.includes(item.linkValue) ? wx.switchTab({ url: item.linkValue }) : wx.navigateTo({ url: item.linkValue });
-    } },
+    openBanner(event) { openConfiguredPage(this.data.home.banners[Number(event.currentTarget.dataset.index)]); },
+    openAd(event) { openConfiguredPage(this.data.home.ads[Number(event.currentTarget.dataset.index)]); },
     goBooking() { wx.switchTab({ url: '/pages/booking/booking' }); }, goDoctors() { wx.switchTab({ url: '/pages/doctors/doctors' }); }
 });

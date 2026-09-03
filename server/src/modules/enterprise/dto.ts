@@ -126,6 +126,16 @@ export class AdDto extends SortStatusDto {
   @IsOptional()
   @MaxLength(120)
   title?: string;
+
+  @IsString()
+  @IsIn(['NONE', 'PAGE'])
+  @IsOptional()
+  linkType?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  linkValue?: string;
 }
 
 export class CategoryDto extends SortStatusDto {

@@ -1,0 +1,3 @@
+ALTER TABLE `home_ads`
+  ADD COLUMN `linkType` VARCHAR(32) NOT NULL DEFAULT 'NONE' AFTER `title`,
+  ADD COLUMN `linkValue` VARCHAR(500) NULL AFTER `linkType`;

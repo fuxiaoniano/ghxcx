@@ -28,6 +28,8 @@
       <el-table :data="ads">
         <el-table-column label="图片" width="180"><template #default="{ row }"><el-image :src="row.imageUrl" fit="cover" class="thumb" /></template></el-table-column>
         <el-table-column prop="title" label="标题" />
+        <el-table-column prop="linkType" label="跳转类型" width="110"><template #default="{ row }">{{ row.linkType === 'PAGE' ? '小程序页面' : '不跳转' }}</template></el-table-column>
+        <el-table-column prop="linkValue" label="跳转页面" min-width="190" show-overflow-tooltip />
         <el-table-column prop="sort" label="排序" width="80" />
         <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'">{{ row.status === 'ACTIVE' ? '显示' : '隐藏' }}</el-tag></template></el-table-column>
         <el-table-column label="操作" width="160"><template #default="{ row }"><el-button text type="primary" @click="editAd(row)">编辑</el-button><el-button text type="danger" @click="removeAd(row)">删除</el-button></template></el-table-column>
@@ -51,6 +53,8 @@
     <el-form label-width="90px">
       <el-form-item label="图片" required><MediaPicker v-model="adForm.imageUrl" ratio-hint="3:1，建议 1500×500 像素" /></el-form-item>
       <el-form-item label="标题"><el-input v-model="adForm.title" /></el-form-item>
+      <el-form-item label="跳转类型"><el-select v-model="adForm.linkType"><el-option label="不跳转" value="NONE" /><el-option label="小程序页面" value="PAGE" /></el-select></el-form-item>
+      <el-form-item v-if="adForm.linkType === 'PAGE'" label="页面路径" required><div class="field-stack"><el-input v-model="adForm.linkValue" placeholder="例如：/pages/packages/packages" /><div class="field-tip">填写已注册的小程序页面路径，TabBar 页面和普通页面均支持。</div></div></el-form-item>
       <el-form-item label="排序"><el-input-number v-model="adForm.sort" /></el-form-item>
       <el-form-item label="状态"><el-switch v-model="adForm.active" active-text="显示" /></el-form-item>
     </el-form>
@@ -73,17 +77,17 @@ const homeConfig = reactive({ hospitalName: '', slogan: '', logo: '', customerSe
 const banners = ref<HomeBannerItem[]>([]); const ads = ref<HomeAdItem[]>([]);
 const bannerDialog = ref(false); const adDialog = ref(false);
 const bannerForm = reactive({ id: '', imageUrl: '', title: '', linkType: 'NONE', linkValue: '', sort: 0, active: true });
-const adForm = reactive({ id: '', imageUrl: '', title: '', sort: 0, active: true });
+const adForm = reactive({ id: '', imageUrl: '', title: '', linkType: 'NONE', linkValue: '', sort: 0, active: true });
 
 async function load() { Object.assign(homeConfig, await getEnterpriseHomeConfig()); banners.value = await getHomeBanners(); ads.value = await getHomeAds(); }
 async function saveConfig() { await updateEnterpriseHomeConfig(homeConfig); ElMessage.success('首页配置已保存'); }
 function editBanner(row?: HomeBannerItem) { Object.assign(bannerForm, { id: row?.id || '', imageUrl: row?.imageUrl || '', title: row?.title || '', linkType: row?.linkType || 'NONE', linkValue: row?.linkValue || '', sort: row?.sort || 0, active: row?.status !== 'DISABLED' }); bannerDialog.value = true; }
 async function saveBanner() { if (!bannerForm.imageUrl) return ElMessage.warning('请上传轮播图片'); const data = { ...bannerForm, status: bannerForm.active ? 'ACTIVE' : 'DISABLED' } as any; bannerForm.id ? await updateHomeBanner(bannerForm.id, data) : await createHomeBanner(data); bannerDialog.value=false; await load(); }
 async function removeBanner(row: HomeBannerItem) { await ElMessageBox.confirm('确认删除该轮播图？', '删除确认', { type: 'warning' }); await deleteHomeBanner(row.id); await load(); }
-function editAd(row?: HomeAdItem) { Object.assign(adForm, { id: row?.id || '', imageUrl: row?.imageUrl || '', title: row?.title || '', sort: row?.sort || 0, active: row?.status !== 'DISABLED' }); adDialog.value=true; }
-async function saveAd() { if (!adForm.imageUrl) return ElMessage.warning('请上传广告图片'); const data = { ...adForm, status: adForm.active ? 'ACTIVE' : 'DISABLED' } as any; adForm.id ? await updateHomeAd(adForm.id, data) : await createHomeAd(data); adDialog.value=false; await load(); }
+function editAd(row?: HomeAdItem) { Object.assign(adForm, { id: row?.id || '', imageUrl: row?.imageUrl || '', title: row?.title || '', linkType: row?.linkType || 'NONE', linkValue: row?.linkValue || '', sort: row?.sort || 0, active: row?.status !== 'DISABLED' }); adDialog.value=true; }
+async function saveAd() { if (!adForm.imageUrl) return ElMessage.warning('请上传广告图片'); if (adForm.linkType === 'PAGE' && !adForm.linkValue.trim()) return ElMessage.warning('请填写广告跳转页面路径'); const data = { ...adForm, linkValue: adForm.linkType === 'PAGE' ? adForm.linkValue.trim() : '', status: adForm.active ? 'ACTIVE' : 'DISABLED' } as any; adForm.id ? await updateHomeAd(adForm.id, data) : await createHomeAd(data); adDialog.value=false; await load(); }
 async function removeAd(row: HomeAdItem) { await ElMessageBox.confirm('确认删除该广告？', '删除确认', { type: 'warning' }); await deleteHomeAd(row.id); await load(); }
 onMounted(load);
 </script>
 
-<style scoped>.thumb{width:120px;height:64px;border-radius:6px}.image-field{display:flex;width:100%;gap:10px}.image-field .el-input{flex:1}.page-heading p{margin:0 0 18px;color:var(--admin-text-secondary)}</style>
+<style scoped>.thumb{width:120px;height:64px;border-radius:6px}.image-field{display:flex;width:100%;gap:10px}.image-field .el-input{flex:1}.field-stack{width:100%}.field-tip{margin-top:6px;color:var(--admin-text-muted);font-size:12px;line-height:1.5}.page-heading p{margin:0 0 18px;color:var(--admin-text-secondary)}</style>

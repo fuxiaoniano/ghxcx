@@ -159,6 +159,16 @@ npm run seed
 - 小程序生效：普通文案、价格、开关、图片地址保存后，用户重新进入小程序页面会重新拉取配置；本次新增的图片/开关展示能力需要上传并发布新版小程序后，线上小程序才会识别。
 - 小程序图片域名：如果图片使用本系统上传地址，需要在小程序后台把 `https://zbsfxn.cqzbskq.com` 加到 downloadFile 合法域名；request 合法域名也要包含该域名。
 
+## 首页广告跳转设置
+
+后台进入“首页管理” -> “首页广告”，新增或编辑广告时把“跳转类型”设为“小程序页面”，再填写页面路径。保存后，小程序重新进入首页即可读取最新配置。
+
+- 首页：`/pages/home/home`
+- 医生介绍：`/pages/doctors/doctors`
+- 预约挂号：`/pages/booking/booking`
+- 推荐套餐：`/pages/packages/packages`
+- 普通详情页可以携带参数，例如：`/pages/package-detail/package-detail?id=套餐ID`
+
 ## 多入口挂号链接
 
 后台地址：`https://fxnadmin.cqzbskq.com`，进入“公众号菜单”。

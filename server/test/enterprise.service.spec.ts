@@ -65,13 +65,18 @@ describe('EnterpriseService', () => {
     };
     const prisma = {
       user: { findUnique: jest.fn().mockResolvedValue(user) },
-      doctor: { findFirst: jest.fn().mockResolvedValue(doctor) },
+      doctor: { findFirst: jest.fn().mockResolvedValue(doctor), findMany: jest.fn() },
       doctorSchedule: {
         createMany: jest.fn().mockResolvedValue({ count: 28 }),
         findMany: jest.fn().mockResolvedValue([])
       },
       dentalProject: { findFirst: jest.fn().mockResolvedValue(project) },
-      package: { findFirst: jest.fn() },
+      package: { findFirst: jest.fn(), findMany: jest.fn() },
+      packageCategory: { findMany: jest.fn() },
+      homeBanner: { findMany: jest.fn() },
+      homeAd: { findMany: jest.fn() },
+      dentalCategory: { findMany: jest.fn() },
+      systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
       mediaAsset: { findUnique: jest.fn(), delete: jest.fn() },
       appointment: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
@@ -197,6 +202,37 @@ describe('EnterpriseService', () => {
     );
     expect(notifications.sendStaffAppointmentNotice).toHaveBeenCalledWith('appointment_2');
     expect(result.typeText).toBe('套餐申请');
+  });
+
+  it('returns ad jump configuration on the public home endpoint', async () => {
+    const { service, prisma } = fixture();
+    prisma.homeBanner.findMany.mockResolvedValue([]);
+    prisma.homeAd.findMany.mockResolvedValue([
+      { id: 'ad_1', imageUrl: 'https://example.com/ad.png', title: '套餐广告', linkType: 'PAGE', linkValue: '/pages/packages/packages' }
+    ]);
+    prisma.dentalCategory.findMany.mockResolvedValue([]);
+    prisma.doctor.findMany.mockResolvedValue([]);
+
+    const result = await service.home();
+
+    expect(result.ads[0]).toEqual(expect.objectContaining({
+      linkType: 'PAGE',
+      linkValue: '/pages/packages/packages'
+    }));
+  });
+
+  it('returns all active packages when no category filter is supplied', async () => {
+    const { service, prisma } = fixture();
+    prisma.packageCategory.findMany.mockResolvedValue([{ id: 'category_1', name: '种植牙' }]);
+    prisma.package.findMany.mockResolvedValue([
+      { id: 'package_1', originalPrice: 100, salePrice: 68 },
+      { id: 'package_2', originalPrice: 200, salePrice: 128 }
+    ]);
+
+    const result = await service.packages({});
+
+    expect(prisma.package.findMany.mock.calls[0][0].where.categoryId).toBeUndefined();
+    expect(result.packages).toHaveLength(2);
   });
 
   it('rejects a doctor that does not belong to the selected department and releases the lock', async () => {
