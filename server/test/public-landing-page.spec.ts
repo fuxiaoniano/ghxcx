@@ -55,16 +55,28 @@ describe('Public landing page', () => {
     }
   };
 
+  const responseMock = () => ({
+    setHeader: jest.fn(),
+    type: jest.fn().mockReturnThis(),
+    send: jest.fn().mockReturnThis()
+  });
+
+  const requestMock = (userAgent = 'Mozilla/5.0') => ({
+    headers: { host: 'api.example.com', 'user-agent': userAgent },
+    protocol: 'https',
+    originalUrl: '/landing/page-one?source=article',
+    url: '/landing/page-one?source=article',
+    get: jest.fn().mockReturnValue('api.example.com')
+  });
+
   it('renders an 11-digit phone form with a nonce-protected submit script', async () => {
     const configs = { getLandingPage: jest.fn().mockResolvedValue(config) };
-    const controller = new PublicPageController(configs as any);
-    const response = {
-      setHeader: jest.fn(),
-      type: jest.fn().mockReturnThis(),
-      send: jest.fn().mockReturnThis()
-    };
+    const officialAccount = { getJsSdkConfig: jest.fn() };
+    const controller = new PublicPageController(configs as any, officialAccount as any);
+    const response = responseMock();
+    const request = requestMock();
 
-    await controller.landingByKey('page-one', 'article', response as any);
+    await controller.landingByKey('page-one', 'article', request as any, response as any);
 
     const html = response.send.mock.calls[0][0] as string;
     const csp = response.setHeader.mock.calls.find(([name]) => name === 'Content-Security-Policy')?.[1] as string;
@@ -75,8 +87,62 @@ describe('Public landing page', () => {
     expect(html).toContain(String.raw`replace(/\D/g, '')`);
     expect(html).toContain(String.raw`/^1\d{10}$/`);
     expect(html).toContain('/api/public/landing-pages/page-one/appointments');
+    expect(html).toContain('<meta property="og:title" content="测试分享" />');
+    expect(html).toContain('<meta property="og:description" content="测试活动" />');
+    expect(html).toContain('<meta property="og:url" content="https://api.example.com/landing/page-one?source=article" />');
+    expect(officialAccount.getJsSdkConfig).not.toHaveBeenCalled();
     expect(nonce).toBeTruthy();
     expect(html).toContain(`script nonce="${nonce}"`);
+  });
+
+  it('configures a rich WeChat share card for WeChat browsers', async () => {
+    const pageConfig = {
+      ...config,
+      shareImageUrl: '/uploads/landing-assets/share-cover.jpg'
+    };
+    const configs = { getLandingPage: jest.fn().mockResolvedValue(pageConfig) };
+    const jsSdkConfig = {
+      appId: 'wx-test',
+      timestamp: 1700000000,
+      nonceStr: 'nonce-value',
+      signature: 'signature-value'
+    };
+    const officialAccount = { getJsSdkConfig: jest.fn().mockResolvedValue(jsSdkConfig) };
+    const controller = new PublicPageController(configs as any, officialAccount as any);
+    const response = responseMock();
+    const request = requestMock('Mozilla/5.0 MicroMessenger/8.0.50');
+
+    await controller.landingByKey('page-one', 'article', request as any, response as any);
+
+    const html = response.send.mock.calls[0][0] as string;
+    expect(officialAccount.getJsSdkConfig).toHaveBeenCalledWith(
+      'https://api.example.com/landing/page-one?source=article'
+    );
+    expect(html).toContain(
+      '<meta property="og:image" content="https://api.example.com/uploads/landing-assets/share-cover.jpg" />'
+    );
+    expect(html).toContain('https://res.wx.qq.com/open/js/jweixin-1.6.0.js');
+    expect(html).toContain('window.wx.updateAppMessageShareData(shareData)');
+    expect(html).toContain('"signature":"signature-value"');
+  });
+
+  it('keeps the landing page usable when WeChat share signing fails', async () => {
+    const configs = { getLandingPage: jest.fn().mockResolvedValue(config) };
+    const officialAccount = { getJsSdkConfig: jest.fn().mockRejectedValue(new Error('wechat unavailable')) };
+    const controller = new PublicPageController(configs as any, officialAccount as any);
+    const response = responseMock();
+
+    await controller.landingByKey(
+      'page-one',
+      'article',
+      requestMock('Mozilla/5.0 MicroMessenger/8.0.50') as any,
+      response as any
+    );
+
+    const html = response.send.mock.calls[0][0] as string;
+    expect(html).toContain('id="appointment-form"');
+    expect(html).not.toContain('https://res.wx.qq.com/open/js/jweixin-1.6.0.js');
+    expect(response.send).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a phone number that is not 11 digits at DTO validation', async () => {

@@ -24,10 +24,24 @@ interface OauthTokenResult {
   errmsg?: string;
 }
 
+interface JsApiTicketResult {
+  ticket?: string;
+  expires_in?: number;
+  errcode?: number;
+  errmsg?: string;
+}
+
 export interface OfficialOauthIdentity {
   oaOpenId: string;
   unionId?: string;
   subscribed: boolean;
+}
+
+export interface OfficialAccountJsSdkConfig {
+  appId: string;
+  timestamp: number;
+  nonceStr: string;
+  signature: string;
 }
 
 @Injectable()
@@ -231,6 +245,20 @@ export class WechatOfficialAccountService {
     return token;
   }
 
+  async getJsSdkConfig(url: string): Promise<OfficialAccountJsSdkConfig> {
+    const signedUrl = this.validateJsSdkUrl(url);
+    const ticket = await this.getJsApiTicket();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonceStr = randomBytes(16).toString('hex');
+    const signatureSource = `jsapi_ticket=${ticket}&noncestr=${nonceStr}&timestamp=${timestamp}&url=${signedUrl}`;
+    return {
+      appId: this.getOfficialCredentials().appid,
+      timestamp,
+      nonceStr,
+      signature: createHash('sha1').update(signatureSource).digest('hex')
+    };
+  }
+
   async publishCustomMenu(menu: OfficialAccountMenuConfig) {
     this.validateMenu(menu);
     const accessToken = await this.getAccessToken();
@@ -268,6 +296,59 @@ export class WechatOfficialAccountService {
       throw new BusinessException(400203, `公众号 OAuth 失败：${response.data.errmsg}`);
     }
     return response.data;
+  }
+
+  private async getJsApiTicket(): Promise<string> {
+    const cacheKey = 'wechat:oa:jsapi_ticket';
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    if (this.isMock()) {
+      await this.redis.set(cacheKey, 'mock-oa-jsapi-ticket', 'EX', 600);
+      return 'mock-oa-jsapi-ticket';
+    }
+    const accessToken = await this.getAccessToken();
+    const response = await axios.get<JsApiTicketResult>('https://api.weixin.qq.com/cgi-bin/ticket/getticket', {
+      params: { access_token: accessToken, type: 'jsapi' }
+    });
+    if (response.data.errcode || !response.data.ticket) {
+      throw new BusinessException(
+        500203,
+        `获取公众号 jsapi_ticket 失败：${response.data.errmsg || response.data.errcode || 'empty ticket'}`
+      );
+    }
+    const ticket = response.data.ticket;
+    const ttl = Math.max(60, Number(response.data.expires_in || 7200) - 300);
+    await this.redis.set(cacheKey, ticket, 'EX', ttl);
+    return ticket;
+  }
+
+  private validateJsSdkUrl(value: string) {
+    const url = String(value || '').split('#')[0];
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BusinessException(400217, '微信网页分享 URL 无效');
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new BusinessException(400217, '微信网页分享 URL 无效');
+    }
+    const serverBase = this.config.get<string>('SERVER_BASE_URL');
+    if (serverBase) {
+      try {
+        if (parsed.origin !== new URL(serverBase).origin) {
+          throw new BusinessException(400218, '微信网页分享 URL 不属于当前服务域名');
+        }
+      } catch (error) {
+        if (error instanceof BusinessException) {
+          throw error;
+        }
+        throw new BusinessException(500204, 'SERVER_BASE_URL 配置无效');
+      }
+    }
+    return url;
   }
 
   private async createMiniProgramLaunchUrl(
