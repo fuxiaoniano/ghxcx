@@ -142,11 +142,11 @@ export class WechatOfficialAccountService {
     return reply ? this.buildTextReply(message, reply) : undefined;
   }
 
-  buildOauthUrl(state?: string, source?: string): string {
+  buildOauthUrl(state?: string, source?: string, pageKey?: string): string {
     const { appid } = this.getOfficialCredentials();
     const base = this.config.get<string>('SERVER_BASE_URL');
     const redirectUri = encodeURIComponent(`${base}/wechat/oa/oauth/callback`);
-    const safeState = encodeURIComponent(this.encodeOauthState(state || 'landing', source));
+    const safeState = encodeURIComponent(this.encodeOauthState(state || 'landing', source, pageKey));
     return `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appid}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_base&state=${safeState}#wechat_redirect`;
   }
 
@@ -193,11 +193,17 @@ export class WechatOfficialAccountService {
     const bindToken = randomBytes(16).toString('hex');
     await this.redis.set(
       `oa-bind:${bindToken}`,
-      JSON.stringify({ oaOpenId: oauth.openid, unionId: oauth.unionid, state: entry.target, source: entry.source }),
+      JSON.stringify({
+        oaOpenId: oauth.openid,
+        unionId: oauth.unionid,
+        state: entry.target,
+        source: entry.source,
+        pageKey: entry.pageKey
+      }),
       'EX',
       600
     );
-    return this.createMiniProgramLaunchUrl(bindToken, entry.target, entry.source);
+    return this.createMiniProgramLaunchUrl(bindToken, entry.target, entry.source, entry.pageKey);
   }
 
   async getAccessToken(): Promise<string> {
@@ -264,7 +270,12 @@ export class WechatOfficialAccountService {
     return response.data;
   }
 
-  private async createMiniProgramLaunchUrl(bindToken: string, state?: string, source?: string): Promise<string> {
+  private async createMiniProgramLaunchUrl(
+    bindToken: string,
+    state?: string,
+    source?: string,
+    pageKey?: string
+  ): Promise<string> {
     if (this.isMock()) {
       return `weixin://dl/business/?t=mock-mini-program&bindToken=${bindToken}`;
     }
@@ -273,6 +284,10 @@ export class WechatOfficialAccountService {
       : 'pages/landing/landing';
     const targetQuery = state === 'my' || state === 'appointments' ? 'my' : 'landing';
     const entrySource = this.normalizeSource(source) || 'oa_oauth';
+    const safePageKey = this.normalizePageKey(pageKey);
+    const pageQuery = targetQuery === 'landing' && safePageKey
+      ? `&page=${encodeURIComponent(safePageKey)}`
+      : '';
     try {
       const accessToken = await this.mini.getAccessToken();
       const response = await axios.post(
@@ -280,7 +295,7 @@ export class WechatOfficialAccountService {
         {
           jump_wxa: {
             path: targetPath,
-            query: `bindToken=${encodeURIComponent(bindToken)}&source=${encodeURIComponent(entrySource)}&target=${encodeURIComponent(targetQuery)}`
+            query: `bindToken=${encodeURIComponent(bindToken)}&source=${encodeURIComponent(entrySource)}&target=${encodeURIComponent(targetQuery)}${pageQuery}`
           },
           is_expire: true,
           expire_time: Math.floor(Date.now() / 1000) + 600
@@ -293,20 +308,26 @@ export class WechatOfficialAccountService {
       // 小程序未发布或微信接口临时失败时，兜底进入公开落地页，不能跳到管理后台。
     }
     const fallback = this.config.get<string>('SERVER_BASE_URL') || '';
-    return `${fallback.replace(/\/$/, '')}/?bindToken=${encodeURIComponent(bindToken)}&source=${encodeURIComponent(entrySource)}&target=${encodeURIComponent(targetPath)}`;
+    const fallbackPath = targetQuery === 'landing' && safePageKey ? `/landing/${safePageKey}` : '/';
+    return `${fallback.replace(/\/$/, '')}${fallbackPath}?source=${encodeURIComponent(entrySource)}`;
   }
 
-  private encodeOauthState(target: string, source?: string) {
+  private encodeOauthState(target: string, source?: string, pageKey?: string) {
     const safeTarget = target === 'my' || target === 'appointments' ? target : 'landing';
     const safeSource = this.normalizeSource(source);
+    const safePageKey = safeTarget === 'landing' ? this.normalizePageKey(pageKey) : '';
+    if (safePageKey) {
+      return `${safeTarget}.${safeSource}.${safePageKey}`;
+    }
     return safeSource ? `${safeTarget}.${safeSource}` : safeTarget;
   }
 
   private parseOauthState(state?: string) {
-    const [rawTarget, rawSource] = String(state || 'landing').split('.', 2);
+    const [rawTarget, rawSource, rawPageKey] = String(state || 'landing').split('.', 3);
     const target = rawTarget === 'my' || rawTarget === 'appointments' ? rawTarget : 'landing';
     const source = this.normalizeSource(rawSource);
-    return { target, source };
+    const pageKey = target === 'landing' ? this.normalizePageKey(rawPageKey) : '';
+    return { target, source, pageKey };
   }
 
   private normalizeSource(source?: string) {
@@ -314,6 +335,13 @@ export class WechatOfficialAccountService {
       .trim()
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .slice(0, 60);
+  }
+
+  private normalizePageKey(pageKey?: string) {
+    return String(pageKey || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .slice(0, 64);
   }
 
   private validateMenu(menu: OfficialAccountMenuConfig) {

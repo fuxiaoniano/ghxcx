@@ -1,7 +1,4 @@
-import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
-
-export const AGE_RANGES = ['40岁以下', '40-50岁', '50-60岁', '60岁以上'];
-export const MISSING_TEETH_TYPES = ['单颗缺失', '多颗缺失', '半口缺失', '全口缺失', '不确定'];
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class CreateAppointmentDto {
   @IsString()
@@ -9,14 +6,19 @@ export class CreateAppointmentDto {
   @MaxLength(64)
   name!: string;
 
-  @IsIn(AGE_RANGES)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
   ageRange!: string;
 
-  @IsIn(MISSING_TEETH_TYPES)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
   missingTeethType!: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(32)
   clinicId?: string;
 
   @IsString()
@@ -31,4 +33,15 @@ export class CreateAppointmentDto {
 
   @IsBoolean()
   privacyAccepted!: boolean;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^[a-zA-Z0-9_-]{1,64}$/)
+  landingPageKey?: string;
+}
+
+export class CreatePublicAppointmentDto extends CreateAppointmentDto {
+  @IsString()
+  @Matches(/^1\d{10}$/, { message: '请输入正确的 11 位手机号' })
+  phone!: string;
 }

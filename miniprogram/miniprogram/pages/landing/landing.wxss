@@ -4,6 +4,13 @@
   background: #f3f7fc;
 }
 
+.rich-section {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  background: #ffffff;
+}
+
 .hero-image {
   display: block;
   width: 100%;

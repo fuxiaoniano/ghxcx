@@ -10,8 +10,11 @@ const defaultAgeRanges = ['40岁以下', '40-50岁', '50-60岁', '60岁以上'];
 const defaultMissingTeethTypes = ['单颗缺失', '多颗缺失', '半口缺失', '全口缺失', '不确定'];
 
 const emptyConfig: LandingPageConfig = {
+  pageKey: 'default',
   brandName: '种博士口腔',
+  brandHtml: '',
   activityTitle: '舒适化种牙咨询',
+  activityHtml: '',
   originalPrice: '',
   activityPrice: '',
   subsidyText: '',
@@ -21,6 +24,8 @@ const emptyConfig: LandingPageConfig = {
   privacyAgreement: '我已阅读并同意隐私协议，提交信息仅用于挂号咨询和工作人员联系。',
   customerServicePhone: '',
   footerText: '',
+  shareTitle: '种博士口腔-舒适化种牙',
+  shareImageUrl: '',
   formTopImages: [DEFAULT_HERO_IMAGE],
   display: {
     brandSection: false,
@@ -145,6 +150,7 @@ function normalizeLandingConfig(config?: Partial<LandingPageConfig>): LandingPag
 Page({
   data: {
     config: emptyConfig,
+    pageKey: 'default',
     heroImageUrl: DEFAULT_HERO_IMAGE,
     clinicNames: [emptyConfig.text.clinicPlaceholder],
     bindToken: '',
@@ -169,18 +175,20 @@ Page({
   async onLoad(options: Record<string, string | undefined>) {
     const bindToken = options.bindToken || '';
     const source = options.source || 'mini_program';
-    this.setData({ bindToken, source });
+    const pageKey = options.page || '';
+    this.setData({ bindToken, source, pageKey });
+    wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] });
     if (isAppointmentsTarget(options.target || options.targetPath)) {
       wx.redirectTo({ url: buildAppointmentsUrl(bindToken, source) });
       return;
     }
-    await this.loadConfig();
+    await this.loadConfig(pageKey);
     await this.login(bindToken);
   },
 
-  async loadConfig() {
+  async loadConfig(pageKey?: string) {
     try {
-      const config = normalizeLandingConfig(await getLandingPageConfig());
+      const config = normalizeLandingConfig(await getLandingPageConfig(pageKey));
       this.applyConfig(config);
     } catch (error) {
       // 配置接口被微信合法域名拦截时，仍用本地默认配置展示完整表单，避免用户看到技术报错。
@@ -194,6 +202,7 @@ Page({
     const clinicNames = [config.text.clinicPlaceholder, ...config.clinics.map((clinic) => clinic.name)];
     this.setData({
       config,
+      pageKey: config.pageKey || this.data.pageKey || 'default',
       heroImageUrl,
       clinicNames,
       ageIndex: 0,
@@ -354,7 +363,8 @@ Page({
         clinicId: clinic?.id,
         remark: this.data.form.remark,
         source: this.data.source,
-        privacyAccepted: this.data.form.privacyAccepted
+        privacyAccepted: this.data.form.privacyAccepted,
+        landingPageKey: this.data.pageKey || undefined
       });
       wx.redirectTo({ url: `/pages/success/success?id=${appointment.id}` });
     } catch (error) {
@@ -390,5 +400,26 @@ Page({
       data: phoneNumber,
       success: () => wx.showToast({ title: '电话已复制', icon: 'success' })
     });
+  },
+
+  onShareAppMessage() {
+    const pageKey = this.data.pageKey || 'default';
+    const result: WechatMiniprogram.Page.ICustomShareContent = {
+      title: this.data.config.shareTitle || this.data.config.activityTitle || '挂号咨询',
+      path: `/pages/landing/landing?page=${encodeURIComponent(pageKey)}&source=share`
+    };
+    if (this.data.config.shareImageUrl) {
+      result.imageUrl = this.data.config.shareImageUrl;
+    }
+    return result;
+  },
+
+  onShareTimeline() {
+    const pageKey = this.data.pageKey || 'default';
+    return {
+      title: this.data.config.shareTitle || this.data.config.activityTitle || '挂号咨询',
+      query: `page=${encodeURIComponent(pageKey)}&source=timeline`,
+      imageUrl: this.data.config.shareImageUrl || undefined
+    };
   }
 });

@@ -12,7 +12,7 @@ import {
   MaxLength
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { AdminRole, AdminStatus, AppointmentStatus, ClinicStatus } from '@prisma/client';
+import { AdminRole, AdminStatus, AppointmentStatus, ClinicStatus, ContentStatus } from '@prisma/client';
 
 export const ADMIN_PERMISSIONS = [
   'VIEW_FULL_PHONE',
@@ -61,6 +61,34 @@ export class UpdateConfigsDto {
     valueJson: Record<string, unknown>;
     description?: string;
   }>;
+}
+
+export class CreateLandingPageDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name!: string;
+
+  @IsString()
+  @MaxLength(32)
+  @IsOptional()
+  cloneFromId?: string;
+}
+
+export class UpdateLandingPageDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  @IsOptional()
+  name?: string;
+
+  @IsIn(Object.values(ContentStatus))
+  @IsOptional()
+  status?: ContentStatus;
+
+  @IsObject()
+  @IsOptional()
+  config?: Record<string, unknown>;
 }
 
 export class AnyObjectDto {

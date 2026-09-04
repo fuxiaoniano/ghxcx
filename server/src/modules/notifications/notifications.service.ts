@@ -196,10 +196,10 @@ export class NotificationsService {
   private async sendOfficialAccountTemplate(
     appointment: Prisma.AppointmentGetPayload<{ include: { clinic: true; user: { include: { identities: true } } } }>
   ) {
-    const pageConfig = await this.configs.getLandingPage();
+    const pageConfig = await this.configs.getLandingPageForAppointment(appointment.landingPageId);
     const templateId =
-      this.config.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS') ||
-      pageConfig.officialAccountTemplateId;
+      pageConfig.officialAccountTemplateId ||
+      this.config.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS');
     const oaOpenId = appointment.user.identities.find((item) => item.oaOpenId)?.oaOpenId;
     const payload = this.buildOfficialPayload(appointment, oaOpenId || '', templateId || '');
     if (!oaOpenId) {
@@ -275,10 +275,10 @@ export class NotificationsService {
   private async sendMiniSubscribe(
     appointment: Prisma.AppointmentGetPayload<{ include: { clinic: true; user: { include: { identities: true } } } }>
   ) {
-    const pageConfig = await this.configs.getLandingPage();
+    const pageConfig = await this.configs.getLandingPageForAppointment(appointment.landingPageId);
     const templateId =
-      this.config.get<string>('MINI_SUBSCRIBE_TEMPLATE_APPOINTMENT_SUCCESS') ||
-      pageConfig.miniSubscribeTemplateId;
+      pageConfig.miniSubscribeTemplateId ||
+      this.config.get<string>('MINI_SUBSCRIBE_TEMPLATE_APPOINTMENT_SUCCESS');
     const miniOpenId = appointment.user.identities.find((item) => item.miniOpenId)?.miniOpenId;
     const payload = this.buildMiniPayload(
       appointment,

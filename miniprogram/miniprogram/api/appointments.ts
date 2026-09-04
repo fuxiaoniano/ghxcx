@@ -9,6 +9,7 @@ export function createAppointment(data: {
   remark?: string;
   source?: string;
   privacyAccepted: boolean;
+  landingPageKey?: string;
 }) {
   return request<Appointment>({
     url: '/api/appointments',

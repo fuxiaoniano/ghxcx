@@ -102,7 +102,7 @@ function openConfiguredPage(item) {
 }
 Page({
     data: { loading: true, home: DEFAULT_HOME },
-    onLoad() { this.load(); }, onPullDownRefresh() { this.load().finally(() => wx.stopPullDownRefresh()); },
+    onLoad() { wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] }); this.load(); }, onPullDownRefresh() { this.load().finally(() => wx.stopPullDownRefresh()); },
     async load() { try {
         this.setData({ loading: true });
         this.setData({ home: normalizeHome(await (0, enterprise_1.getEnterpriseHome)()) });
@@ -123,5 +123,7 @@ Page({
     bookDoctor(event) { wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${event.currentTarget.dataset.id}` }); },
     openBanner(event) { openConfiguredPage(this.data.home.banners[Number(event.currentTarget.dataset.index)]); },
     openAd(event) { openConfiguredPage(this.data.home.ads[Number(event.currentTarget.dataset.index)]); },
-    goBooking() { wx.switchTab({ url: '/pages/booking/booking' }); }, goDoctors() { wx.switchTab({ url: '/pages/doctors/doctors' }); }
+    goBooking() { wx.switchTab({ url: '/pages/booking/booking' }); }, goDoctors() { wx.switchTab({ url: '/pages/doctors/doctors' }); },
+    onShareAppMessage() { return { title: this.data.home.config.hospitalName || '口腔医疗服务', path: '/pages/home/home?source=share' }; },
+    onShareTimeline() { return { title: this.data.home.config.hospitalName || '口腔医疗服务' }; }
 });

@@ -104,12 +104,14 @@ function openConfiguredPage(item?: {linkType?:string;linkValue?:string}) {
 
 Page({
   data:{loading:true,home:DEFAULT_HOME},
-  onLoad(){this.load();},onPullDownRefresh(){this.load().finally(()=>wx.stopPullDownRefresh());},
+  onLoad(){wx.showShareMenu({menus:['shareAppMessage','shareTimeline']});this.load();},onPullDownRefresh(){this.load().finally(()=>wx.stopPullDownRefresh());},
   async load(){try{this.setData({loading:true});this.setData({home:normalizeHome(await getEnterpriseHome())});}catch{wx.showToast({title:'部分内容暂未加载',icon:'none'});}finally{this.setData({loading:false});}},
   openCategory(event:WechatMiniprogram.TouchEvent){const categoryId=event.currentTarget.dataset.id;if(categoryId==='all'){wx.removeStorageSync('bookingPreset');}else{wx.setStorageSync('bookingPreset',{categoryId});}wx.switchTab({url:'/pages/booking/booking'});},
   openDoctor(event:WechatMiniprogram.TouchEvent){wx.navigateTo({url:`/pages/doctor-detail/doctor-detail?id=${event.currentTarget.dataset.id}`});},
   bookDoctor(event:WechatMiniprogram.TouchEvent){wx.navigateTo({url:`/pages/booking-form/booking-form?doctorId=${event.currentTarget.dataset.id}`});},
   openBanner(event:WechatMiniprogram.TouchEvent){openConfiguredPage(this.data.home.banners[Number(event.currentTarget.dataset.index)]);},
   openAd(event:WechatMiniprogram.TouchEvent){openConfiguredPage(this.data.home.ads[Number(event.currentTarget.dataset.index)]);},
-  goBooking(){wx.switchTab({url:'/pages/booking/booking'});},goDoctors(){wx.switchTab({url:'/pages/doctors/doctors'});}
+  goBooking(){wx.switchTab({url:'/pages/booking/booking'});},goDoctors(){wx.switchTab({url:'/pages/doctors/doctors'});},
+  onShareAppMessage(){return{title:this.data.home.config.hospitalName||'口腔医疗服务',path:'/pages/home/home?source=share'};},
+  onShareTimeline(){return{title:this.data.home.config.hospitalName||'口腔医疗服务'};}
 });

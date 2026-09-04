@@ -12,8 +12,13 @@ export interface ClinicOption {
 }
 
 export interface LandingPageConfig {
+  pageId?: string;
+  pageKey?: string;
+  pageName?: string;
   brandName: string;
+  brandHtml: string;
   activityTitle: string;
+  activityHtml: string;
   originalPrice: string;
   activityPrice: string;
   subsidyText: string;
@@ -23,6 +28,8 @@ export interface LandingPageConfig {
   privacyAgreement: string;
   customerServicePhone: string;
   footerText: string;
+  shareTitle: string;
+  shareImageUrl: string;
   formTopImages: string[];
   miniSubscribeTemplateId?: string;
   display: {

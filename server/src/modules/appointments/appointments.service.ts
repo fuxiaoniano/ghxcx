@@ -3,9 +3,11 @@ import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
-import { CreateAppointmentDto } from './dto';
+import { CreateAppointmentDto, CreatePublicAppointmentDto } from './dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FollowupForwarderService } from '../followup-forwarder/followup-forwarder.service';
+import { CryptoService } from '../crypto/crypto.service';
+import { ConfigsService, LandingPageConfig } from '../configs/configs.service';
 
 @Injectable()
 export class AppointmentsService {
@@ -13,6 +15,8 @@ export class AppointmentsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly followupForwarder: FollowupForwarderService,
+    private readonly crypto: CryptoService,
+    private readonly configs: ConfigsService,
     @Inject('REDIS') private readonly redis: Redis
   ) {}
 
@@ -27,8 +31,10 @@ export class AppointmentsService {
     if (!user.phoneEncrypted || !user.phoneHash || !user.phoneMasked) {
       throw new BusinessException(400302, '请先授权手机号后再提交挂号');
     }
+    const landing = await this.configs.getLandingPage(dto.landingPageKey);
+    this.validateLandingSelection(landing, dto);
 
-    const lockKey = `appointment:create:${userId}`;
+    const lockKey = `appointment:create:${userId}:${landing.pageId || 'default'}`;
     const locked = await this.redis.set(lockKey, '1', 'EX', 30, 'NX');
     if (locked !== 'OK') {
       throw new BusinessException(409301, '您刚刚已经提交过挂号，请勿重复点击', 409);
@@ -45,6 +51,7 @@ export class AppointmentsService {
         ageRange: dto.ageRange,
         missingTeethType: dto.missingTeethType,
         clinicId: dto.clinicId || null,
+        landingPageId: landing.pageId || null,
         source: dto.source || 'mini_program',
         remark: dto.remark
       },
@@ -56,14 +63,67 @@ export class AppointmentsService {
       data: { name: dto.name, ageRange: dto.ageRange }
     });
 
-    void this.followupForwarder.forwardAppointment(appointment.id).catch(() => undefined);
+    this.dispatchPostCreateTasks(appointment.id);
 
-    // 微信接口偶发超时不能拖慢或改变已经成功落库的挂号结果。
-    void Promise.all([
-      this.notifications.sendAppointmentSuccess(appointment.id).catch(() => undefined),
-      this.notifications.sendStaffAppointmentNotice(appointment.id).catch(() => undefined)
-    ]);
+    return this.toPublicDetail(appointment);
+  }
 
+  async createPublic(pageKey: string, dto: CreatePublicAppointmentDto) {
+    if (!dto.privacyAccepted) {
+      throw new BusinessException(400301, '请先阅读并勾选隐私协议');
+    }
+    const landing = await this.configs.getLandingPage(pageKey);
+    this.validateLandingSelection(landing, dto);
+
+    const phone = dto.phone.trim();
+    if (!/^1\d{10}$/.test(phone)) {
+      throw new BusinessException(400303, '请输入正确的 11 位手机号');
+    }
+    const phoneHash = this.crypto.hashPhone(phone);
+    const lockKey = `appointment:public:create:${phoneHash}:${landing.pageId || pageKey}`;
+    const locked = await this.redis.set(lockKey, '1', 'EX', 30, 'NX');
+    if (locked !== 'OK') {
+      throw new BusinessException(409301, '您刚刚已经提交过挂号，请勿重复点击', 409);
+    }
+
+    const phoneEncrypted = this.crypto.encryptPhone(phone);
+    const phoneMasked = this.crypto.maskPhone(phone);
+    const user = await this.prisma.user.upsert({
+      where: { phoneHash },
+      create: {
+        name: dto.name.trim(),
+        phoneEncrypted,
+        phoneHash,
+        phoneMasked,
+        ageRange: dto.ageRange
+      },
+      update: {
+        name: dto.name.trim(),
+        phoneEncrypted,
+        phoneMasked,
+        ageRange: dto.ageRange
+      }
+    });
+
+    const appointment = await this.prisma.appointment.create({
+      data: {
+        appointmentNo: await this.createAppointmentNo(),
+        userId: user.id,
+        name: dto.name.trim(),
+        phoneEncrypted,
+        phoneHash,
+        phoneMasked,
+        ageRange: dto.ageRange,
+        missingTeethType: dto.missingTeethType,
+        clinicId: dto.clinicId || null,
+        landingPageId: landing.pageId || null,
+        source: dto.source || `h5_${pageKey}`,
+        remark: dto.remark
+      },
+      include: { clinic: true }
+    });
+
+    this.dispatchPostCreateTasks(appointment.id);
     return this.toPublicDetail(appointment);
   }
 
@@ -96,6 +156,31 @@ export class AppointmentsService {
       }
     }
     return `GH${dayjs().format('YYYYMMDDHHmmss')}${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+
+  private validateLandingSelection(
+    landing: LandingPageConfig & { clinics?: Array<{ id: string }> },
+    dto: Pick<CreateAppointmentDto, 'ageRange' | 'missingTeethType' | 'clinicId'>
+  ) {
+    if (!landing.formOptions.ageRanges.includes(dto.ageRange)) {
+      throw new BusinessException(400304, '年龄段选项无效，请刷新页面后重试');
+    }
+    if (!landing.formOptions.missingTeethTypes.includes(dto.missingTeethType)) {
+      throw new BusinessException(400305, '缺牙情况选项无效，请刷新页面后重试');
+    }
+    if (dto.clinicId && !landing.clinics?.some((clinic) => clinic.id === dto.clinicId)) {
+      throw new BusinessException(400306, '门店选项无效，请刷新页面后重试');
+    }
+  }
+
+  private dispatchPostCreateTasks(appointmentId: string) {
+    void this.followupForwarder.forwardAppointment(appointmentId).catch(() => undefined);
+
+    // 微信接口偶发超时不能拖慢或改变已经成功落库的挂号结果。
+    void Promise.all([
+      this.notifications.sendAppointmentSuccess(appointmentId).catch(() => undefined),
+      this.notifications.sendStaffAppointmentNotice(appointmentId).catch(() => undefined)
+    ]);
   }
 
   private toPublicDetail(appointment: {

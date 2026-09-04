@@ -27,6 +27,7 @@ import {
   AssignAppointmentDto,
   CreateAdminWechatInviteDto,
   CreateClinicDto,
+  CreateLandingPageDto,
   OfficialAccountMenuDto,
   OfficialAutoReplyDto,
   UpdateAdminUserDto,
@@ -35,7 +36,8 @@ import {
   UpdateAppointmentStatusDto,
   UpdateClinicDto,
   UpdateConfigsDto,
-  UpdateFollowupForwardConfigDto
+  UpdateFollowupForwardConfigDto,
+  UpdateLandingPageDto
 } from './dto';
 import { AdminService } from './admin.service';
 
@@ -169,6 +171,47 @@ export class AdminController {
   @Get('/configs')
   configs() {
     return this.admin.configs();
+  }
+
+  @Get('/landing-pages')
+  landingPages() {
+    return this.admin.landingPages();
+  }
+
+  @Post('/landing-pages')
+  @Permissions('MANAGE_CONFIGS')
+  createLandingPage(
+    @Body() dto: CreateLandingPageDto,
+    @CurrentUser() user: AdminCurrentUser,
+    @Req() request: Request
+  ) {
+    return this.admin.createLandingPage(dto, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Get('/landing-pages/:id')
+  landingPage(@Param('id') id: string) {
+    return this.admin.landingPage(id);
+  }
+
+  @Patch('/landing-pages/:id')
+  @Permissions('MANAGE_CONFIGS')
+  updateLandingPage(
+    @Param('id') id: string,
+    @Body() dto: UpdateLandingPageDto,
+    @CurrentUser() user: AdminCurrentUser,
+    @Req() request: Request
+  ) {
+    return this.admin.updateLandingPage(id, dto, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Post('/landing-pages/:id/set-default')
+  @Permissions('MANAGE_CONFIGS')
+  setDefaultLandingPage(
+    @Param('id') id: string,
+    @CurrentUser() user: AdminCurrentUser,
+    @Req() request: Request
+  ) {
+    return this.admin.setDefaultLandingPage(id, user, request.ip, request.headers['user-agent']);
   }
 
   @Patch('/configs')

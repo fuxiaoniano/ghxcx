@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, MiniCurrentUser } from '../../common/decorators/current-user.decorator';
 import { MiniAuthGuard } from '../../common/guards/mini-auth.guard';
-import { CreateAppointmentDto } from './dto';
+import { CreateAppointmentDto, CreatePublicAppointmentDto } from './dto';
 import { AppointmentsService } from './appointments.service';
 
 @ApiTags('小程序挂号')
@@ -25,5 +25,16 @@ export class AppointmentsController {
   @Get('/my/:id')
   myDetail(@CurrentUser() user: MiniCurrentUser, @Param('id') id: string) {
     return this.appointments.findMineDetail(user.userId, id);
+  }
+}
+
+@ApiTags('H5 落地页挂号')
+@Controller('/api/public/landing-pages')
+export class PublicAppointmentsController {
+  constructor(private readonly appointments: AppointmentsService) {}
+
+  @Post('/:pageKey/appointments')
+  create(@Param('pageKey') pageKey: string, @Body() dto: CreatePublicAppointmentDto) {
+    return this.appointments.createPublic(pageKey, dto);
   }
 }

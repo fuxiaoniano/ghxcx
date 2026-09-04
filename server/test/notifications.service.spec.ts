@@ -11,6 +11,7 @@ describe('NotificationsService', () => {
     ageRange: '40-50岁',
     missingTeethType: '单颗缺失',
     source: 'mini_program',
+    landingPageId: 'landing_default',
     remark: '',
     createdAt: new Date('2026-07-06T00:00:00Z'),
     clinic: null
@@ -46,6 +47,7 @@ describe('NotificationsService', () => {
     const mini = { getAccessToken: jest.fn() };
     const configs = {
       getLandingPage: jest.fn().mockResolvedValue({ institutionName: '测试口腔机构' }),
+      getLandingPageForAppointment: jest.fn().mockResolvedValue({ institutionName: '测试口腔机构' }),
       getAppointmentNotifyConfig: jest.fn().mockResolvedValue({ enabled: true, templateId: 'staff-template' })
     };
     return {

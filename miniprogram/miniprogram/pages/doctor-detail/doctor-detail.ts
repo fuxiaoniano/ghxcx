@@ -60,6 +60,7 @@ Page({
   data: { doctor: {} as EnterpriseDoctor, scheduleDays: [] as ScheduleDay[], categoryId: '', loading: true },
 
   async onLoad(options: Record<string, string | undefined>) {
+    wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] });
     const doctorId = options.id || '';
     if (!doctorId) {
       wx.showToast({ title: '缺少医生信息', icon: 'none' });
@@ -86,5 +87,19 @@ Page({
     wx.navigateTo({
       url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}&scheduleId=${scheduleId}`
     });
+  },
+
+  onShareAppMessage() {
+    return {
+      title: this.data.doctor.name ? `${this.data.doctor.name}医生` : '医生介绍',
+      path: `/pages/doctor-detail/doctor-detail?id=${encodeURIComponent(this.data.doctor.id || '')}&source=share`
+    };
+  },
+
+  onShareTimeline() {
+    return {
+      title: this.data.doctor.name ? `${this.data.doctor.name}医生` : '医生介绍',
+      query: `id=${encodeURIComponent(this.data.doctor.id || '')}`
+    };
   }
 });

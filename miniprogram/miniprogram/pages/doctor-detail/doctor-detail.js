@@ -47,6 +47,7 @@ function scheduleDays(schedules) {
 Page({
     data: { doctor: {}, scheduleDays: [], categoryId: '', loading: true },
     async onLoad(options) {
+        wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] });
         const doctorId = options.id || '';
         if (!doctorId) {
             wx.showToast({ title: '缺少医生信息', icon: 'none' });
@@ -63,13 +64,29 @@ Page({
             this.setData({ loading: false });
         }
     },
-    book() { if (this.data.doctor.id)
-        wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}` }); },
+    book() {
+        if (this.data.doctor.id)
+            wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}` });
+    },
     bookSchedule(event) {
         const scheduleId = String(event.currentTarget.dataset.id || '');
         const available = event.currentTarget.dataset.available;
         if (available === false || available === 'false' || !scheduleId || !this.data.doctor.id)
             return;
-        wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}&scheduleId=${scheduleId}` });
+        wx.navigateTo({
+            url: `/pages/booking-form/booking-form?doctorId=${this.data.doctor.id}&categoryId=${this.data.categoryId}&scheduleId=${scheduleId}`
+        });
+    },
+    onShareAppMessage() {
+        return {
+            title: this.data.doctor.name ? `${this.data.doctor.name}医生` : '医生介绍',
+            path: `/pages/doctor-detail/doctor-detail?id=${encodeURIComponent(this.data.doctor.id || '')}&source=share`
+        };
+    },
+    onShareTimeline() {
+        return {
+            title: this.data.doctor.name ? `${this.data.doctor.name}医生` : '医生介绍',
+            query: `id=${encodeURIComponent(this.data.doctor.id || '')}`
+        };
     }
 });

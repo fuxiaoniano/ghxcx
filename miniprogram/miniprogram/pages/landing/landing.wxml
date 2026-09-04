@@ -1,4 +1,16 @@
 <view class="page">
+  <rich-text
+    wx:if="{{config.display.brandSection && config.brandHtml}}"
+    class="rich-section"
+    nodes="{{config.brandHtml}}"
+  />
+
+  <rich-text
+    wx:if="{{config.display.bannerSection && config.activityHtml}}"
+    class="rich-section"
+    nodes="{{config.activityHtml}}"
+  />
+
   <image
     wx:if="{{config.display.formTopImages && heroImageUrl}}"
     class="hero-image"

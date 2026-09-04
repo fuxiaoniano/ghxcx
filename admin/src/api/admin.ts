@@ -133,6 +133,25 @@ export interface ClinicItem {
   updatedAt: string;
 }
 
+export interface LandingPageItem {
+  id: string;
+  pageKey: string;
+  name: string;
+  status: 'ACTIVE' | 'DISABLED';
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  links: {
+    h5: string;
+    miniProgramPath: string;
+    officialAccount: string;
+  };
+}
+
+export interface LandingPageDetail extends LandingPageItem {
+  config: Record<string, any>;
+}
+
 export interface AppointmentNotifyConfig {
   enabled: boolean;
   templateId?: string;
@@ -335,6 +354,29 @@ export function getConfigs() {
 
 export function updateConfigs(configs: Array<{ key: string; valueJson: Record<string, unknown>; description?: string }>) {
   return http.patch<unknown, unknown>('/api/admin/configs', { configs });
+}
+
+export function getLandingPages() {
+  return http.get<unknown, LandingPageItem[]>('/api/admin/landing-pages');
+}
+
+export function getLandingPage(id: string) {
+  return http.get<unknown, LandingPageDetail>(`/api/admin/landing-pages/${id}`);
+}
+
+export function createLandingPage(data: { name: string; cloneFromId?: string }) {
+  return http.post<unknown, LandingPageDetail>('/api/admin/landing-pages', data);
+}
+
+export function updateLandingPage(
+  id: string,
+  data: { name?: string; status?: 'ACTIVE' | 'DISABLED'; config?: Record<string, unknown> }
+) {
+  return http.patch<unknown, LandingPageDetail>(`/api/admin/landing-pages/${id}`, data);
+}
+
+export function setDefaultLandingPage(id: string) {
+  return http.post<unknown, LandingPageDetail>(`/api/admin/landing-pages/${id}/set-default`);
 }
 
 export function uploadLandingAsset(file: File) {

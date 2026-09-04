@@ -54,8 +54,13 @@ export class WechatOfficialAccountController {
   }
 
   @Get('/oauth')
-  oauth(@Query('state') state: string, @Query('source') source: string, @Res() res: Response) {
-    res.redirect(this.official.buildOauthUrl(state, source));
+  oauth(
+    @Query('state') state: string,
+    @Query('source') source: string,
+    @Query('page') page: string,
+    @Res() res: Response
+  ) {
+    res.redirect(this.official.buildOauthUrl(state, source, page));
   }
 
   @Get('/oauth/callback')

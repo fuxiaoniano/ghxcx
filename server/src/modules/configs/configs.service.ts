@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { ContentStatus, Prisma } from '@prisma/client';
+import { randomBytes } from 'crypto';
+import sanitizeHtml from 'sanitize-html';
+import { BusinessException } from '../../common/utils/business-exception';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClinicsService } from '../clinics/clinics.service';
 
@@ -55,8 +58,13 @@ export interface LandingPageDisplayConfig {
 }
 
 export interface LandingPageConfig {
+  pageId?: string;
+  pageKey?: string;
+  pageName?: string;
   brandName: string;
+  brandHtml: string;
   activityTitle: string;
+  activityHtml: string;
   originalPrice: string;
   activityPrice: string;
   subsidyText: string;
@@ -66,6 +74,8 @@ export interface LandingPageConfig {
   privacyAgreement: string;
   customerServicePhone: string;
   footerText: string;
+  shareTitle: string;
+  shareImageUrl: string;
   formTopImages: string[];
   officialAccountTemplateId?: string;
   miniSubscribeTemplateId?: string;
@@ -74,6 +84,21 @@ export interface LandingPageConfig {
   formOptions: {
     ageRanges: string[];
     missingTeethTypes: string[];
+  };
+}
+
+export interface LandingPageAdminItem {
+  id: string;
+  pageKey: string;
+  name: string;
+  status: ContentStatus;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  links: {
+    h5: string;
+    miniProgramPath: string;
+    officialAccount: string;
   };
 }
 
@@ -128,7 +153,11 @@ export interface OfficialAutoReplyConfig {
 
 const defaultLandingPage: LandingPageConfig = {
   brandName: '安心口腔咨询',
+  brandHtml:
+    '<div style="padding:16px;text-align:center"><strong style="font-size:24px;color:#17324d">安心口腔咨询</strong><div style="margin-top:6px;color:#66788a">官方挂号咨询服务</div></div>',
   activityTitle: '种植牙咨询挂号服务',
+  activityHtml:
+    '<div style="padding:18px;text-align:center;background-color:#fff8f7"><div style="font-size:20px;font-weight:700;color:#c67818">名额有限，提交后以工作人员确认为准</div><div style="margin-top:12px;font-size:34px;font-weight:700;color:#e60012">活动详情以工作人员确认为准</div></div>',
   originalPrice: '后台配置原价',
   activityPrice: '后台配置活动价',
   subsidyText: '名额有限，提交后以工作人员确认为准',
@@ -139,6 +168,8 @@ const defaultLandingPage: LandingPageConfig = {
     '我们仅收集挂号咨询所必需的信息，用于工作人员联系和预约服务，不作诊断承诺。',
   customerServicePhone: '请在后台填写客服电话',
   footerText: '本服务仅提供挂号咨询，不承诺诊断或治疗效果。',
+  shareTitle: '种植牙咨询挂号服务',
+  shareImageUrl: '',
   formTopImages: [],
   display: {
     brandSection: true,
@@ -232,30 +263,17 @@ export class ConfigsService {
     private readonly env: ConfigService
   ) {}
 
-  async getLandingPage() {
-    const row = await this.prisma.systemConfig.findUnique({ where: { key: 'landingPage' } });
-    const value = row?.valueJson as unknown as Partial<LandingPageConfig> | undefined;
+  async getLandingPage(pageKey?: string) {
+    const page = await this.resolvePublicLandingPage(pageKey);
+    const value = page?.configJson as unknown as Partial<LandingPageConfig> | undefined;
+    const legacyValue = page ? undefined : await this.getLegacyLandingPageValue();
+    const config = this.normalizeLandingPageConfig(value || legacyValue);
     const clinicOptions = await this.clinics.findActive();
     return {
-      ...defaultLandingPage,
-      ...(value || {}),
-      officialAccountTemplateId:
-        value?.officialAccountTemplateId || this.env.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS'),
-      miniSubscribeTemplateId:
-        value?.miniSubscribeTemplateId || this.env.get<string>('MINI_SUBSCRIBE_TEMPLATE_APPOINTMENT_SUCCESS'),
-      text: {
-        ...defaultLandingPage.text,
-        ...(value?.text || {})
-      },
-      formOptions: {
-        ...defaultLandingPage.formOptions,
-        ...(value?.formOptions || {})
-      },
-      formTopImages: Array.isArray(value?.formTopImages) ? value.formTopImages.filter(Boolean) : [],
-      display: {
-        ...defaultLandingPage.display,
-        ...(value?.display || {})
-      },
+      ...config,
+      pageId: page?.id,
+      pageKey: page?.pageKey || 'default',
+      pageName: page?.name || '默认挂号页',
       clinics: clinicOptions.map((clinic) => ({
         id: clinic.id,
         name: clinic.name,
@@ -263,6 +281,111 @@ export class ConfigsService {
         phone: clinic.phone
       }))
     };
+  }
+
+  async getLandingPageForAppointment(landingPageId?: string | null) {
+    if (!landingPageId) {
+      return this.getLandingPage();
+    }
+    const page = await this.prisma.landingPage.findUnique({ where: { id: landingPageId } });
+    if (!page) {
+      return this.getLandingPage();
+    }
+    return {
+      ...this.normalizeLandingPageConfig(page.configJson as unknown as Partial<LandingPageConfig>),
+      pageId: page.id,
+      pageKey: page.pageKey,
+      pageName: page.name
+    };
+  }
+
+  async listLandingPages(): Promise<LandingPageAdminItem[]> {
+    await this.ensureDefaultLandingPage();
+    const pages = await this.prisma.landingPage.findMany({
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
+    });
+    return pages.map((page) => ({ ...page, links: this.landingPageLinks(page.pageKey) }));
+  }
+
+  async getLandingPageAdmin(id: string) {
+    const page = await this.prisma.landingPage.findUnique({ where: { id } });
+    if (!page) {
+      throw new BusinessException(404320, '落地页不存在', 404);
+    }
+    return {
+      id: page.id,
+      pageKey: page.pageKey,
+      name: page.name,
+      status: page.status,
+      isDefault: page.isDefault,
+      createdAt: page.createdAt,
+      updatedAt: page.updatedAt,
+      links: this.landingPageLinks(page.pageKey),
+      config: this.normalizeLandingPageConfig(page.configJson as unknown as Partial<LandingPageConfig>)
+    };
+  }
+
+  async createLandingPage(name: string, cloneFromId?: string) {
+    const clone = cloneFromId
+      ? await this.prisma.landingPage.findUnique({ where: { id: cloneFromId } })
+      : await this.ensureDefaultLandingPage();
+    if (cloneFromId && !clone) {
+      throw new BusinessException(404320, '用于复制的落地页不存在', 404);
+    }
+    const config = this.toStoredLandingPageConfig(
+      (clone?.configJson as unknown as Partial<LandingPageConfig> | undefined) || {}
+    ) as unknown as Prisma.InputJsonValue;
+    const page = await this.prisma.landingPage.create({
+      data: {
+        pageKey: this.createLandingPageKey(),
+        name: this.cleanPageName(name),
+        configJson: config,
+        status: ContentStatus.ACTIVE,
+        isDefault: false
+      }
+    });
+    return this.getLandingPageAdmin(page.id);
+  }
+
+  async updateLandingPage(
+    id: string,
+    value: { name?: string; status?: ContentStatus; config?: Record<string, unknown> }
+  ) {
+    const current = await this.prisma.landingPage.findUnique({ where: { id } });
+    if (!current) {
+      throw new BusinessException(404320, '落地页不存在', 404);
+    }
+    if (current.isDefault && value.status === ContentStatus.DISABLED) {
+      throw new BusinessException(400320, '默认落地页不能停用');
+    }
+    await this.prisma.landingPage.update({
+      where: { id },
+      data: {
+        ...(value.name !== undefined ? { name: this.cleanPageName(value.name) } : {}),
+        ...(value.status !== undefined ? { status: value.status } : {}),
+        ...(value.config !== undefined
+          ? {
+              configJson: this.toStoredLandingPageConfig(value.config) as unknown as Prisma.InputJsonValue
+            }
+          : {})
+      }
+    });
+    return this.getLandingPageAdmin(id);
+  }
+
+  async setDefaultLandingPage(id: string) {
+    const page = await this.prisma.landingPage.findUnique({ where: { id } });
+    if (!page) {
+      throw new BusinessException(404320, '落地页不存在', 404);
+    }
+    await this.prisma.$transaction([
+      this.prisma.landingPage.updateMany({ where: { isDefault: true }, data: { isDefault: false } }),
+      this.prisma.landingPage.update({
+        where: { id },
+        data: { isDefault: true, status: ContentStatus.ACTIVE }
+      })
+    ]);
+    return this.getLandingPageAdmin(id);
   }
 
   async getOfficialAccountMenu() {
@@ -341,6 +464,223 @@ export class ConfigsService {
 
   getDefaultLandingPage() {
     return defaultLandingPage;
+  }
+
+  private async resolvePublicLandingPage(pageKey?: string) {
+    await this.ensureDefaultLandingPage();
+    if (pageKey) {
+      const page = await this.prisma.landingPage.findUnique({ where: { pageKey } });
+      if (!page || page.status !== ContentStatus.ACTIVE) {
+        throw new BusinessException(404320, '落地页不存在或已停用', 404);
+      }
+      return page;
+    }
+    return (
+      (await this.prisma.landingPage.findFirst({
+        where: { isDefault: true, status: ContentStatus.ACTIVE },
+        orderBy: { createdAt: 'asc' }
+      })) ||
+      this.prisma.landingPage.findFirst({
+        where: { status: ContentStatus.ACTIVE },
+        orderBy: { createdAt: 'asc' }
+      })
+    );
+  }
+
+  private async ensureDefaultLandingPage() {
+    const current = await this.prisma.landingPage.findFirst({
+      where: { isDefault: true },
+      orderBy: { createdAt: 'asc' }
+    });
+    if (current) {
+      return current;
+    }
+    const existing = await this.prisma.landingPage.findUnique({ where: { pageKey: 'default' } });
+    if (existing) {
+      return this.prisma.landingPage.update({
+        where: { id: existing.id },
+        data: { isDefault: true, status: ContentStatus.ACTIVE }
+      });
+    }
+    const legacy = await this.getLegacyLandingPageValue();
+    return this.prisma.landingPage.create({
+      data: {
+        pageKey: 'default',
+        name: '默认挂号页',
+        configJson: this.toStoredLandingPageConfig(legacy || {}) as unknown as Prisma.InputJsonValue,
+        status: ContentStatus.ACTIVE,
+        isDefault: true
+      }
+    });
+  }
+
+  private async getLegacyLandingPageValue() {
+    const row = await this.prisma.systemConfig.findUnique({ where: { key: 'landingPage' } });
+    return row?.valueJson as unknown as Partial<LandingPageConfig> | undefined;
+  }
+
+  private normalizeLandingPageConfig(value?: Partial<LandingPageConfig>): LandingPageConfig {
+    const text = {
+      ...defaultLandingPage.text,
+      ...(value?.text || {})
+    };
+    const formOptions = {
+      ageRanges: this.normalizeTextList(value?.formOptions?.ageRanges, defaultLandingPage.formOptions.ageRanges),
+      missingTeethTypes: this.normalizeTextList(
+        value?.formOptions?.missingTeethTypes,
+        defaultLandingPage.formOptions.missingTeethTypes
+      )
+    };
+    const formTopImages = Array.isArray(value?.formTopImages)
+      ? value.formTopImages.map((item) => this.text(item, 1000)).filter(Boolean)
+      : defaultLandingPage.formTopImages;
+    const brandHtmlSource = typeof value?.brandHtml === 'string' ? value.brandHtml : this.legacyBrandHtml(value);
+    const activityHtmlSource =
+      typeof value?.activityHtml === 'string' ? value.activityHtml : this.legacyActivityHtml(value, text);
+    return {
+      ...defaultLandingPage,
+      ...(value || {}),
+      brandHtml: this.sanitizeRichHtml(brandHtmlSource),
+      activityHtml: this.sanitizeRichHtml(activityHtmlSource),
+      shareTitle: this.text(value?.shareTitle || value?.activityTitle || value?.brandName || defaultLandingPage.shareTitle, 120),
+      shareImageUrl: this.text(value?.shareImageUrl || formTopImages[0] || '', 1000),
+      officialAccountTemplateId:
+        value?.officialAccountTemplateId || this.env.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS'),
+      miniSubscribeTemplateId:
+        value?.miniSubscribeTemplateId || this.env.get<string>('MINI_SUBSCRIBE_TEMPLATE_APPOINTMENT_SUCCESS'),
+      text,
+      formOptions,
+      formTopImages,
+      display: {
+        ...defaultLandingPage.display,
+        ...(value?.display || {})
+      }
+    };
+  }
+
+  private toStoredLandingPageConfig(value: Record<string, unknown> | Partial<LandingPageConfig>) {
+    const normalized = this.normalizeLandingPageConfig(value as Partial<LandingPageConfig>) as LandingPageConfig & {
+      clinics?: unknown;
+    };
+    const { pageId: _pageId, pageKey: _pageKey, pageName: _pageName, clinics: _clinics, ...stored } = normalized;
+    return stored;
+  }
+
+  private sanitizeRichHtml(value: unknown) {
+    const spacing = /^(?:0|[0-9.]+(?:px|rpx|em|rem|%))(?:\s+(?:0|[0-9.]+(?:px|rpx|em|rem|%))){0,3}$/i;
+    const color = /^(?:#[0-9a-f]{3,8}|rgba?\([\d.,\s%]+\)|[a-z]{3,20})$/i;
+    return sanitizeHtml(String(value || '').slice(0, 30000), {
+      allowedTags: [
+        'div',
+        'p',
+        'span',
+        'strong',
+        'b',
+        'em',
+        'i',
+        'u',
+        's',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'ul',
+        'ol',
+        'li',
+        'br',
+        'hr',
+        'a',
+        'img'
+      ],
+      allowedAttributes: {
+        '*': ['style'],
+        a: ['href', 'target', 'title'],
+        img: ['src', 'alt', 'title', 'width', 'height']
+      },
+      allowedSchemes: ['http', 'https'],
+      allowedSchemesByTag: { img: ['http', 'https'] },
+      allowedStyles: {
+        '*': {
+          color: [color],
+          'background-color': [color],
+          'font-size': [/^(?:[1-9][0-9]{0,2})(?:px|rpx|em|rem|%)$/i],
+          'font-weight': [/^(?:normal|bold|[1-9]00)$/i],
+          'font-style': [/^(?:normal|italic)$/i],
+          'text-align': [/^(?:left|right|center|justify)$/i],
+          'text-decoration': [/^(?:none|underline|line-through)$/i],
+          'line-height': [/^(?:normal|[0-9.]+(?:px|rpx|em|rem|%)?)$/i],
+          margin: [spacing],
+          'margin-top': [spacing],
+          'margin-right': [spacing],
+          'margin-bottom': [spacing],
+          'margin-left': [spacing],
+          padding: [spacing],
+          'padding-top': [spacing],
+          'padding-right': [spacing],
+          'padding-bottom': [spacing],
+          'padding-left': [spacing],
+          'border-radius': [/^(?:0|[0-9.]+(?:px|rpx|em|rem|%))$/i],
+          width: [/^(?:auto|[0-9.]+(?:px|rpx|em|rem|%))$/i],
+          'max-width': [/^(?:none|[0-9.]+(?:px|rpx|em|rem|%))$/i],
+          height: [/^(?:auto|[0-9.]+(?:px|rpx|em|rem|%))$/i],
+          display: [/^(?:block|inline|inline-block)$/i]
+        }
+      },
+      enforceHtmlBoundary: true
+    });
+  }
+
+  private legacyBrandHtml(value?: Partial<LandingPageConfig>) {
+    const name = this.escapeHtml(value?.brandName || defaultLandingPage.brandName);
+    const subtitle = this.escapeHtml(value?.text?.brandSubtitle || defaultLandingPage.text.brandSubtitle);
+    return `<div style="padding:16px;text-align:center"><strong style="font-size:24px;color:#17324d">${name}</strong><div style="margin-top:6px;color:#66788a">${subtitle}</div></div>`;
+  }
+
+  private legacyActivityHtml(value: Partial<LandingPageConfig> | undefined, text: LandingPageTextConfig) {
+    const title = this.escapeHtml(value?.activityTitle || defaultLandingPage.activityTitle);
+    const subsidy = this.escapeHtml(value?.subsidyText || defaultLandingPage.subsidyText);
+    const originalPrice = this.escapeHtml(value?.originalPrice || '');
+    const activityPrice = this.escapeHtml(value?.activityPrice || '');
+    return `<div style="padding:18px;text-align:center;background-color:#fff8f7"><div style="font-size:20px;font-weight:700;color:#c67818">${subsidy}</div><div style="margin-top:10px;font-size:18px;font-weight:700;color:#17324d">${title}</div><div style="margin-top:12px"><s>${this.escapeHtml(text.originalPriceLabel)} ${originalPrice}</s> <strong style="font-size:34px;color:#e60012">${this.escapeHtml(text.activityPriceLabel)} ${activityPrice}</strong></div></div>`;
+  }
+
+  private normalizeTextList(value: unknown, fallback: string[]) {
+    if (!Array.isArray(value)) {
+      return [...fallback];
+    }
+    const list = value.map((item) => this.text(item, 64)).filter(Boolean).slice(0, 30);
+    return list.length ? list : [...fallback];
+  }
+
+  private cleanPageName(value: unknown) {
+    const name = this.text(value, 120);
+    if (!name) {
+      throw new BusinessException(400321, '请填写落地页名称');
+    }
+    return name;
+  }
+
+  private createLandingPageKey() {
+    return `lp_${randomBytes(10).toString('hex')}`;
+  }
+
+  private landingPageLinks(pageKey: string) {
+    const base = (this.env.get<string>('SERVER_BASE_URL') || '').replace(/\/$/, '');
+    const encodedKey = encodeURIComponent(pageKey);
+    return {
+      h5: `${base}/landing/${encodedKey}`,
+      miniProgramPath: `pages/landing/landing?page=${encodedKey}`,
+      officialAccount: `${base}/wechat/oa/oauth?state=landing&source=landing_${encodedKey}&page=${encodedKey}`
+    };
+  }
+
+  private escapeHtml(value: unknown) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   getDefaultOfficialAccountMenu(): OfficialAccountMenuConfig {

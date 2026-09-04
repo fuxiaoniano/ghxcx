@@ -138,6 +138,8 @@ npm run seed
 - `GET /api/appointments/my`
 - `GET /api/appointments/my/:id`
 - `GET /api/config/landing-page`
+- `GET /api/config/landing-page/:pageKey`
+- `POST /api/public/landing-pages/:pageKey/appointments`
 
 公众号接口：
 
@@ -150,14 +152,18 @@ npm run seed
 
 ## 落地页配置生效方式
 
-后台地址：`https://fxnadmin.cqzbskq.com`，进入“系统配置” -> “落地页配置”。
+后台地址：`https://fxnadmin.cqzbskq.com`，进入“系统配置” -> “挂号落地页”。
 
-- 表单上方图片：点击“上传图片”，上传成功后会自动把图片地址加入“图片地址”文本框；也可以手动每行填写一个 HTTPS 图片地址。图片会在表单上方展示，并按手机屏幕宽度自适应。
-- 对外展示开关：“对外展示开关”里可以控制顶部品牌、活动区域、补贴文案、价格卡片、包含项目、表单上方图片、隐私协议文本、提交后提示、底部区域、机构名称、备案号、底部说明、客服电话、我的挂号按钮是否展示。
-- 表单字段：姓名、手机号授权、年龄、缺牙情况、门店、备注、隐私勾选、提交按钮会保留，避免影响用户提交挂号。
-- H5 落地页生效：点击“保存落地页配置”后，刷新 `https://zbsfxn.cqzbskq.com` 立即生效。
-- 小程序生效：普通文案、价格、开关、图片地址保存后，用户重新进入小程序页面会重新拉取配置；本次新增的图片/开关展示能力需要上传并发布新版小程序后，线上小程序才会识别。
-- 小程序图片域名：如果图片使用本系统上传地址，需要在小程序后台把 `https://zbsfxn.cqzbskq.com` 加到 downloadFile 合法域名；request 合法域名也要包含该域名。
+- 点击“新建页面”会从默认页生成一份可独立修改的新页面；“复制当前页”适合快速制作不同渠道或不同活动版本。
+- 页面名称可以修改，PageKey 和三个永久链接不会变化。停用页面后，其 H5 和小程序专属入口会返回“页面不存在或已停用”。
+- “顶部品牌”和“活动与价格”支持可视化编辑及 HTML 源码编辑。后端保存时会清理脚本、事件属性和危险链接。
+- 表单上方图片、表单文案、年龄/缺牙选项、底部说明、客服电话、模板 ID 和展示开关均按页面独立保存。
+- H5 永久链接适用于公众号原文、短信和网页广告。H5 手机号默认由用户手动填写，并在浏览器和后端同时校验为 11 位手机号。
+- 小程序 PagePath 适用于小程序广告或菜单；小程序内仍使用微信手机号授权，不会把完整手机号交给前端提交。
+- 公众号绑定链接会先获取公众号 openid，再携带当前 PageKey 打开相同的小程序挂号页。
+- 点击“设为默认页”后，旧地址 `https://zbsfxn.cqzbskq.com` 和旧 PagePath `pages/landing/landing` 会继续可用，并显示新的默认页。
+- 点击“保存当前页面”后 H5 刷新立即生效，小程序用户重新进入相应 PagePath 后会读取最新配置。
+- 系统上传图片使用 `https://zbsfxn.cqzbskq.com`，该域名必须同时加入小程序 request 和 downloadFile 合法域名。
 
 ## 首页广告跳转设置
 
@@ -174,10 +180,10 @@ npm run seed
 后台地址：`https://fxnadmin.cqzbskq.com`，进入“公众号菜单”。
 
 - 在“入口链接生成器”里填写来源标识，例如 `menu_main`、`article_01`、`qr_01`、`service_account_a`。
-- 挂号链接格式：`https://zbsfxn.cqzbskq.com/wechat/oa/oauth?state=landing&source=来源标识`
+- 默认挂号链接格式：`https://zbsfxn.cqzbskq.com/wechat/oa/oauth?state=landing&source=来源标识`
 - 我的挂号链接格式：`https://zbsfxn.cqzbskq.com/wechat/oa/oauth?state=my&source=来源标识`
-- H5 落地页链接格式：`https://zbsfxn.cqzbskq.com/?source=来源标识`
-- 公众号自定义菜单建议使用“挂号链接”和“我的挂号链接”，这样可以先完成公众号 openid 绑定，再打开小程序。
+- 每个独立页面的 H5、PagePath 和公众号绑定链接直接在“系统配置” -> “挂号落地页”复制，不需要手工拼接。
+- 公众号自定义菜单建议使用页面对应的“公众号绑定链接”，这样会绑定公众号 openid 并打开同一个独立小程序页面。
 - 公众号文章“阅读原文”、二维码、推广页可以使用“挂号链接”；如果当前公众号无法配置网页授权域名，则先使用“H5 落地页链接”，用户点击页面里的“免费挂号”时会进入主服务号 OAuth。
 - `source` 会写入挂号记录的“来源”字段，后台挂号管理和导出 CSV 都能看到。
 - 如果是多个服务号分别直接发起 OAuth，每个服务号都要在自己的公众号后台配置网页授权域名 `zbsfxn.cqzbskq.com`，并且系统后端也要扩展对应 AppID/AppSecret；当前系统默认以主服务号 `OFFICIAL_ACCOUNT_APP_ID` 发起 OAuth。

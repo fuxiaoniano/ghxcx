@@ -133,6 +133,7 @@ model Appointment {
   dentalCategoryId            String?               @db.VarChar(32)
   dentalProjectId             String?               @db.VarChar(32)
   packageId                   String?               @db.VarChar(32)
+  landingPageId               String?               @db.VarChar(32)
   appointmentDate             DateTime?             @db.Date
   appointmentTime             String?               @db.VarChar(32)
   symptomDescription          String?               @db.Text
@@ -160,6 +161,7 @@ model Appointment {
   dentalCategory              DentalCategory?       @relation(fields: [dentalCategoryId], references: [id], onDelete: SetNull)
   dentalProject               DentalProject?        @relation(fields: [dentalProjectId], references: [id], onDelete: SetNull)
   package                     Package?              @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  landingPage                 LandingPage?          @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
   assignedTo                  AdminUser?            @relation(fields: [assignedToAdminId], references: [id], onDelete: SetNull)
   notifications               NotificationLog[]
 
@@ -173,6 +175,7 @@ model Appointment {
   @@index([dentalCategoryId])
   @@index([dentalProjectId])
   @@index([packageId])
+  @@index([landingPageId])
   @@index([appointmentDate])
   @@index([createdAt])
   @@map("appointments")
@@ -275,6 +278,22 @@ model SystemConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("system_configs")
+}
+
+model LandingPage {
+  id           String        @id @default(cuid()) @db.VarChar(32)
+  pageKey      String        @unique @db.VarChar(64)
+  name         String        @db.VarChar(120)
+  configJson   Json
+  status       ContentStatus @default(ACTIVE)
+  isDefault    Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+
+  @@index([status])
+  @@index([isDefault])
+  @@map("landing_pages")
 }
 
 model Clinic {

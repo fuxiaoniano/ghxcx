@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ConfigsService } from './configs.service';
 
@@ -10,5 +10,10 @@ export class ConfigsController {
   @Get('/landing-page')
   getLandingPage() {
     return this.configs.getLandingPage();
+  }
+
+  @Get('/landing-page/:pageKey')
+  getLandingPageByKey(@Param('pageKey') pageKey: string) {
+    return this.configs.getLandingPage(pageKey);
   }
 }

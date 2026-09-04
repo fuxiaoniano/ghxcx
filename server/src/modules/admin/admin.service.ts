@@ -7,6 +7,7 @@ import {
   AppointmentStatus,
   AppointmentType,
   ClinicStatus,
+  ContentStatus,
   FollowupForwardStatus,
   NotificationChannel,
   NotificationStatus,
@@ -34,7 +35,7 @@ import {
 } from '../configs/configs.service';
 import { WechatOfficialAccountService } from '../wechat-official-account/wechat-official-account.service';
 import { FollowupForwarderService } from '../followup-forwarder/followup-forwarder.service';
-import { AdminLoginDto } from './dto';
+import { AdminLoginDto, CreateLandingPageDto } from './dto';
 
 @Injectable()
 export class AdminService {
@@ -620,15 +621,84 @@ export class AdminService {
     return this.configsService.getAll();
   }
 
+  landingPages() {
+    return this.configsService.listLandingPages();
+  }
+
+  landingPage(id: string) {
+    return this.configsService.getLandingPageAdmin(id);
+  }
+
+  async createLandingPage(
+    dto: CreateLandingPageDto,
+    user: AdminCurrentUser,
+    ip?: string,
+    userAgent?: string | string[]
+  ) {
+    this.requireConfigPermission(user);
+    const page = await this.configsService.createLandingPage(dto.name, dto.cloneFromId);
+    await this.audit.create({
+      adminUserId: user.adminUserId,
+      action: 'CREATE_LANDING_PAGE',
+      resourceType: 'landing_pages',
+      resourceId: page.id,
+      afterJson: page as unknown as Prisma.InputJsonValue,
+      ip,
+      userAgent: this.ua(userAgent)
+    });
+    return page;
+  }
+
+  async updateLandingPage(
+    id: string,
+    dto: { name?: string; status?: ContentStatus; config?: Record<string, unknown> },
+    user: AdminCurrentUser,
+    ip?: string,
+    userAgent?: string | string[]
+  ) {
+    this.requireConfigPermission(user);
+    const before = await this.configsService.getLandingPageAdmin(id);
+    const page = await this.configsService.updateLandingPage(id, dto);
+    await this.audit.create({
+      adminUserId: user.adminUserId,
+      action: 'UPDATE_LANDING_PAGE',
+      resourceType: 'landing_pages',
+      resourceId: id,
+      beforeJson: before as unknown as Prisma.InputJsonValue,
+      afterJson: page as unknown as Prisma.InputJsonValue,
+      ip,
+      userAgent: this.ua(userAgent)
+    });
+    return page;
+  }
+
+  async setDefaultLandingPage(
+    id: string,
+    user: AdminCurrentUser,
+    ip?: string,
+    userAgent?: string | string[]
+  ) {
+    this.requireConfigPermission(user);
+    const page = await this.configsService.setDefaultLandingPage(id);
+    await this.audit.create({
+      adminUserId: user.adminUserId,
+      action: 'SET_DEFAULT_LANDING_PAGE',
+      resourceType: 'landing_pages',
+      resourceId: id,
+      afterJson: page as unknown as Prisma.InputJsonValue,
+      ip,
+      userAgent: this.ua(userAgent)
+    });
+    return page;
+  }
+
   async updateConfigs(
     configs: Array<{ key: string; valueJson: Record<string, unknown>; description?: string }>,
     user: AdminCurrentUser,
     ip?: string,
     userAgent?: string | string[]
   ) {
-    if (user.role !== AdminRole.SUPER_ADMIN && !user.permissions.includes('MANAGE_CONFIGS')) {
-      throw new BusinessException(403504, '当前账号无修改系统配置权限', 403);
-    }
+    this.requireConfigPermission(user);
     const before = await this.prisma.systemConfig.findMany({
       where: { key: { in: configs.map((item) => item.key) } }
     });
@@ -662,9 +732,7 @@ export class AdminService {
     ip?: string,
     userAgent?: string | string[]
   ) {
-    if (user.role !== AdminRole.SUPER_ADMIN && !user.permissions.includes('MANAGE_CONFIGS')) {
-      throw new BusinessException(403504, '当前账号无修改系统配置权限', 403);
-    }
+    this.requireConfigPermission(user);
     const before = await this.configsService.getFollowupForwardConfig();
     const patch = { ...dto };
     if (patch.authToken !== undefined && !String(patch.authToken).trim()) {
@@ -1531,6 +1599,12 @@ export class AdminService {
       return '********';
     }
     return `${value.slice(0, 4)}****${value.slice(-4)}`;
+  }
+
+  private requireConfigPermission(user: AdminCurrentUser) {
+    if (user.role !== AdminRole.SUPER_ADMIN && !user.permissions.includes('MANAGE_CONFIGS')) {
+      throw new BusinessException(403504, '当前账号无修改系统配置权限', 403);
+    }
   }
 
   private assertCanManageAdminTarget(user: AdminCurrentUser, targetRole: AdminRole) {
