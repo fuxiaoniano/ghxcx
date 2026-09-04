@@ -72,6 +72,8 @@ describe('Public landing page', () => {
     expect(configs.getLandingPage).toHaveBeenCalledWith('page-one');
     expect(html).toContain('type="tel"');
     expect(html).toContain('maxlength="11"');
+    expect(html).toContain(String.raw`replace(/\D/g, '')`);
+    expect(html).toContain(String.raw`/^1\d{10}$/`);
     expect(html).toContain('/api/public/landing-pages/page-one/appointments');
     expect(nonce).toBeTruthy();
     expect(html).toContain(`script nonce="${nonce}"`);

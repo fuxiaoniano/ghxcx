@@ -136,7 +136,7 @@ export class PublicPageController {
       let submitting = false;
 
       phoneInput.addEventListener('input', () => {
-        phoneInput.value = phoneInput.value.replace(/\D/g, '').slice(0, 11);
+        phoneInput.value = phoneInput.value.replace(/\\D/g, '').slice(0, 11);
       });
 
       const showMessage = (text, type) => {
@@ -149,9 +149,9 @@ export class PublicPageController {
         if (submitting) return;
         const values = Object.fromEntries(new FormData(form).entries());
         const name = String(values.name || '').trim();
-        const phone = String(values.phone || '').replace(/\D/g, '');
+        const phone = String(values.phone || '').replace(/\\D/g, '');
         if (!name) return showMessage('请填写姓名', 'error');
-        if (!/^1\d{10}$/.test(phone)) return showMessage('请输入正确的 11 位手机号', 'error');
+        if (!/^1\\d{10}$/.test(phone)) return showMessage('请输入正确的 11 位手机号', 'error');
         if (!document.getElementById('privacyAccepted').checked) return showMessage('请先阅读并同意隐私协议', 'error');
 
         submitting = true;
