@@ -93,6 +93,7 @@ export interface LandingPageAdminItem {
   name: string;
   status: ContentStatus;
   isDefault: boolean;
+  appointmentCount: number;
   createdAt: Date;
   updatedAt: Date;
   links: {
@@ -302,13 +303,27 @@ export class ConfigsService {
   async listLandingPages(): Promise<LandingPageAdminItem[]> {
     await this.ensureDefaultLandingPage();
     const pages = await this.prisma.landingPage.findMany({
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      include: { _count: { select: { appointments: true } } }
     });
-    return pages.map((page) => ({ ...page, links: this.landingPageLinks(page.pageKey) }));
+    return pages.map((page) => ({
+      id: page.id,
+      pageKey: page.pageKey,
+      name: page.name,
+      status: page.status,
+      isDefault: page.isDefault,
+      appointmentCount: page._count.appointments,
+      createdAt: page.createdAt,
+      updatedAt: page.updatedAt,
+      links: this.landingPageLinks(page.pageKey)
+    }));
   }
 
   async getLandingPageAdmin(id: string) {
-    const page = await this.prisma.landingPage.findUnique({ where: { id } });
+    const page = await this.prisma.landingPage.findUnique({
+      where: { id },
+      include: { _count: { select: { appointments: true } } }
+    });
     if (!page) {
       throw new BusinessException(404320, '落地页不存在', 404);
     }
@@ -318,6 +333,7 @@ export class ConfigsService {
       name: page.name,
       status: page.status,
       isDefault: page.isDefault,
+      appointmentCount: page._count.appointments,
       createdAt: page.createdAt,
       updatedAt: page.updatedAt,
       links: this.landingPageLinks(page.pageKey),
@@ -386,6 +402,63 @@ export class ConfigsService {
       })
     ]);
     return this.getLandingPageAdmin(id);
+  }
+
+  async deleteLandingPage(id: string) {
+    const page = await this.prisma.landingPage.findUnique({
+      where: { id },
+      include: { _count: { select: { appointments: true } } }
+    });
+    if (!page) {
+      throw new BusinessException(404320, '落地页不存在', 404);
+    }
+
+    const pageCount = await this.prisma.landingPage.count();
+    if (pageCount <= 1) {
+      throw new BusinessException(409320, '至少需要保留一个挂号落地页', 409);
+    }
+
+    let replacement: { id: string; name: string } | null = null;
+    const operations: Prisma.PrismaPromise<unknown>[] = [];
+    if (page.isDefault) {
+      replacement =
+        (await this.prisma.landingPage.findFirst({
+          where: { id: { not: id }, status: ContentStatus.ACTIVE },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, name: true }
+        })) ||
+        (await this.prisma.landingPage.findFirst({
+          where: { id: { not: id } },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, name: true }
+        }));
+
+      if (!replacement) {
+        throw new BusinessException(409320, '至少需要保留一个挂号落地页', 409);
+      }
+      operations.push(
+        this.prisma.landingPage.updateMany({
+          where: { isDefault: true },
+          data: { isDefault: false }
+        }),
+        this.prisma.landingPage.update({
+          where: { id: replacement.id },
+          data: { isDefault: true, status: ContentStatus.ACTIVE }
+        })
+      );
+    }
+
+    // The foreign key uses ON DELETE SET NULL, so historical appointments remain intact.
+    operations.push(this.prisma.landingPage.delete({ where: { id } }));
+    await this.prisma.$transaction(operations);
+
+    return {
+      id: page.id,
+      pageKey: page.pageKey,
+      name: page.name,
+      preservedAppointmentCount: page._count.appointments,
+      newDefaultPage: replacement
+    };
   }
 
   async getOfficialAccountMenu() {

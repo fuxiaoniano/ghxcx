@@ -7,88 +7,155 @@
   <div class="content-panel">
     <el-tabs>
       <el-tab-pane label="挂号落地页">
-        <section class="page-manager">
-          <div class="manager-head">
-            <div>
-              <h2>独立页面</h2>
-              <p>每个页面拥有独立内容、状态、来源和永久链接。</p>
-            </div>
-            <div class="manager-actions">
+        <template v-if="landingView === 'list'">
+          <section class="page-list-section">
+            <div class="manager-head">
+              <div>
+                <h2>挂号落地页</h2>
+                <p>每个页面独立保存内容和永久链接，点击编辑进入详细配置。</p>
+              </div>
               <el-button :icon="Plus" type="primary" @click="openCreate(false)">新建页面</el-button>
-              <el-button :icon="DocumentCopy" :disabled="!landingMeta" @click="openCreate(true)">复制当前页</el-button>
             </div>
-          </div>
 
-          <div class="page-selector-row">
-            <el-select
-              v-model="selectedPageId"
-              class="page-selector"
-              placeholder="请选择页面"
-              :loading="pageLoading"
-              @change="loadLandingPage"
-            >
-              <el-option v-for="item in pageItems" :key="item.id" :value="item.id" :label="item.name">
-                <div class="page-option">
-                  <span>{{ item.name }}</span>
-                  <el-tag v-if="item.isDefault" size="small" type="success">默认</el-tag>
-                  <el-tag v-if="item.status === 'DISABLED'" size="small" type="info">停用</el-tag>
+            <el-alert
+              class="list-tip"
+              type="info"
+              :closable="false"
+              show-icon
+              title="删除页面会清除该页全部配置和永久链接，已经提交的历史挂号不会被删除。"
+            />
+
+            <div class="landing-table-wrap">
+              <el-table v-loading="pageLoading" :data="pageItems" row-key="id">
+                <el-table-column label="页面名称" min-width="190">
+                  <template #default="{ row }">
+                    <div class="page-name-cell">
+                      <strong>{{ row.name }}</strong>
+                      <el-tag v-if="row.isDefault" size="small" type="success">默认页</el-tag>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="pageKey" label="页面标识" min-width="210">
+                  <template #default="{ row }"><code class="page-key">{{ row.pageKey }}</code></template>
+                </el-table-column>
+                <el-table-column label="状态" width="90">
+                  <template #default="{ row }">
+                    <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
+                      {{ row.status === 'ACTIVE' ? '启用' : '停用' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="appointmentCount" label="历史挂号" width="100" align="center" />
+                <el-table-column label="更新时间" min-width="170">
+                  <template #default="{ row }">{{ formatDate(row.updatedAt) }}</template>
+                </el-table-column>
+                <el-table-column label="复制永久链接" min-width="250">
+                  <template #default="{ row }">
+                    <div class="table-link-actions">
+                      <el-button text type="primary" :icon="CopyDocument" @click="copyText(row.links.h5)">H5</el-button>
+                      <el-button text type="primary" :icon="CopyDocument" @click="copyText(row.links.miniProgramPath)">PagePath</el-button>
+                      <el-button text type="primary" :icon="CopyDocument" @click="copyText(row.links.officialAccount)">公众号</el-button>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" fixed="right" width="340">
+                  <template #default="{ row }">
+                    <div class="row-actions">
+                      <el-button text type="primary" :icon="Edit" @click="editPage(row.id)">编辑</el-button>
+                      <el-button text :icon="DocumentCopy" @click="openCreate(true, row)">复制</el-button>
+                      <el-button v-if="!row.isDefault" text @click="makeDefault(row)">设为默认</el-button>
+                      <el-button
+                        text
+                        type="danger"
+                        :icon="Delete"
+                        :disabled="pageItems.length <= 1"
+                        :loading="deletingPageId === row.id"
+                        @click="removeLandingPage(row)"
+                      >删除</el-button>
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </section>
+        </template>
+
+        <template v-else>
+          <section class="page-manager">
+            <div class="manager-head editor-head">
+              <div class="editor-heading">
+                <el-button text :icon="ArrowLeft" @click="backToList">返回列表</el-button>
+                <div>
+                  <h2>{{ landingMeta?.name || '编辑挂号页' }}</h2>
+                  <p>修改当前页面的展示内容、表单选项和永久链接。</p>
                 </div>
-              </el-option>
-            </el-select>
-            <el-button v-if="landingMeta && !landingMeta.isDefault" @click="makeDefault">设为默认页</el-button>
-            <el-tag v-else-if="landingMeta?.isDefault" type="success">当前默认页</el-tag>
-          </div>
-
-          <div v-if="landingMeta" class="page-meta-grid">
-            <label class="meta-field">
-              <span>页面名称</span>
-              <el-input v-model="landingMeta.name" maxlength="120" show-word-limit />
-            </label>
-            <label class="meta-field">
-              <span>对外状态</span>
-              <el-select v-model="landingMeta.status" :disabled="landingMeta.isDefault">
-                <el-option label="启用" value="ACTIVE" />
-                <el-option label="停用" value="DISABLED" />
-              </el-select>
-            </label>
-          </div>
-
-          <div v-if="landingMeta" class="link-list">
-            <div class="link-row">
-              <div><strong>H5 永久链接</strong><span>公众号原文、短信或网页广告</span></div>
-              <el-input :model-value="landingMeta.links.h5" readonly />
-              <el-tooltip content="复制 H5 永久链接"><el-button :icon="CopyDocument" @click="copyText(landingMeta.links.h5)">复制</el-button></el-tooltip>
+              </div>
+              <div class="manager-actions">
+                <el-button v-if="landingMeta && !landingMeta.isDefault" @click="makeDefault(landingMeta)">设为默认页</el-button>
+                <el-tag v-else-if="landingMeta?.isDefault" type="success">当前默认页</el-tag>
+                <el-button :icon="DocumentCopy" :disabled="!landingMeta" @click="openCreate(true, landingMeta || undefined)">复制页面</el-button>
+                <el-button
+                  v-if="landingMeta"
+                  type="danger"
+                  plain
+                  :icon="Delete"
+                  :disabled="pageItems.length <= 1"
+                  :loading="deletingPageId === landingMeta.id"
+                  @click="removeLandingPage(landingMeta)"
+                >删除页面</el-button>
+              </div>
             </div>
-            <div class="link-row">
-              <div><strong>小程序 PagePath</strong><span>小程序菜单、广告或分享</span></div>
-              <el-input :model-value="landingMeta.links.miniProgramPath" readonly />
-              <el-tooltip content="复制小程序 PagePath"><el-button :icon="CopyDocument" @click="copyText(landingMeta.links.miniProgramPath)">复制</el-button></el-tooltip>
-            </div>
-            <div class="link-row">
-              <div><strong>公众号绑定链接</strong><span>进入小程序并绑定公众号身份</span></div>
-              <el-input :model-value="landingMeta.links.officialAccount" readonly />
-              <el-tooltip content="复制公众号绑定链接"><el-button :icon="CopyDocument" @click="copyText(landingMeta.links.officialAccount)">复制</el-button></el-tooltip>
-            </div>
-          </div>
-        </section>
 
-        <el-alert
-          class="page-tip"
-          type="info"
-          :closable="false"
-          show-icon
-          title="保存后 H5 刷新立即生效；小程序用户重新进入页面即可读取最新内容。"
-        />
-        <el-alert
-          class="page-tip"
-          type="warning"
-          :closable="false"
-          show-icon
-          title="H5 默认手动填写并校验 11 位手机号；小程序继续使用微信手机号授权。"
-        />
+            <div v-if="landingMeta" class="page-meta-grid">
+              <label class="meta-field">
+                <span>页面名称</span>
+                <el-input v-model="landingMeta.name" maxlength="120" show-word-limit />
+              </label>
+              <label class="meta-field">
+                <span>对外状态</span>
+                <el-select v-model="landingMeta.status" :disabled="landingMeta.isDefault">
+                  <el-option label="启用" value="ACTIVE" />
+                  <el-option label="停用" value="DISABLED" />
+                </el-select>
+              </label>
+            </div>
 
-        <el-skeleton v-if="pageLoading && !landing" :rows="8" animated />
-        <el-form v-else-if="landing && landingMeta" label-width="150px" class="config-form">
+            <div v-if="landingMeta" class="link-list">
+              <div class="link-row">
+                <div><strong>H5 永久链接</strong><span>公众号原文、短信或网页广告</span></div>
+                <el-input :model-value="landingMeta.links.h5" readonly />
+                <el-tooltip content="复制 H5 永久链接"><el-button :icon="CopyDocument" @click="copyText(landingMeta.links.h5)">复制</el-button></el-tooltip>
+              </div>
+              <div class="link-row">
+                <div><strong>小程序 PagePath</strong><span>小程序菜单、广告或分享</span></div>
+                <el-input :model-value="landingMeta.links.miniProgramPath" readonly />
+                <el-tooltip content="复制小程序 PagePath"><el-button :icon="CopyDocument" @click="copyText(landingMeta.links.miniProgramPath)">复制</el-button></el-tooltip>
+              </div>
+              <div class="link-row">
+                <div><strong>公众号绑定链接</strong><span>进入小程序并绑定公众号身份</span></div>
+                <el-input :model-value="landingMeta.links.officialAccount" readonly />
+                <el-tooltip content="复制公众号绑定链接"><el-button :icon="CopyDocument" @click="copyText(landingMeta.links.officialAccount)">复制</el-button></el-tooltip>
+              </div>
+            </div>
+          </section>
+
+          <el-alert
+            class="page-tip"
+            type="info"
+            :closable="false"
+            show-icon
+            title="保存后 H5 刷新立即生效；小程序用户重新进入页面即可读取最新内容。"
+          />
+          <el-alert
+            class="page-tip"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="H5 默认手动填写并校验 11 位手机号；小程序继续使用微信手机号授权。"
+          />
+
+          <el-skeleton v-if="pageLoading && !landing" :rows="8" animated />
+          <el-form v-else-if="landing && landingMeta" label-width="150px" class="config-form">
           <el-divider content-position="left">顶部品牌</el-divider>
           <el-form-item label="对外显示">
             <el-switch v-model="landing.display.brandSection" active-text="显示" inactive-text="隐藏" />
@@ -200,7 +267,8 @@
           <el-form-item class="save-config-row">
             <el-button type="primary" :loading="saving" @click="saveLanding">保存当前页面</el-button>
           </el-form-item>
-        </el-form>
+          </el-form>
+        </template>
       </el-tab-pane>
 
       <el-tab-pane label="门店配置">
@@ -248,8 +316,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import { CopyDocument, DocumentCopy, Plus } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
+import { ArrowLeft, CopyDocument, Delete, DocumentCopy, Edit, Plus } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import HtmlEditor from '../components/HtmlEditor.vue';
 import {
   ClinicItem,
@@ -257,6 +325,7 @@ import {
   LandingPageItem,
   createClinic,
   createLandingPage,
+  deleteLandingPage,
   getClinics,
   getLandingPage,
   getLandingPages,
@@ -285,11 +354,14 @@ const pageItems = ref<LandingPageItem[]>([]);
 const selectedPageId = ref('');
 const landingMeta = ref<LandingPageDetail | null>(null);
 const landing = ref<Record<string, any> | null>(null);
+const landingView = ref<'list' | 'edit'>('list');
 const pageLoading = ref(false);
 const saving = ref(false);
 const creating = ref(false);
+const deletingPageId = ref('');
 const createDialog = ref(false);
 const cloneCurrent = ref(false);
+const cloneSourcePageId = ref('');
 const newPageName = ref('');
 const clinics = ref<ClinicItem[]>([]);
 const clinicDialog = ref(false);
@@ -330,14 +402,31 @@ async function load() {
     const [pages, clinicRows] = await Promise.all([getLandingPages(), getClinics()]);
     pageItems.value = pages;
     clinics.value = clinicRows;
-    selectedPageId.value = pages.find((item) => item.isDefault)?.id || pages[0]?.id || '';
-    if (selectedPageId.value) await loadLandingPage(selectedPageId.value);
   } finally {
     pageLoading.value = false;
   }
 }
 
-async function loadLandingPage(id = selectedPageId.value) {
+async function refreshLandingPages() {
+  pageItems.value = await getLandingPages();
+}
+
+async function editPage(id: string) {
+  selectedPageId.value = id;
+  landingView.value = 'edit';
+  landingMeta.value = null;
+  landing.value = null;
+  await loadLandingPage(id);
+}
+
+function backToList() {
+  landingView.value = 'list';
+  selectedPageId.value = '';
+  landingMeta.value = null;
+  landing.value = null;
+}
+
+async function loadLandingPage(id: string) {
   if (!id) return;
   pageLoading.value = true;
   try {
@@ -349,9 +438,10 @@ async function loadLandingPage(id = selectedPageId.value) {
   }
 }
 
-function openCreate(clone: boolean) {
+function openCreate(clone: boolean, source?: LandingPageItem) {
   cloneCurrent.value = clone;
-  newPageName.value = clone && landingMeta.value ? `${landingMeta.value.name} - 副本` : '';
+  cloneSourcePageId.value = clone ? source?.id || landingMeta.value?.id || '' : '';
+  newPageName.value = clone && source ? `${source.name} - 副本` : '';
   createDialog.value = true;
 }
 
@@ -360,24 +450,57 @@ async function submitCreatePage() {
   if (!name) return ElMessage.warning('请填写页面名称');
   creating.value = true;
   try {
-    const page = await createLandingPage({ name, cloneFromId: cloneCurrent.value ? landingMeta.value?.id : undefined });
-    pageItems.value = await getLandingPages();
-    selectedPageId.value = page.id;
-    landingMeta.value = page;
-    landing.value = normalizeLanding(page.config || {});
+    const page = await createLandingPage({ name, cloneFromId: cloneCurrent.value ? cloneSourcePageId.value : undefined });
+    await refreshLandingPages();
     createDialog.value = false;
     ElMessage.success('独立挂号页已创建');
+    await editPage(page.id);
   } finally {
     creating.value = false;
   }
 }
 
-async function makeDefault() {
-  if (!landingMeta.value) return;
-  const page = await setDefaultLandingPage(landingMeta.value.id);
-  pageItems.value = await getLandingPages();
-  landingMeta.value = page;
+async function makeDefault(target: LandingPageItem) {
+  const page = await setDefaultLandingPage(target.id);
+  await refreshLandingPages();
+  if (landingMeta.value?.id === target.id) landingMeta.value = page;
   ElMessage.success('默认挂号页已更新，旧链接将打开此页面');
+}
+
+async function removeLandingPage(page: LandingPageItem) {
+  if (pageItems.value.length <= 1) {
+    ElMessage.warning('至少需要保留一个挂号落地页');
+    return;
+  }
+
+  const appointmentText = page.appointmentCount
+    ? `该页面已有 ${page.appointmentCount} 条历史挂号，挂号资料会完整保留。`
+    : '该页面目前没有历史挂号。';
+  try {
+    await ElMessageBox.confirm(
+      `${appointmentText} 删除后页面配置及永久链接将无法恢复。`,
+      `确认删除“${page.name}”？`,
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消'
+      }
+    );
+  } catch (action) {
+    if (action === 'cancel' || action === 'close') return;
+    throw action;
+  }
+
+  deletingPageId.value = page.id;
+  try {
+    const result = await deleteLandingPage(page.id);
+    await refreshLandingPages();
+    if (selectedPageId.value === page.id) backToList();
+    const replacementText = result.newDefaultPage ? `“${result.newDefaultPage.name}”已自动设为默认页。` : '';
+    ElMessage.success(`页面已删除，${result.preservedAppointmentCount} 条历史挂号已保留。${replacementText}`);
+  } finally {
+    deletingPageId.value = '';
+  }
 }
 
 async function saveLanding() {
@@ -397,7 +520,7 @@ async function saveLanding() {
     });
     landingMeta.value = page;
     landing.value = normalizeLanding(page.config || {});
-    pageItems.value = await getLandingPages();
+    await refreshLandingPages();
     ElMessage.success('当前挂号页已保存');
   } finally {
     saving.value = false;
@@ -464,6 +587,11 @@ function toLines(value: string) {
   return value.split('\n').map((item) => item.trim()).filter(Boolean);
 }
 
+function formatDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN', { hour12: false });
+}
+
 onMounted(load);
 </script>
 
@@ -471,13 +599,20 @@ onMounted(load);
 .page-heading { margin-bottom: 18px; }
 .page-heading .page-title { margin-bottom: 2px; }
 .page-heading p, .manager-head p { margin: 0; color: var(--admin-text-muted); font-size: 13px; }
+.page-list-section { min-height: 360px; }
 .page-manager { margin-bottom: 20px; padding: 18px; border: 1px solid var(--admin-border); border-radius: 6px; background: #f8faf9; }
 .manager-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .manager-head h2 { margin: 0 0 4px; font-size: 17px; }
-.manager-actions, .page-selector-row { display: flex; align-items: center; gap: 10px; }
-.page-selector-row { margin-top: 18px; }
-.page-selector { width: min(440px, 100%); }
-.page-option { display: flex; align-items: center; gap: 8px; }
+.manager-actions, .editor-heading { display: flex; align-items: center; gap: 10px; }
+.editor-heading { align-items: flex-start; }
+.editor-heading > .el-button { margin-top: -6px; }
+.list-tip { margin-top: 18px; }
+.landing-table-wrap { margin-top: 16px; overflow: hidden; border: 1px solid var(--admin-border); border-radius: 6px; }
+.page-name-cell, .table-link-actions, .row-actions { display: flex; align-items: center; gap: 8px; }
+.page-name-cell strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-key { padding: 4px 7px; border-radius: 4px; background: #f2f5f4; color: #43504b; font-size: 12px; }
+.table-link-actions, .row-actions { flex-wrap: nowrap; }
+.table-link-actions :deep(.el-button), .row-actions :deep(.el-button) { margin-left: 0; }
 .page-meta-grid { display: grid; grid-template-columns: minmax(240px, 1fr) 220px; gap: 14px; margin-top: 16px; }
 .meta-field { display: grid; gap: 7px; color: #43504b; font-size: 13px; }
 .link-list { display: grid; gap: 10px; margin-top: 18px; }
@@ -502,5 +637,5 @@ onMounted(load);
 .save-config-row { position: sticky; z-index: 5; bottom: 0; margin: 28px 0 0!important; padding: 14px 0!important; background: rgba(255,255,255,.96); border-top: 1px solid var(--admin-border)!important; border-bottom: 0!important; }
 .toolbar { margin-bottom: 14px; }
 @media(max-width:860px){.link-row{grid-template-columns:1fr}.page-meta-grid{grid-template-columns:1fr}.manager-head{flex-direction:column}.manager-actions{width:100%;flex-wrap:wrap}}
-@media(max-width:720px){.config-form :deep(.el-form-item){display:block}.config-form :deep(.el-form-item__label){display:block;width:auto!important;margin-bottom:7px;text-align:left}.field-row{align-items:flex-start;flex-direction:column}.inline-switch{min-width:auto}.help-text{display:block;margin:8px 0 0}.page-selector-row{align-items:flex-start;flex-direction:column}.page-selector{width:100%}}
+@media(max-width:720px){.config-form :deep(.el-form-item){display:block}.config-form :deep(.el-form-item__label){display:block;width:auto!important;margin-bottom:7px;text-align:left}.field-row{align-items:flex-start;flex-direction:column}.inline-switch{min-width:auto}.help-text{display:block;margin:8px 0 0}.editor-heading{width:100%;align-items:flex-start}}
 </style>

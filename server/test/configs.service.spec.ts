@@ -33,13 +33,15 @@ describe('ConfigsService', () => {
           }
           return Promise.resolve(defaultPage);
         }),
-        findMany: jest.fn().mockResolvedValue([defaultPage]),
+        findMany: jest.fn().mockResolvedValue([{ ...defaultPage, _count: { appointments: 3 } }]),
+        count: jest.fn().mockResolvedValue(2),
         create: jest.fn(),
-        update: jest.fn(),
-        updateMany: jest.fn()
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        delete: jest.fn().mockResolvedValue(defaultPage)
       },
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
-      $transaction: jest.fn()
+      $transaction: jest.fn().mockImplementation((operations: Array<Promise<unknown>>) => Promise.all(operations))
     };
     const clinics = {
       findActive: jest.fn().mockResolvedValue([{ id: 'clinic_1', name: '门店 A', address: '地址', phone: '电话' }])
@@ -83,5 +85,55 @@ describe('ConfigsService', () => {
     expect(result[0].links.h5).toBe('https://api.example.com/landing/default');
     expect(result[0].links.miniProgramPath).toBe('pages/landing/landing?page=default');
     expect(result[0].links.officialAccount).toContain('page=default');
+    expect(result[0].appointmentCount).toBe(3);
+  });
+
+  it('deletes a non-default page while reporting preserved appointments', async () => {
+    const { service, prisma } = createService();
+    prisma.landingPage.findUnique.mockResolvedValueOnce({
+      ...defaultPage,
+      id: 'page_2',
+      pageKey: 'page-two',
+      name: '第二页',
+      isDefault: false,
+      _count: { appointments: 4 }
+    });
+
+    const result = await service.deleteLandingPage('page_2');
+
+    expect(prisma.landingPage.delete).toHaveBeenCalledWith({ where: { id: 'page_2' } });
+    expect(prisma.landingPage.updateMany).not.toHaveBeenCalled();
+    expect(result.preservedAppointmentCount).toBe(4);
+    expect(result.newDefaultPage).toBeNull();
+  });
+
+  it('promotes another page before deleting the default page', async () => {
+    const { service, prisma } = createService();
+    prisma.landingPage.findUnique.mockResolvedValueOnce({
+      ...defaultPage,
+      _count: { appointments: 2 }
+    });
+    prisma.landingPage.findFirst.mockResolvedValueOnce({ id: 'page_2', name: '第二页' });
+
+    const result = await service.deleteLandingPage(defaultPage.id);
+
+    expect(prisma.landingPage.update).toHaveBeenCalledWith({
+      where: { id: 'page_2' },
+      data: { isDefault: true, status: ContentStatus.ACTIVE }
+    });
+    expect(prisma.landingPage.delete).toHaveBeenCalledWith({ where: { id: defaultPage.id } });
+    expect(result.newDefaultPage).toEqual({ id: 'page_2', name: '第二页' });
+  });
+
+  it('does not delete the final landing page', async () => {
+    const { service, prisma } = createService();
+    prisma.landingPage.findUnique.mockResolvedValueOnce({
+      ...defaultPage,
+      _count: { appointments: 1 }
+    });
+    prisma.landingPage.count.mockResolvedValueOnce(1);
+
+    await expect(service.deleteLandingPage(defaultPage.id)).rejects.toThrow('至少需要保留一个挂号落地页');
+    expect(prisma.landingPage.delete).not.toHaveBeenCalled();
   });
 });

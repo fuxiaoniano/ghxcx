@@ -214,6 +214,16 @@ export class AdminController {
     return this.admin.setDefaultLandingPage(id, user, request.ip, request.headers['user-agent']);
   }
 
+  @Delete('/landing-pages/:id')
+  @Permissions('MANAGE_CONFIGS')
+  deleteLandingPage(
+    @Param('id') id: string,
+    @CurrentUser() user: AdminCurrentUser,
+    @Req() request: Request
+  ) {
+    return this.admin.deleteLandingPage(id, user, request.ip, request.headers['user-agent']);
+  }
+
   @Patch('/configs')
   @Permissions('MANAGE_CONFIGS')
   updateConfigs(

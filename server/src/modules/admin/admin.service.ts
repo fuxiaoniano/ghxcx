@@ -692,6 +692,26 @@ export class AdminService {
     return page;
   }
 
+  async deleteLandingPage(
+    id: string,
+    user: AdminCurrentUser,
+    ip?: string,
+    userAgent?: string | string[]
+  ) {
+    this.requireConfigPermission(user);
+    const result = await this.configsService.deleteLandingPage(id);
+    await this.audit.create({
+      adminUserId: user.adminUserId,
+      action: 'DELETE_LANDING_PAGE',
+      resourceType: 'landing_pages',
+      resourceId: id,
+      afterJson: result as unknown as Prisma.InputJsonValue,
+      ip,
+      userAgent: this.ua(userAgent)
+    });
+    return result;
+  }
+
   async updateConfigs(
     configs: Array<{ key: string; valueJson: Record<string, unknown>; description?: string }>,
     user: AdminCurrentUser,

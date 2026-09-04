@@ -139,6 +139,7 @@ export interface LandingPageItem {
   name: string;
   status: 'ACTIVE' | 'DISABLED';
   isDefault: boolean;
+  appointmentCount: number;
   createdAt: string;
   updatedAt: string;
   links: {
@@ -377,6 +378,19 @@ export function updateLandingPage(
 
 export function setDefaultLandingPage(id: string) {
   return http.post<unknown, LandingPageDetail>(`/api/admin/landing-pages/${id}/set-default`);
+}
+
+export function deleteLandingPage(id: string) {
+  return http.delete<
+    unknown,
+    {
+      id: string;
+      pageKey: string;
+      name: string;
+      preservedAppointmentCount: number;
+      newDefaultPage: { id: string; name: string } | null;
+    }
+  >(`/api/admin/landing-pages/${id}`);
 }
 
 export function uploadLandingAsset(file: File) {

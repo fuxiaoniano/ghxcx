@@ -36,7 +36,16 @@ describe('AdminService', () => {
     const followupForwarder = {
       forwardAppointment: jest.fn().mockResolvedValue({ status: 'SUCCESS', statusText: '已转发' })
     };
-    const configs = { updateMany: jest.fn().mockResolvedValue([{ key: 'landingPage' }]) };
+    const configs = {
+      updateMany: jest.fn().mockResolvedValue([{ key: 'landingPage' }]),
+      deleteLandingPage: jest.fn().mockResolvedValue({
+        id: 'landing_2',
+        pageKey: 'page-two',
+        name: '第二页',
+        preservedAppointmentCount: 2,
+        newDefaultPage: null
+      })
+    };
     const officialAccount = { publishCustomMenu: jest.fn().mockResolvedValue({ errcode: 0, errmsg: 'ok' }) };
     const config = {};
     const redis = {
@@ -113,5 +122,19 @@ describe('AdminService', () => {
 
     expect(configs.updateMany).toHaveBeenCalled();
     expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'UPDATE_SYSTEM_CONFIGS' }));
+  });
+
+  it('deletes a landing page and writes an audit log', async () => {
+    const { service, configs, audit } = await createService();
+    const result = await service.deleteLandingPage(
+      'landing_2',
+      { adminUserId: 'admin_1', username: 'admin', role: 'SUPER_ADMIN', permissions: [] },
+      '127.0.0.1',
+      'jest'
+    );
+
+    expect(configs.deleteLandingPage).toHaveBeenCalledWith('landing_2');
+    expect(result.preservedAppointmentCount).toBe(2);
+    expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'DELETE_LANDING_PAGE' }));
   });
 });
