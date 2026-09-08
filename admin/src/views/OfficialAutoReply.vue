@@ -22,6 +22,48 @@
       <el-form-item label="回复内容">
         <el-input v-model="config.subscribeReply" type="textarea" :rows="4" maxlength="600" show-word-limit />
       </el-form-item>
+      <el-form-item label="同时发送小程序">
+        <el-switch v-model="config.subscribeMiniProgramEnabled" active-text="启用" inactive-text="停用" />
+      </el-form-item>
+      <template v-if="config.subscribeMiniProgramEnabled">
+        <el-form-item label="小程序入口形式">
+          <el-radio-group v-model="config.subscribeMiniProgramType">
+            <el-radio-button value="LINK">文字链接</el-radio-button>
+            <el-radio-button value="CARD">小程序卡片</el-radio-button>
+          </el-radio-group>
+          <div class="field-tip">
+            {{ config.subscribeMiniProgramType === 'LINK'
+              ? '文字和小程序入口会在同一条关注回复中展示。'
+              : '先立即回复关注文字，再额外发送一张小程序卡片。' }}
+          </div>
+        </el-form-item>
+        <el-form-item label="小程序 AppID" required>
+          <el-input v-model="config.subscribeMiniProgramAppId" maxlength="32" placeholder="wx 开头的小程序 AppID" />
+        </el-form-item>
+        <el-form-item label="小程序页面路径" required>
+          <el-input
+            v-model="config.subscribeMiniProgramPagePath"
+            maxlength="1024"
+            placeholder="pages/home/home?source=oa_subscribe"
+          />
+          <div class="field-tip">填写 PagePath，不要带开头斜杠、域名或 #。</div>
+        </el-form-item>
+        <el-form-item v-if="config.subscribeMiniProgramType === 'LINK'" label="入口文字" required>
+          <el-input v-model="config.subscribeMiniProgramLinkText" maxlength="100" />
+        </el-form-item>
+        <template v-else>
+          <el-form-item label="卡片标题" required>
+            <el-input v-model="config.subscribeMiniProgramCardTitle" maxlength="100" />
+          </el-form-item>
+          <el-form-item label="卡片封面" required>
+            <MediaPicker
+              v-model="config.subscribeMiniProgramCoverUrl"
+              ratio-hint="5:4，建议使用 JPG 或 PNG，主体和文字放在画面中间"
+            />
+            <div class="field-tip">系统会自动上传为微信临时素材并缓存，无需手工填写 Media ID。</div>
+          </el-form-item>
+        </template>
+      </template>
 
       <el-divider content-position="left">收到消息回复</el-divider>
       <el-form-item label="消息兜底回复">
@@ -79,6 +121,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
+import MediaPicker from '../components/MediaPicker.vue';
 import {
   OfficialAutoReplyConfig,
   OfficialAutoReplyKeywordRule,
@@ -118,6 +161,22 @@ function removeRule(index: number) {
 
 async function save() {
   if (!config.value || saving.value) return;
+  if (config.value.subscribeMiniProgramEnabled) {
+    if (!/^wx[a-zA-Z0-9]{16}$/.test(config.value.subscribeMiniProgramAppId.trim())) {
+      return ElMessage.warning('请填写正确的小程序 AppID');
+    }
+    const pagePath = config.value.subscribeMiniProgramPagePath.trim();
+    if (!pagePath.startsWith('pages/') || pagePath.startsWith('/') || pagePath.includes('..')) {
+      return ElMessage.warning('请填写 pages/ 开头的小程序页面路径');
+    }
+    if (config.value.subscribeMiniProgramType === 'LINK' && !config.value.subscribeMiniProgramLinkText.trim()) {
+      return ElMessage.warning('请填写小程序入口文字');
+    }
+    if (config.value.subscribeMiniProgramType === 'CARD') {
+      if (!config.value.subscribeMiniProgramCardTitle.trim()) return ElMessage.warning('请填写小程序卡片标题');
+      if (!config.value.subscribeMiniProgramCoverUrl.trim()) return ElMessage.warning('请选择小程序卡片封面');
+    }
+  }
   saving.value = true;
   try {
     config.value = await updateOfficialAutoReply(config.value);
@@ -141,6 +200,14 @@ onMounted(load);
 
 .toolbar {
   margin-bottom: 12px;
+}
+
+.field-tip {
+  width: 100%;
+  margin-top: 6px;
+  color: var(--admin-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .save-row {

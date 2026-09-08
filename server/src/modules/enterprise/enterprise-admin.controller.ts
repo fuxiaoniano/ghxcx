@@ -95,7 +95,7 @@ export class EnterpriseAdminController {
   @Patch('/packages/:id/images') @Permissions('PACKAGE_MANAGE') replaceImages(@Param('id') id: string, @Body() dto: PackageImagesDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.enterprise.replacePackageImages(id, dto.images, this.audit(user, req)); }
 
   @Get('/assets')
-  @AnyPermissions('HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE')
+  @AnyPermissions('HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE', 'MANAGE_CONFIGS')
   assets() { return this.enterprise.mediaAssets(); }
 
   @Delete('/assets/:id')
@@ -103,7 +103,7 @@ export class EnterpriseAdminController {
   deleteAsset(@Param('id') id: string) { return this.enterprise.deleteMediaAsset(id); }
 
   @Post('/assets')
-  @AnyPermissions('HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE')
+  @AnyPermissions('HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE', 'MANAGE_CONFIGS')
   @UseInterceptors(FileInterceptor('file', {
     dest: assetDir,
     limits: { fileSize: 8 * 1024 * 1024, files: 1 },

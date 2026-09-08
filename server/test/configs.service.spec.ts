@@ -49,6 +49,7 @@ describe('ConfigsService', () => {
     const env = {
       get: jest.fn((key: string) => {
         if (key === 'MINI_SUBSCRIBE_TEMPLATE_APPOINTMENT_SUCCESS') return 'mini-template';
+        if (key === 'MINI_APP_ID') return 'wx99b598314f56c2f1';
         if (key === 'SERVER_BASE_URL') return 'https://api.example.com';
         return undefined;
       })
@@ -65,6 +66,18 @@ describe('ConfigsService', () => {
     expect(result.activityPrice).toBe('后台价');
     expect(result.miniSubscribeTemplateId).toBe('mini-template');
     expect(result.clinics[0].name).toBe('门店 A');
+  });
+
+  it('returns backward-compatible official auto reply defaults with the mini-program entry disabled', async () => {
+    const { service } = createService();
+
+    const result = await service.getOfficialAutoReplyConfig();
+
+    expect(result.subscribeReplyEnabled).toBe(true);
+    expect(result.subscribeMiniProgramEnabled).toBe(false);
+    expect(result.subscribeMiniProgramType).toBe('LINK');
+    expect(result.subscribeMiniProgramAppId).toBe('wx99b598314f56c2f1');
+    expect(result.subscribeMiniProgramPagePath).toBe('pages/home/home?source=oa_subscribe');
   });
 
   it('loads an independent page and sanitizes its HTML', async () => {

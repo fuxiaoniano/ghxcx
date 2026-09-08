@@ -184,6 +184,13 @@ export interface OfficialAutoReplyConfig {
   enabled: boolean;
   subscribeReplyEnabled: boolean;
   subscribeReply: string;
+  subscribeMiniProgramEnabled: boolean;
+  subscribeMiniProgramType: 'LINK' | 'CARD';
+  subscribeMiniProgramAppId: string;
+  subscribeMiniProgramPagePath: string;
+  subscribeMiniProgramLinkText: string;
+  subscribeMiniProgramCardTitle: string;
+  subscribeMiniProgramCoverUrl: string;
   messageReplyEnabled: boolean;
   messageReply: string;
   keywordReplyEnabled: boolean;

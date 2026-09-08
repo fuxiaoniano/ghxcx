@@ -872,12 +872,65 @@ export class AdminService {
           }))
           .filter((rule) => rule.keyword && rule.replyContent)
       : [];
+    const subscribeMiniProgramEnabled = value.subscribeMiniProgramEnabled === true;
+    const subscribeMiniProgramType = value.subscribeMiniProgramType === 'CARD' ? 'CARD' as const : 'LINK' as const;
+    const subscribeMiniProgramAppId = text(
+      value.subscribeMiniProgramAppId || this.config.get<string>('MINI_APP_ID'),
+      32
+    );
+    const subscribeMiniProgramPagePath = text(value.subscribeMiniProgramPagePath, 1024) ||
+      'pages/home/home?source=oa_subscribe';
+    const subscribeMiniProgramLinkText = text(value.subscribeMiniProgramLinkText, 100) ||
+      '点击进入种博士口腔小程序';
+    const subscribeMiniProgramCardTitle = text(value.subscribeMiniProgramCardTitle, 100) ||
+      '种博士口腔预约挂号';
+    const subscribeMiniProgramCoverUrl = text(value.subscribeMiniProgramCoverUrl, 1000);
+    if (subscribeMiniProgramEnabled && !/^wx[a-zA-Z0-9]{16}$/.test(subscribeMiniProgramAppId)) {
+      throw new BusinessException(400551, '小程序 AppID 格式不正确');
+    }
+    if (
+      subscribeMiniProgramEnabled &&
+      (!/^[a-zA-Z0-9_][a-zA-Z0-9_./?=&%-]*$/.test(subscribeMiniProgramPagePath) ||
+        subscribeMiniProgramPagePath.startsWith('/') ||
+        subscribeMiniProgramPagePath.includes('..'))
+    ) {
+      throw new BusinessException(400552, '小程序页面路径格式不正确，请填写 pages/ 开头的 PagePath');
+    }
+    if (subscribeMiniProgramEnabled && !subscribeMiniProgramPagePath.startsWith('pages/')) {
+      throw new BusinessException(400552, '小程序页面路径格式不正确，请填写 pages/ 开头的 PagePath');
+    }
+    if (subscribeMiniProgramEnabled && subscribeMiniProgramType === 'CARD' && !subscribeMiniProgramCoverUrl) {
+      throw new BusinessException(400553, '发送小程序卡片时必须选择卡片封面图片');
+    }
+    if (subscribeMiniProgramEnabled && subscribeMiniProgramType === 'CARD') {
+      const publicBase = this.config.get<string>('SERVER_BASE_URL') || 'https://zbsfxn.cqzbskq.com';
+      let coverUrl: URL;
+      try {
+        coverUrl = new URL(subscribeMiniProgramCoverUrl, publicBase);
+      } catch {
+        throw new BusinessException(400554, '小程序卡片封面图片地址无效');
+      }
+      const allowedPath =
+        coverUrl.pathname.startsWith('/uploads/enterprise-assets/') ||
+        coverUrl.pathname.startsWith('/uploads/landing-assets/');
+      const validExtension = /\.(?:jpe?g|png)$/i.test(coverUrl.pathname);
+      if (coverUrl.origin !== new URL(publicBase).origin || !allowedPath || !validExtension) {
+        throw new BusinessException(400554, '小程序卡片封面必须选择本系统图片库中的 JPG 或 PNG 图片');
+      }
+    }
     return {
       enabled: value.enabled !== false,
       subscribeReplyEnabled: value.subscribeReplyEnabled !== false,
       subscribeReply:
         text(value.subscribeReply) ||
         '欢迎关注！如需种植牙咨询或预约挂号，请点击公众号菜单“立即挂号”提交信息，工作人员会尽快联系您。',
+      subscribeMiniProgramEnabled,
+      subscribeMiniProgramType,
+      subscribeMiniProgramAppId,
+      subscribeMiniProgramPagePath,
+      subscribeMiniProgramLinkText,
+      subscribeMiniProgramCardTitle,
+      subscribeMiniProgramCoverUrl,
       messageReplyEnabled: value.messageReplyEnabled !== false,
       messageReply:
         text(value.messageReply) ||

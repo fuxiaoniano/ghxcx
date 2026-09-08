@@ -47,7 +47,9 @@ describe('AdminService', () => {
       })
     };
     const officialAccount = { publishCustomMenu: jest.fn().mockResolvedValue({ errcode: 0, errmsg: 'ok' }) };
-    const config = {};
+    const config = {
+      get: jest.fn((key: string) => key === 'MINI_APP_ID' ? 'wx99b598314f56c2f1' : undefined)
+    };
     const redis = {
       get: jest.fn().mockResolvedValue(null),
       incr: jest.fn().mockResolvedValue(1),
@@ -136,5 +138,54 @@ describe('AdminService', () => {
     expect(configs.deleteLandingPage).toHaveBeenCalledWith('landing_2');
     expect(result.preservedAppointmentCount).toBe(2);
     expect(audit.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'DELETE_LANDING_PAGE' }));
+  });
+
+  it('preserves simultaneous subscribe text and mini-program link settings', async () => {
+    const { service } = await createService();
+
+    const normalized = (service as any).normalizeOfficialAutoReply({
+      enabled: true,
+      subscribeReplyEnabled: true,
+      subscribeReply: '欢迎关注',
+      subscribeMiniProgramEnabled: true,
+      subscribeMiniProgramType: 'LINK',
+      subscribeMiniProgramAppId: 'wx99b598314f56c2f1',
+      subscribeMiniProgramPagePath: 'pages/home/home?source=oa_subscribe',
+      subscribeMiniProgramLinkText: '进入小程序',
+      messageReplyEnabled: true,
+      messageReply: '已收到',
+      keywordReplyEnabled: true,
+      keywordRules: []
+    });
+
+    expect(normalized).toEqual(expect.objectContaining({
+      subscribeReplyEnabled: true,
+      subscribeReply: '欢迎关注',
+      subscribeMiniProgramEnabled: true,
+      subscribeMiniProgramType: 'LINK',
+      subscribeMiniProgramAppId: 'wx99b598314f56c2f1',
+      subscribeMiniProgramPagePath: 'pages/home/home?source=oa_subscribe',
+      subscribeMiniProgramLinkText: '进入小程序'
+    }));
+  });
+
+  it('rejects a mini-program card without an internal JPG or PNG cover', async () => {
+    const { service } = await createService();
+
+    expect(() => (service as any).normalizeOfficialAutoReply({
+      enabled: true,
+      subscribeReplyEnabled: true,
+      subscribeReply: '欢迎关注',
+      subscribeMiniProgramEnabled: true,
+      subscribeMiniProgramType: 'CARD',
+      subscribeMiniProgramAppId: 'wx99b598314f56c2f1',
+      subscribeMiniProgramPagePath: 'pages/home/home',
+      subscribeMiniProgramCardTitle: '预约挂号',
+      subscribeMiniProgramCoverUrl: 'https://outside.example.com/card.jpg',
+      messageReplyEnabled: true,
+      messageReply: '已收到',
+      keywordReplyEnabled: true,
+      keywordRules: []
+    })).toThrow('小程序卡片封面必须选择本系统图片库中的 JPG 或 PNG 图片');
   });
 });

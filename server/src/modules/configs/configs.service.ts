@@ -146,6 +146,13 @@ export interface OfficialAutoReplyConfig {
   enabled: boolean;
   subscribeReplyEnabled: boolean;
   subscribeReply: string;
+  subscribeMiniProgramEnabled: boolean;
+  subscribeMiniProgramType: 'LINK' | 'CARD';
+  subscribeMiniProgramAppId: string;
+  subscribeMiniProgramPagePath: string;
+  subscribeMiniProgramLinkText: string;
+  subscribeMiniProgramCardTitle: string;
+  subscribeMiniProgramCoverUrl: string;
   messageReplyEnabled: boolean;
   messageReply: string;
   keywordReplyEnabled: boolean;
@@ -232,6 +239,13 @@ const defaultOfficialAutoReply: OfficialAutoReplyConfig = {
   subscribeReplyEnabled: true,
   subscribeReply:
     '欢迎关注！如需种植牙咨询或预约挂号，请点击公众号菜单“立即挂号”提交信息，工作人员会尽快联系您。',
+  subscribeMiniProgramEnabled: false,
+  subscribeMiniProgramType: 'LINK',
+  subscribeMiniProgramAppId: '',
+  subscribeMiniProgramPagePath: 'pages/home/home?source=oa_subscribe',
+  subscribeMiniProgramLinkText: '点击进入种博士口腔小程序',
+  subscribeMiniProgramCardTitle: '种博士口腔预约挂号',
+  subscribeMiniProgramCoverUrl: '',
   messageReplyEnabled: true,
   messageReply:
     '您好，已收到您的消息。如需预约挂号，请点击公众号菜单“立即挂号”；如需人工协助，工作人员会尽快查看并联系您。',
@@ -509,6 +523,17 @@ export class ConfigsService {
     return {
       ...defaultOfficialAutoReply,
       ...(value || {}),
+      subscribeMiniProgramEnabled: value?.subscribeMiniProgramEnabled === true,
+      subscribeMiniProgramType: value?.subscribeMiniProgramType === 'CARD' ? 'CARD' : 'LINK',
+      subscribeMiniProgramAppId:
+        String(value?.subscribeMiniProgramAppId || this.env.get<string>('MINI_APP_ID') || '').trim(),
+      subscribeMiniProgramPagePath:
+        String(value?.subscribeMiniProgramPagePath || defaultOfficialAutoReply.subscribeMiniProgramPagePath).trim(),
+      subscribeMiniProgramLinkText:
+        String(value?.subscribeMiniProgramLinkText || defaultOfficialAutoReply.subscribeMiniProgramLinkText).trim(),
+      subscribeMiniProgramCardTitle:
+        String(value?.subscribeMiniProgramCardTitle || defaultOfficialAutoReply.subscribeMiniProgramCardTitle).trim(),
+      subscribeMiniProgramCoverUrl: String(value?.subscribeMiniProgramCoverUrl || '').trim(),
       keywordRules: Array.isArray(value?.keywordRules) ? value.keywordRules : defaultOfficialAutoReply.keywordRules
     };
   }

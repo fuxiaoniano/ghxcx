@@ -1,9 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { XMLParser } from 'fast-xml-parser';
 import Redis from 'ioredis';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { readFile } from 'fs/promises';
+import { basename, extname, join, resolve, sep } from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
 import { WechatMiniService } from '../wechat-mini/wechat-mini.service';
@@ -31,6 +33,12 @@ interface JsApiTicketResult {
   errmsg?: string;
 }
 
+interface TemporaryMediaResult {
+  media_id?: string;
+  errcode?: number;
+  errmsg?: string;
+}
+
 export interface OfficialOauthIdentity {
   oaOpenId: string;
   unionId?: string;
@@ -47,6 +55,7 @@ export interface OfficialAccountJsSdkConfig {
 @Injectable()
 export class WechatOfficialAccountService {
   private readonly parser = new XMLParser({ ignoreAttributes: false });
+  private readonly logger = new Logger(WechatOfficialAccountService.name);
 
   constructor(
     private readonly config: ConfigService,
@@ -138,7 +147,15 @@ export class WechatOfficialAccountService {
         where: { oaOpenId },
         data: { subscribedOfficialAccount: true }
       });
-      const reply = await this.resolveAutoReply(message);
+      const autoReply = await this.getOfficialAutoReplyConfig();
+      if (
+        autoReply.enabled &&
+        autoReply.subscribeMiniProgramEnabled &&
+        autoReply.subscribeMiniProgramType === 'CARD'
+      ) {
+        this.scheduleSubscribeMiniProgramCard(oaOpenId, message.CreateTime, autoReply);
+      }
+      const reply = this.resolveSubscribeReply(autoReply);
       return reply ? this.buildTextReply(message, reply) : undefined;
     }
     if (msgType === 'event' && event === 'unsubscribe') {
@@ -273,6 +290,38 @@ export class WechatOfficialAccountService {
       errcode: response.data.errcode || 0,
       errmsg: response.data.errmsg || 'ok'
     };
+  }
+
+  async sendSubscribeMiniProgramCard(oaOpenId: string, autoReply: OfficialAutoReplyConfig) {
+    const appId = this.validateMiniProgramAppId(autoReply.subscribeMiniProgramAppId);
+    const pagePath = this.validateMiniProgramPagePath(autoReply.subscribeMiniProgramPagePath);
+    const title = this.cleanReply(autoReply.subscribeMiniProgramCardTitle);
+    if (!title) {
+      throw new BusinessException(400219, '小程序卡片标题不能为空');
+    }
+    const thumbMediaId = await this.getMiniProgramCardThumbMediaId(autoReply.subscribeMiniProgramCoverUrl);
+    const accessToken = await this.getAccessToken();
+    const response = await axios.post(
+      `https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=${accessToken}`,
+      {
+        touser: oaOpenId,
+        msgtype: 'miniprogrampage',
+        miniprogrampage: {
+          title,
+          appid: appId,
+          pagepath: pagePath,
+          thumb_media_id: thumbMediaId
+        }
+      },
+      { timeout: 10000 }
+    );
+    if (response.data.errcode) {
+      throw new BusinessException(
+        500205,
+        `发送关注小程序卡片失败：${response.data.errmsg || response.data.errcode}`
+      );
+    }
+    return { sent: true, messageType: 'miniprogrampage' as const };
   }
 
   private async exchangeOauthCode(code: string): Promise<OauthTokenResult> {
@@ -469,10 +518,6 @@ export class WechatOfficialAccountService {
       return undefined;
     }
     const msgType = message.MsgType;
-    const event = message.Event;
-    if (msgType === 'event' && event === 'subscribe') {
-      return autoReply.subscribeReplyEnabled ? this.cleanReply(autoReply.subscribeReply) : undefined;
-    }
     if (msgType === 'text' && autoReply.keywordReplyEnabled) {
       const content = String(message.Content || '').trim();
       const matched = this.matchKeywordRule(content, autoReply.keywordRules);
@@ -484,6 +529,178 @@ export class WechatOfficialAccountService {
       return this.cleanReply(autoReply.messageReply);
     }
     return undefined;
+  }
+
+  private resolveSubscribeReply(autoReply: OfficialAutoReplyConfig) {
+    if (!autoReply.enabled) {
+      return undefined;
+    }
+    const parts: string[] = [];
+    if (autoReply.subscribeReplyEnabled) {
+      const text = this.cleanReply(autoReply.subscribeReply);
+      if (text) {
+        parts.push(text);
+      }
+    }
+    if (
+      autoReply.subscribeMiniProgramEnabled &&
+      autoReply.subscribeMiniProgramType === 'LINK'
+    ) {
+      const link = this.buildMiniProgramTextLink(autoReply);
+      if (link) {
+        parts.push(link);
+      }
+    }
+    return parts.length ? parts.join('\n') : undefined;
+  }
+
+  private scheduleSubscribeMiniProgramCard(
+    oaOpenId: string,
+    eventTime: string | undefined,
+    autoReply: OfficialAutoReplyConfig
+  ) {
+    setImmediate(() => {
+      void (async () => {
+        const dedupeKey = `wechat:oa:subscribe-card:${createHash('sha1')
+          .update(`${oaOpenId}:${eventTime || ''}`)
+          .digest('hex')}`;
+        const claimed = await this.redis.set(dedupeKey, '1', 'EX', 300, 'NX');
+        if (claimed !== 'OK') {
+          return;
+        }
+        await this.sendSubscribeMiniProgramCard(oaOpenId, autoReply);
+      })().catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        this.logger.error(`关注后小程序卡片发送失败，文字回复不受影响：${message}`);
+      });
+    });
+  }
+
+  private buildMiniProgramTextLink(autoReply: OfficialAutoReplyConfig) {
+    try {
+      const appId = this.validateMiniProgramAppId(autoReply.subscribeMiniProgramAppId);
+      const pagePath = this.validateMiniProgramPagePath(autoReply.subscribeMiniProgramPagePath);
+      const linkText = this.escapeMiniProgramLinkValue(
+        this.cleanReply(autoReply.subscribeMiniProgramLinkText) || '点击进入小程序'
+      );
+      const fallback = `${String(this.config.get<string>('SERVER_BASE_URL') || '').replace(/\/$/, '')}/`;
+      return `<a href="${this.escapeMiniProgramLinkValue(fallback)}" data-miniprogram-appid="${this.escapeMiniProgramLinkValue(appId)}" data-miniprogram-path="${this.escapeMiniProgramLinkValue(pagePath)}">${linkText}</a>`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      this.logger.error(`关注后小程序文字链接生成失败，文字回复不受影响：${message}`);
+      return undefined;
+    }
+  }
+
+  private async getMiniProgramCardThumbMediaId(imageUrl: string) {
+    const source = String(imageUrl || '').trim();
+    if (!source) {
+      throw new BusinessException(400220, '小程序卡片封面图片不能为空');
+    }
+    const cacheKey = `wechat:oa:subscribe-card-thumb:${createHash('sha1').update(source).digest('hex')}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const file = this.resolveInternalCardImage(source);
+    const buffer = await readFile(file.path);
+    if (!buffer.length || buffer.length > 8 * 1024 * 1024) {
+      throw new BusinessException(400221, '小程序卡片封面图片为空或超过 8MB');
+    }
+    const form = new FormData();
+    const bytes = Uint8Array.from(buffer);
+    form.append('media', new Blob([bytes], { type: file.mimeType }), file.filename);
+    const accessToken = await this.getAccessToken();
+    const response = await axios.post<TemporaryMediaResult>(
+      `https://api.weixin.qq.com/cgi-bin/media/upload?access_token=${accessToken}&type=image`,
+      form,
+      { timeout: 15000, maxBodyLength: 9 * 1024 * 1024 }
+    );
+    if (response.data.errcode || !response.data.media_id) {
+      throw new BusinessException(
+        500206,
+        `上传公众号小程序卡片封面失败：${response.data.errmsg || response.data.errcode || 'empty media_id'}`
+      );
+    }
+    await this.redis.set(cacheKey, response.data.media_id, 'EX', 2 * 24 * 60 * 60);
+    return response.data.media_id;
+  }
+
+  private resolveInternalCardImage(imageUrl: string) {
+    const base = String(this.config.get<string>('SERVER_BASE_URL') || '').replace(/\/$/, '');
+    let url: URL;
+    try {
+      url = new URL(imageUrl, base || 'http://localhost');
+    } catch {
+      throw new BusinessException(400222, '小程序卡片封面图片地址无效');
+    }
+    if (base && url.origin !== new URL(base).origin) {
+      throw new BusinessException(400222, '小程序卡片封面必须选择本系统图片库素材');
+    }
+    const locations = [
+      {
+        prefix: '/uploads/enterprise-assets/',
+        directory: process.env.ENTERPRISE_ASSET_DIR || join(process.cwd(), 'uploads', 'enterprise-assets')
+      },
+      {
+        prefix: '/uploads/landing-assets/',
+        directory: process.env.LANDING_ASSET_DIR || join(process.cwd(), 'uploads', 'landing-assets')
+      }
+    ];
+    const location = locations.find((item) => url.pathname.startsWith(item.prefix));
+    if (!location) {
+      throw new BusinessException(400222, '小程序卡片封面必须选择本系统图片库素材');
+    }
+    let filename = '';
+    try {
+      filename = decodeURIComponent(url.pathname.slice(location.prefix.length));
+    } catch {
+      throw new BusinessException(400222, '小程序卡片封面文件名无效');
+    }
+    const extension = extname(filename).toLowerCase();
+    if (filename !== basename(filename) || !['.jpg', '.jpeg', '.png'].includes(extension)) {
+      throw new BusinessException(400222, '小程序卡片封面仅支持 JPG 或 PNG 图片');
+    }
+    const directory = resolve(location.directory);
+    const path = resolve(directory, filename);
+    if (!path.startsWith(`${directory}${sep}`)) {
+      throw new BusinessException(400222, '小程序卡片封面文件路径无效');
+    }
+    return {
+      path,
+      filename,
+      mimeType: extension === '.png' ? 'image/png' : 'image/jpeg'
+    };
+  }
+
+  private validateMiniProgramAppId(value: string) {
+    const appId = String(value || this.config.get<string>('MINI_APP_ID') || '').trim();
+    if (!/^wx[a-zA-Z0-9]{16}$/.test(appId)) {
+      throw new BusinessException(400223, '小程序 AppID 格式不正确');
+    }
+    return appId;
+  }
+
+  private validateMiniProgramPagePath(value: string) {
+    const path = String(value || '').trim();
+    if (
+      !path.startsWith('pages/') ||
+      path.startsWith('/') ||
+      path.includes('..') ||
+      !/^[a-zA-Z0-9_][a-zA-Z0-9_./?=&%-]*$/.test(path)
+    ) {
+      throw new BusinessException(400224, '小程序页面路径格式不正确');
+    }
+    return path;
+  }
+
+  private escapeMiniProgramLinkValue(value: string) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   private matchKeywordRule(content: string, rules: OfficialAutoReplyConfig['keywordRules']) {
@@ -544,6 +761,17 @@ export class WechatOfficialAccountService {
       subscribeReply:
         value?.subscribeReply ||
         '欢迎关注！如需种植牙咨询或预约挂号，请点击公众号菜单“立即挂号”提交信息，工作人员会尽快联系您。',
+      subscribeMiniProgramEnabled: value?.subscribeMiniProgramEnabled === true,
+      subscribeMiniProgramType: value?.subscribeMiniProgramType === 'CARD' ? 'CARD' : 'LINK',
+      subscribeMiniProgramAppId:
+        String(value?.subscribeMiniProgramAppId || this.config.get<string>('MINI_APP_ID') || '').trim(),
+      subscribeMiniProgramPagePath:
+        String(value?.subscribeMiniProgramPagePath || 'pages/home/home?source=oa_subscribe').trim(),
+      subscribeMiniProgramLinkText:
+        String(value?.subscribeMiniProgramLinkText || '点击进入种博士口腔小程序').trim(),
+      subscribeMiniProgramCardTitle:
+        String(value?.subscribeMiniProgramCardTitle || '种博士口腔预约挂号').trim(),
+      subscribeMiniProgramCoverUrl: String(value?.subscribeMiniProgramCoverUrl || '').trim(),
       messageReplyEnabled: value?.messageReplyEnabled ?? true,
       messageReply:
         value?.messageReply ||
