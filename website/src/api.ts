@@ -7,7 +7,10 @@ export interface Article { id: string; slug: string; title: string; author?: str
 export interface WebsiteSettings { brandName: string; eyebrow: string; heroTitle: string; heroDescription: string; appointmentUrl: string; appointmentText: string; phone: string; serviceHours: string; address: string; footerDescription: string; icpNumber: string; wechatName: string }
 export interface Bootstrap { settings: WebsiteSettings; pages: WebsitePage[]; banners: Array<{ id: string; imageUrl: string; title?: string }>; categories: Department[]; doctors: Doctor[]; articles: Article[]; clinics: Clinic[] }
 
+import { demoArticles, demoBootstrap, demoCategories, demoDoctors, demoPages } from './demo';
+
 const API_BASE = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true' || new URLSearchParams(window.location.search).get('demo') === '1';
 
 export async function api<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json' } });
@@ -22,11 +25,22 @@ export async function api<T>(path: string): Promise<T> {
 }
 
 export const websiteApi = {
-  bootstrap: () => api<Bootstrap>('/api/website/bootstrap'),
-  page: (slug: string) => api<WebsitePage>(`/api/website/pages/${encodeURIComponent(slug)}`),
-  doctors: () => api<Doctor[]>('/api/enterprise/doctors'),
-  doctor: (id: string) => api<Doctor>(`/api/enterprise/doctors/${encodeURIComponent(id)}`),
-  categories: () => api<Department[]>('/api/enterprise/categories'),
-  articles: (page = 1, keyword = '') => api<{ total: number; page: number; pageSize: number; list: Article[] }>(`/api/website/articles?page=${page}&pageSize=12&keyword=${encodeURIComponent(keyword)}`),
-  article: (slug: string) => api<Article>(`/api/website/articles/${encodeURIComponent(slug)}`)
+  bootstrap: () => DEMO_MODE ? Promise.resolve(demoBootstrap) : api<Bootstrap>('/api/website/bootstrap'),
+  page: (slug: string) => DEMO_MODE ? demoFind(demoPages, slug, '页面') : api<WebsitePage>(`/api/website/pages/${encodeURIComponent(slug)}`),
+  doctors: () => DEMO_MODE ? Promise.resolve(demoDoctors) : api<Doctor[]>('/api/enterprise/doctors'),
+  doctor: (id: string) => DEMO_MODE ? demoFind(demoDoctors, id, '医生', 'id') : api<Doctor>(`/api/enterprise/doctors/${encodeURIComponent(id)}`),
+  categories: () => DEMO_MODE ? Promise.resolve(demoCategories) : api<Department[]>('/api/enterprise/categories'),
+  articles: (page = 1, keyword = '') => DEMO_MODE ? Promise.resolve(demoArticleList(page, keyword)) : api<{ total: number; page: number; pageSize: number; list: Article[] }>(`/api/website/articles?page=${page}&pageSize=12&keyword=${encodeURIComponent(keyword)}`),
+  article: (slug: string) => DEMO_MODE ? demoFind(demoArticles, slug, '文章') : api<Article>(`/api/website/articles/${encodeURIComponent(slug)}`)
 };
+
+function demoFind<T extends { slug?: string; id: string }>(items: T[], value: string, label: string, field: 'slug' | 'id' = 'slug') {
+  const item = items.find((row) => row[field] === value);
+  return item ? Promise.resolve(item) : Promise.reject(new Error(`演示${label}不存在`));
+}
+
+function demoArticleList(page: number, keyword: string) {
+  const normalized = keyword.trim().toLowerCase();
+  const list = normalized ? demoArticles.filter((item) => `${item.title}${item.digest || ''}`.toLowerCase().includes(normalized)) : demoArticles;
+  return { total: list.length, page, pageSize: 12, list };
+}

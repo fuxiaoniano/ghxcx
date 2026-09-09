@@ -37,7 +37,7 @@
 
   <section v-if="data?.doctors.length" class="section">
     <div class="container"><div class="section-heading"><div><p class="eyebrow">MEDICAL TEAM</p><h2>专业医生团队</h2></div><RouterLink to="/doctors" class="text-link">查看全部医生 →</RouterLink></div><div class="doctor-grid">
-      <RouterLink v-for="doctor in data.doctors.slice(0,4)" :key="doctor.id" :to="`/doctors/${doctor.id}`" class="doctor-card"><div class="doctor-photo"><img :src="doctor.avatar" :alt="`${doctor.name}${doctor.title}`" loading="lazy" /></div><div class="doctor-info"><p>{{doctor.departments?.map(d=>d.name).join(' · ') || doctor.department?.name}}</p><h3>{{doctor.name}} <small>{{doctor.title}}</small></h3><span>{{doctor.displayText || doctor.specialty}}</span><b>查看医生详情 →</b></div></RouterLink>
+      <RouterLink v-for="doctor in data.doctors.slice(0,4)" :key="doctor.id" :to="`/doctors/${doctor.id}`" class="doctor-card"><div class="doctor-photo"><img v-if="doctor.avatar" :src="doctor.avatar" :alt="`${doctor.name}${doctor.title}`" loading="lazy" /><span v-else class="doctor-initial">{{doctor.name.slice(0,1)}}</span></div><div class="doctor-info"><p>{{doctor.departments?.map(d=>d.name).join(' · ') || doctor.department?.name}}</p><h3>{{doctor.name}} <small>{{doctor.title}}</small></h3><span>{{doctor.displayText || doctor.specialty}}</span><b>查看医生详情 →</b></div></RouterLink>
     </div></div>
   </section>
 
