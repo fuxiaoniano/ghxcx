@@ -178,6 +178,28 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  website:
+    dependencies:
+      vue:
+        specifier: ^3.5.13
+        version: 3.5.39(typescript@5.9.3)
+      vue-router:
+        specifier: ^4.5.0
+        version: 4.6.4(vue@3.5.39(typescript@5.9.3))
+    devDependencies:
+      '@vitejs/plugin-vue':
+        specifier: ^5.2.4
+        version: 5.2.4(vite@5.4.21(@types/node@22.20.0)(terser@5.48.0))(vue@3.5.39(typescript@5.9.3))
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.11
+        version: 5.4.21(@types/node@22.20.0)(terser@5.48.0)
+      vue-tsc:
+        specifier: ^2.2.0
+        version: 2.2.12(typescript@5.9.3)
+
 packages:
 
   '@angular-devkit/core@17.3.11':

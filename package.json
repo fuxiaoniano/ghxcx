@@ -9,11 +9,15 @@
     "server:typecheck": "npm --prefix server run typecheck",
     "admin:dev": "npm --prefix admin run dev",
     "admin:build": "npm --prefix admin run build",
-    "admin:typecheck": "npm --prefix admin run typecheck"
+    "admin:typecheck": "npm --prefix admin run typecheck",
+    "website:dev": "npm --prefix website run dev",
+    "website:build": "npm --prefix website run build",
+    "website:typecheck": "npm --prefix website run typecheck"
   },
   "workspaces": [
     "server",
     "admin",
-    "miniprogram"
+    "miniprogram",
+    "website"
   ]
 }

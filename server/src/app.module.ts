@@ -17,6 +17,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PublicPageController } from './public-page.controller';
 import { EnterpriseModule } from './modules/enterprise/enterprise.module';
+import { WebsiteModule } from './modules/website/website.module';
 
 @Module({
   imports: [
@@ -34,7 +35,8 @@ import { EnterpriseModule } from './modules/enterprise/enterprise.module';
     AppointmentsModule,
     AuditLogsModule,
     AdminModule,
-    EnterpriseModule
+    EnterpriseModule,
+    WebsiteModule
   ],
   controllers: [PublicPageController],
   providers: [

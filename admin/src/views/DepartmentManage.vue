@@ -1,5 +1,5 @@
 <template>
-  <div class="page-heading"><div><h1 class="page-title">科室与项目</h1><p>科室名称和图标会同步显示在小程序首页及预约页面</p></div></div>
+  <div class="page-heading"><div><h1 class="page-title">科室与项目</h1><p>科室、项目统一维护，保存后分别同步给小程序与官网前端展示</p></div></div>
   <el-tabs v-model="tab" class="content-panel">
     <el-tab-pane label="科室" name="categories">
       <div class="toolbar"><el-button type="primary" @click="editCategory()">新增科室</el-button></div>

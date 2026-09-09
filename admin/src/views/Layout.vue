@@ -14,6 +14,7 @@
           <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
           <el-sub-menu index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item index="/appointments">挂号管理</el-menu-item><el-menu-item index="/users">用户管理</el-menu-item><el-menu-item index="/notifications">通知记录</el-menu-item></el-sub-menu>
           <el-sub-menu index="content"><template #title><el-icon><Menu /></el-icon><span>小程序内容</span></template><el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('HOME_MANAGE') || canAccess('DOCTOR_MANAGE') || canAccess('PACKAGE_MANAGE')" index="/media-library">图片库</el-menu-item><el-menu-item index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('WEBSITE_MANAGE')" index="website"><template #title><el-icon><Monitor /></el-icon><span>官网内容</span></template><el-menu-item index="/website-manage">官网与文章</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">官网科室项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">官网医生团队</el-menu-item></el-sub-menu>
           <el-sub-menu index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item index="/official-menu">公众号菜单</el-menu-item><el-menu-item index="/official-auto-reply">自动回复</el-menu-item><el-menu-item index="/admin-users">成员与预约通知</el-menu-item></el-sub-menu>
           <el-sub-menu index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item index="/configs">系统配置</el-menu-item><el-menu-item index="/followup-forward">回访接口</el-menu-item><el-menu-item index="/audit-logs">审计日志</el-menu-item></el-sub-menu>
         </el-menu>
@@ -78,6 +79,7 @@ import {
   Expand,
   Fold,
   Menu,
+  Monitor,
   Setting,
   SwitchButton,
   Tickets,
@@ -102,6 +104,7 @@ const pageTitles: Record<string, string> = {
   '/package-manage': '套餐管理',
   '/media-library': '图片库',
   '/mini-program-links': '页面跳转链接',
+  '/website-manage': '官网内容管理',
   '/configs': '系统配置',
   '/official-menu': '公众号菜单',
   '/official-auto-reply': '自动回复',

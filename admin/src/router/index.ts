@@ -18,6 +18,7 @@ import DepartmentManage from '../views/DepartmentManage.vue';
 import PackageManage from '../views/PackageManage.vue';
 import MediaLibrary from '../views/MediaLibrary.vue';
 import MiniProgramLinks from '../views/MiniProgramLinks.vue';
+import WebsiteManage from '../views/WebsiteManage.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -38,6 +39,7 @@ export const router = createRouter({
         { path: 'package-manage', component: PackageManage, meta: { permission: 'PACKAGE_MANAGE' } },
         { path: 'media-library', component: MediaLibrary },
         { path: 'mini-program-links', component: MiniProgramLinks },
+        { path: 'website-manage', component: WebsiteManage, meta: { permission: 'WEBSITE_MANAGE' } },
         { path: 'configs', component: Configs },
         { path: 'official-menu', component: OfficialMenu },
         { path: 'official-auto-reply', component: OfficialAutoReply },

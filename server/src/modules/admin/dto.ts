@@ -22,6 +22,7 @@ export const ADMIN_PERMISSIONS = [
   'MANAGE_ADMINS',
   // 企业官网升级权限继续复用原管理员 permissionsJson 字段。
   'HOME_MANAGE',
+  'WEBSITE_MANAGE',
   'DOCTOR_MANAGE',
   'PACKAGE_MANAGE',
   'APPOINTMENT_MANAGE'

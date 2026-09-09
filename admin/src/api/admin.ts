@@ -581,3 +581,30 @@ export const createPackageAdmin = (data: Partial<PackageItem>) => http.post<unkn
 export const updatePackageAdmin = (id: string, data: Partial<PackageItem>) => http.patch<unknown, PackageItem>(`${enterpriseAdminBase}/packages/${id}`, data);
 export const deletePackageAdmin = (id: string) => http.delete(`${enterpriseAdminBase}/packages/${id}`);
 export const replacePackageImages = (id: string, images: Array<{ id?: string; imageUrl: string; sort: number }>) => http.patch<unknown, Array<{ id: string; imageUrl: string; sort: number }>>(`${enterpriseAdminBase}/packages/${id}/images`, { images });
+
+export interface WebsiteSettings {
+  brandName: string; eyebrow: string; heroTitle: string; heroDescription: string;
+  appointmentUrl: string; appointmentText: string; phone: string; serviceHours: string;
+  address: string; footerDescription: string; icpNumber: string; wechatName: string;
+}
+export interface WebsitePageItem {
+  id: string; slug: string; title: string; menuTitle: string; summary?: string; coverUrl?: string;
+  contentHtml: string; seoTitle?: string; seoDescription?: string; showInNav: boolean; sort: number;
+  status: 'ACTIVE' | 'DISABLED'; publishedAt?: string; updatedAt: string;
+}
+export interface WebsiteArticleItem {
+  id: string; slug: string; title: string; author?: string; digest?: string; coverUrl?: string;
+  status: 'ACTIVE' | 'DISABLED'; publishedAt?: string; lastSyncedAt: string;
+}
+export interface WebsiteArticleSyncResult { source: string; total: number; created: number; updated: number; unchanged: number; startedAt: string; finishedAt: string }
+const websiteAdminBase = '/api/admin/website';
+export const getWebsiteSettings = () => http.get<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`);
+export const updateWebsiteSettings = (settings: WebsiteSettings) => http.patch<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`, { settings });
+export const getWebsitePages = () => http.get<unknown, WebsitePageItem[]>(`${websiteAdminBase}/pages`);
+export const createWebsitePage = (data: Omit<WebsitePageItem, 'id' | 'updatedAt'>) => http.post<unknown, WebsitePageItem>(`${websiteAdminBase}/pages`, data);
+export const updateWebsitePage = (id: string, data: Partial<WebsitePageItem>) => http.patch<unknown, WebsitePageItem>(`${websiteAdminBase}/pages/${id}`, data);
+export const deleteWebsitePage = (id: string) => http.delete(`${websiteAdminBase}/pages/${id}`);
+export const getWebsiteArticles = () => http.get<unknown, { total: number; list: WebsiteArticleItem[] }>(`${websiteAdminBase}/articles`, { params: { page: 1, pageSize: 50 } });
+export const updateWebsiteArticle = (id: string, status: 'ACTIVE' | 'DISABLED') => http.patch<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`, { status });
+export const syncWebsiteArticles = () => http.post<unknown, WebsiteArticleSyncResult>(`${websiteAdminBase}/articles/sync`);
+export const getWebsiteArticleSyncStatus = () => http.get<unknown, WebsiteArticleSyncResult | null>(`${websiteAdminBase}/articles-sync/status`);

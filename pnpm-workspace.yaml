@@ -2,6 +2,7 @@ packages:
   - server
   - admin
   - miniprogram
+  - website
 overrides:
   body-parser: 1.20.6
   js-yaml: 4.3.1
