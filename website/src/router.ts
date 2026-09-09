@@ -8,7 +8,7 @@ import ArticleDetailView from './views/ArticleDetailView.vue';
 import ContentPageView from './views/ContentPageView.vue';
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   scrollBehavior: (_to, _from, saved) => saved || { top: 0 },
   routes: [
     { path: '/', component: HomeView, meta: { title: '重庆种博士口腔｜专业口腔医疗服务' } },
