@@ -184,7 +184,11 @@ export class WebsiteService implements OnModuleInit, OnModuleDestroy {
           create: normalized,
           update: { ...normalized, status: existing?.status || ContentStatus.ACTIVE }
         });
-        existing ? updated += 1 : created += 1;
+        if (existing) {
+          updated += 1;
+        } else {
+          created += 1;
+        }
       }
       const result = { source, total: records.length, created, updated, unchanged, startedAt, finishedAt: new Date() };
       await this.prisma.systemConfig.upsert({ where: { key: 'websiteWechatSyncStatus' }, create: { key: 'websiteWechatSyncStatus', valueJson: result as unknown as Prisma.InputJsonValue, description: '官网微信公众号文章同步状态' }, update: { valueJson: result as unknown as Prisma.InputJsonValue } });
