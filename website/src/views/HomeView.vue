@@ -1,4 +1,6 @@
 <template>
+  <div v-if="!data" class="page-loading container" aria-live="polite"><span></span><span></span><span></span><p>正在加载专业服务内容…</p></div>
+  <template v-else>
   <section class="hero-section">
     <div class="hero-glow"></div>
     <div class="container hero-grid">
@@ -21,8 +23,8 @@
     <div class="container">
       <div class="section-heading"><div><p class="eyebrow">CLINICAL SERVICES</p><h2>一站式口腔诊疗服务</h2></div><RouterLink to="/services" class="text-link">查看全部科室 →</RouterLink></div>
       <div class="service-grid">
-        <RouterLink v-for="(item,index) in data?.categories.slice(0,8)" :key="item.id" :to="`/services#category-${item.id}`" class="service-card">
-          <span class="service-number">{{String(index+1).padStart(2,'0')}}</span><h3>{{item.name}}</h3><p>{{item.projects.slice(0,3).map(p=>p.name).join(' · ') || '专业评估与个性化诊疗方案'}}</p><span class="card-link">了解科室</span>
+        <RouterLink v-for="(item,index) in data.categories.slice(0,8)" :key="item.id" :to="`/services#category-${item.id}`" class="service-card service-card-simple">
+          <span class="service-number">{{String(index+1).padStart(2,'0')}}</span><img v-if="item.icon" :src="item.icon" :alt="item.name" loading="lazy" /><h3>{{item.name}}</h3><span class="card-link">查看科室</span>
         </RouterLink>
       </div>
     </div>
@@ -42,12 +44,13 @@
   </section>
 
   <section v-if="data?.articles.length" class="section article-preview">
-    <div class="container"><div class="section-heading"><div><p class="eyebrow">ORAL HEALTH GUIDE</p><h2>口腔健康科普</h2></div><RouterLink to="/articles" class="text-link">更多科普内容 →</RouterLink></div><div class="article-grid">
+    <div class="container"><div class="section-heading"><div><p class="eyebrow">ORAL HEALTH NEWS</p><h2>口腔资讯</h2></div><RouterLink to="/articles" class="text-link">更多资讯内容 →</RouterLink></div><div class="article-grid">
       <RouterLink v-for="article in data.articles.slice(0,3)" :key="article.id" :to="`/articles/${article.slug}`" class="article-card"><div class="article-cover"><img v-if="article.coverUrl" :src="article.coverUrl" :alt="article.title" loading="lazy" /><span v-else>ORAL<br>HEALTH</span></div><div class="article-body"><time>{{formatDate(article.publishedAt)}}</time><h3>{{article.title}}</h3><p>{{article.digest || '了解专业、实用的口腔健康知识。'}}</p></div></RouterLink>
     </div></div>
   </section>
 
   <section class="cta-section"><div class="container cta-inner"><div><p class="eyebrow">APPOINTMENT</p><h2>让专业医生，更早了解您的需求</h2><p>在线提交预约信息，工作人员将与您联系确认就诊安排。</p></div><a class="button button-light" :href="data?.settings.appointmentUrl">立即在线预约</a></div></section>
+  </template>
 </template>
 
 <script setup lang="ts">

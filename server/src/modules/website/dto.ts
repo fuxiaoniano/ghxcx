@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContentStatus } from '@prisma/client';
 
@@ -25,8 +25,26 @@ export class UpdateWebsiteSettingsDto {
   @IsObject() settings!: Record<string, unknown>;
 }
 
+export class CreateWebsiteArticleDto {
+  @IsString() @IsNotEmpty() @MaxLength(255) title!: string;
+  @IsString() @IsOptional() @MaxLength(100) author?: string;
+  @IsString() @IsOptional() @MaxLength(2000) digest?: string;
+  @IsString() @IsOptional() @MaxLength(1000) coverUrl?: string;
+  @IsString() @IsNotEmpty() contentHtml!: string;
+  @IsString() @IsOptional() @MaxLength(1000) originalUrl?: string;
+  @IsDateString() @IsOptional() publishedAt?: string;
+  @IsIn(Object.values(ContentStatus)) @IsOptional() status?: ContentStatus;
+}
+
 export class UpdateWebsiteArticleDto {
-  @IsIn(Object.values(ContentStatus)) status!: ContentStatus;
+  @IsString() @IsNotEmpty() @MaxLength(255) @IsOptional() title?: string;
+  @IsString() @MaxLength(100) @IsOptional() author?: string;
+  @IsString() @MaxLength(2000) @IsOptional() digest?: string;
+  @IsString() @MaxLength(1000) @IsOptional() coverUrl?: string;
+  @IsString() @IsNotEmpty() @IsOptional() contentHtml?: string;
+  @IsString() @MaxLength(1000) @IsOptional() originalUrl?: string;
+  @IsDateString() @IsOptional() publishedAt?: string;
+  @IsIn(Object.values(ContentStatus)) @IsOptional() status?: ContentStatus;
 }
 
 export class WebsiteArticleQueryDto {

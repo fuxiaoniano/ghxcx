@@ -1,9 +1,9 @@
-export interface Department { id: string; name: string; icon?: string; projects: Project[] }
+export interface Department { id: string; name: string; icon?: string; projects?: Project[] }
 export interface Project { id: string; categoryId: string; name: string; description?: string }
 export interface Clinic { id: string; name: string; address?: string; phone?: string }
 export interface Doctor { id: string; name: string; avatar: string; title: string; displayText?: string; specialty: string; description: string; images?: string[]; recommend: boolean; department?: Department; departments?: Department[]; clinic?: Clinic; schedules?: Array<{ id: string; date: string; timeSlot: string; capacity: number; bookedCount: number; status: string }> }
 export interface WebsitePage { id: string; slug: string; title: string; menuTitle: string; summary?: string; coverUrl?: string; contentHtml?: string; seoTitle?: string; seoDescription?: string; showInNav: boolean }
-export interface Article { id: string; slug: string; title: string; author?: string; digest?: string; coverUrl?: string; contentHtml?: string; sourceUrl?: string; originalUrl?: string; publishedAt?: string }
+export interface Article { id: string; slug: string; title: string; author?: string; digest?: string; coverUrl?: string; contentHtml?: string; sourceUrl?: string; originalUrl?: string; publishedAt?: string; sourceType?: 'MANUAL' | 'WECHAT' }
 export interface WebsiteSettings { brandName: string; eyebrow: string; heroTitle: string; heroDescription: string; appointmentUrl: string; appointmentText: string; phone: string; serviceHours: string; address: string; footerDescription: string; icpNumber: string; wechatName: string }
 export interface Bootstrap { settings: WebsiteSettings; pages: WebsitePage[]; banners: Array<{ id: string; imageUrl: string; title?: string }>; categories: Department[]; doctors: Doctor[]; articles: Article[]; clinics: Clinic[] }
 

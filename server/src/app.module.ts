@@ -18,6 +18,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PublicPageController } from './public-page.controller';
 import { EnterpriseModule } from './modules/enterprise/enterprise.module';
 import { WebsiteModule } from './modules/website/website.module';
+import { TencentAdsLeadsModule } from './modules/tencent-ads-leads/tencent-ads-leads.module';
 
 @Module({
   imports: [
@@ -36,7 +37,8 @@ import { WebsiteModule } from './modules/website/website.module';
     AuditLogsModule,
     AdminModule,
     EnterpriseModule,
-    WebsiteModule
+    WebsiteModule,
+    TencentAdsLeadsModule
   ],
   controllers: [PublicPageController],
   providers: [

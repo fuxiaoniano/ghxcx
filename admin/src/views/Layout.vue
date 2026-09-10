@@ -11,6 +11,7 @@
 
       <nav class="navigation" aria-label="后台主导航">
         <el-menu router :default-active="$route.path" :collapse="sidebarCollapsed">
+          <el-menu-item index="/tencent-ad-leads"><el-icon><Promotion /></el-icon><template #title>腾讯广告线索</template></el-menu-item>
           <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
           <el-sub-menu index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item index="/appointments">挂号管理</el-menu-item><el-menu-item index="/users">用户管理</el-menu-item><el-menu-item index="/notifications">通知记录</el-menu-item></el-sub-menu>
           <el-sub-menu index="content"><template #title><el-icon><Menu /></el-icon><span>小程序内容</span></template><el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('HOME_MANAGE') || canAccess('DOCTOR_MANAGE') || canAccess('PACKAGE_MANAGE')" index="/media-library">图片库</el-menu-item><el-menu-item index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
@@ -80,6 +81,7 @@ import {
   Fold,
   Menu,
   Monitor,
+  Promotion,
   Setting,
   SwitchButton,
   Tickets,
@@ -94,6 +96,7 @@ const sidebarCollapsed = ref(false);
 const canAccess = (permission: string) => auth.hasPermission(permission);
 
 const pageTitles: Record<string, string> = {
+  '/tencent-ad-leads': '腾讯广告线索',
   '/dashboard': '仪表盘',
   '/appointments': '挂号管理',
   '/users': '用户管理',

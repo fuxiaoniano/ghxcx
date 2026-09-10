@@ -80,6 +80,15 @@ enum DoctorScheduleStatus {
   DISABLED
 }
 
+enum TencentAdLeadStatus {
+  NEW
+  CONTACTED
+  POTENTIAL
+  HIGH_INTENT
+  CONVERTED
+  INVALID
+}
+
 model User {
   id             String            @id @default(cuid()) @db.VarChar(32)
   name           String?           @db.VarChar(64)
@@ -179,6 +188,69 @@ model Appointment {
   @@index([appointmentDate])
   @@index([createdAt])
   @@map("appointments")
+}
+
+model TencentAdLead {
+  id                String              @id @default(cuid()) @db.VarChar(32)
+  leadsId           String              @unique @db.VarChar(64)
+  clickId           String?             @db.VarChar(191)
+  accountId         String?             @db.VarChar(64)
+  accountType       String?             @db.VarChar(64)
+  advertiserId      String?             @db.VarChar(64)
+  campaignId        String?             @db.VarChar(64)
+  campaignName      String?             @db.VarChar(255)
+  adgroupId         String?             @db.VarChar(64)
+  adgroupName       String?             @db.VarChar(255)
+  adId              String?             @db.VarChar(64)
+  adName            String?             @db.VarChar(255)
+  adcreativeId      String?             @db.VarChar(64)
+  adcreativeName    String?             @db.VarChar(255)
+  pageId            String?             @db.VarChar(64)
+  pageName          String?             @db.VarChar(255)
+  pageUrl           String?             @db.VarChar(1000)
+  componentId       String?             @db.VarChar(64)
+  componentName     String?             @db.VarChar(255)
+  leadsType         String?             @db.VarChar(80)
+  leadsSubType      String?             @db.VarChar(100)
+  leadsSource       String?             @db.VarChar(80)
+  leadsSubSource    String?             @db.VarChar(100)
+  leadsFollowTag    String?             @db.VarChar(100)
+  leadsTouchTag     String?             @db.VarChar(100)
+  leadsTags         String?             @db.Text
+  potentialScore    String?             @db.VarChar(32)
+  name              String?             @db.VarChar(64)
+  phoneEncrypted    String?             @db.Text
+  phoneHash         String?             @db.VarChar(128)
+  phoneMasked       String?             @db.VarChar(32)
+  telLocation       String?             @db.VarChar(120)
+  area              String?             @db.VarChar(255)
+  email             String?             @db.VarChar(255)
+  qq                String?             @db.VarChar(64)
+  wechat            String?             @db.VarChar(128)
+  gender            String?             @db.VarChar(32)
+  age               String?             @db.VarChar(32)
+  profession        String?             @db.VarChar(120)
+  address           String?             @db.VarChar(500)
+  shopName          String?             @db.VarChar(255)
+  shopAddress       String?             @db.VarChar(500)
+  chatId            String?             @db.VarChar(128)
+  chatRecordUrl     String?             @db.VarChar(1000)
+  leadCreatedAt     DateTime?
+  leadActionAt      DateTime?
+  status            TencentAdLeadStatus @default(NEW)
+  ineffectiveReason String?             @db.VarChar(100)
+  adminRemark       String?             @db.Text
+  rawPayload        Json
+  receivedAt        DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([phoneHash])
+  @@index([status])
+  @@index([advertiserId])
+  @@index([campaignId])
+  @@index([leadActionAt])
+  @@index([receivedAt])
+  @@map("tencent_ad_leads")
 }
 
 model NotificationLog {

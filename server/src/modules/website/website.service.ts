@@ -1,25 +1,13 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import { ContentStatus, Prisma } from '@prisma/client';
-import axios from 'axios';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
-import { WechatOfficialAccountService } from '../wechat-official-account/wechat-official-account.service';
-import { CreateWebsitePageDto, WebsiteArticleQueryDto } from './dto';
+import { CreateWebsiteArticleDto, CreateWebsitePageDto, UpdateWebsiteArticleDto, WebsiteArticleQueryDto } from './dto';
 import { normalizeWechatText, sanitizeWechatArticleHtml } from './wechat-article-sanitizer';
 
 type AuditContext = { adminUserId: string; ip?: string; userAgent?: string };
-type WechatNewsItem = Record<string, unknown> & {
-  title?: string;
-  author?: string;
-  digest?: string;
-  content?: string;
-  content_source_url?: string;
-  url?: string;
-  thumb_url?: string;
-};
 
 const DEFAULT_SETTINGS = {
   brandName: '重庆种博士口腔',
@@ -37,43 +25,27 @@ const DEFAULT_SETTINGS = {
 };
 
 @Injectable()
-export class WebsiteService implements OnModuleInit, OnModuleDestroy {
-  private syncTimer?: NodeJS.Timeout;
-  private startupSyncTimer?: NodeJS.Timeout;
-  private syncing = false;
-
+export class WebsiteService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
-    private readonly officialAccount: WechatOfficialAccountService,
     private readonly auditLogs: AuditLogsService
   ) {}
-
-  onModuleInit() {
-    if (this.config.get<string>('NODE_ENV') === 'test' || this.config.get<string>('WECHAT_ARTICLE_SYNC_ENABLED') === 'false') return;
-    const minutes = Math.max(5, Number(this.config.get<string>('WECHAT_ARTICLE_SYNC_INTERVAL_MINUTES') || 30));
-    this.startupSyncTimer = setTimeout(() => void this.syncArticles().catch((error) => {
-      console.warn('[website] 微信文章启动同步失败:', error instanceof Error ? error.message : '未知错误');
-    }), 15000);
-    this.startupSyncTimer.unref();
-    this.syncTimer = setInterval(() => void this.syncArticles().catch((error) => {
-      console.warn('[website] 微信文章自动同步失败:', error instanceof Error ? error.message : '未知错误');
-    }), minutes * 60 * 1000);
-    this.syncTimer.unref();
-  }
-
-  onModuleDestroy() {
-    if (this.startupSyncTimer) clearTimeout(this.startupSyncTimer);
-    if (this.syncTimer) clearInterval(this.syncTimer);
-  }
 
   async bootstrap() {
     const [settings, pages, banners, categories, doctors, articles, clinics] = await Promise.all([
       this.settings(),
       this.prisma.websitePage.findMany({ where: { status: ContentStatus.ACTIVE }, orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }], select: { id: true, slug: true, title: true, menuTitle: true, summary: true, coverUrl: true, showInNav: true } }),
       this.prisma.homeBanner.findMany({ where: { status: ContentStatus.ACTIVE }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }], take: 5 }),
-      this.prisma.dentalCategory.findMany({ where: { status: ContentStatus.ACTIVE }, include: { projects: { where: { status: ContentStatus.ACTIVE }, orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] } }, orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }),
-      this.prisma.doctor.findMany({ where: { status: ContentStatus.ACTIVE, recommend: true }, include: { department: true, departments: { include: { department: true } }, clinic: true }, orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }], take: 8 }),
+      this.prisma.dentalCategory.findMany({ where: { status: ContentStatus.ACTIVE }, select: { id: true, name: true, icon: true }, orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }),
+      this.prisma.doctor.findMany({
+        where: { status: ContentStatus.ACTIVE, recommend: true },
+        select: {
+          id: true, name: true, avatar: true, title: true, displayText: true, specialty: true, recommend: true,
+          department: { select: { id: true, name: true, icon: true } },
+          departments: { select: { department: { select: { id: true, name: true, icon: true } } } }
+        },
+        orderBy: [{ sort: 'asc' }, { createdAt: 'desc' }], take: 8
+      }),
       this.prisma.wechatArticle.findMany({ where: { status: ContentStatus.ACTIVE }, orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }], take: 6, select: { id: true, slug: true, title: true, author: true, digest: true, coverUrl: true, publishedAt: true } }),
       this.prisma.clinic.findMany({ where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } })
     ]);
@@ -133,123 +105,86 @@ export class WebsiteService implements OnModuleInit, OnModuleDestroy {
       ...(admin ? {} : { status: ContentStatus.ACTIVE }),
       ...(keyword ? { OR: [{ title: { contains: keyword } }, { digest: { contains: keyword } }, { author: { contains: keyword } }] } : {})
     };
-    const [total, list] = await Promise.all([
+    const [total, rows] = await Promise.all([
       this.prisma.wechatArticle.count({ where }),
-      this.prisma.wechatArticle.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }], ...(admin ? {} : { select: { id: true, slug: true, title: true, author: true, digest: true, coverUrl: true, publishedAt: true } }) })
+      this.prisma.wechatArticle.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }], select: admin
+        ? { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, status: true, publishedAt: true, lastSyncedAt: true, createdAt: true, updatedAt: true }
+        : { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, publishedAt: true } })
     ]);
+    const list = rows.map((row) => this.articleView(row));
     return { total, page, pageSize, list };
   }
 
   async article(slug: string) {
-    const article = await this.prisma.wechatArticle.findFirst({ where: { slug, status: ContentStatus.ACTIVE } });
+    const article = await this.prisma.wechatArticle.findFirst({
+      where: { slug, status: ContentStatus.ACTIVE },
+      select: { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, contentHtml: true, sourceUrl: true, originalUrl: true, publishedAt: true }
+    });
     if (!article) throw new BusinessException(404502, '文章不存在或尚未发布');
-    return article;
+    return this.articleView(article);
   }
 
-  async updateArticleStatus(id: string, status: ContentStatus, audit: AuditContext) {
+  async adminArticle(id: string) {
+    const article = await this.prisma.wechatArticle.findUnique({
+      where: { id },
+      select: { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, contentHtml: true, originalUrl: true, status: true, publishedAt: true, lastSyncedAt: true }
+    });
+    if (!article) throw new BusinessException(404502, '文章不存在');
+    return this.articleView(article);
+  }
+
+  async createArticle(dto: CreateWebsiteArticleDto, audit: AuditContext) {
+    const sourceId = `manual:${randomUUID()}`;
+    const status = dto.status || ContentStatus.ACTIVE;
+    const contentHtml = sanitizeWechatArticleHtml(dto.contentHtml);
+    if (!contentHtml.trim()) throw new BusinessException(400505, '资讯正文不能为空');
+    const article = await this.prisma.wechatArticle.create({
+      data: {
+        wechatArticleId: sourceId,
+        slug: `news-${Date.now()}-${createHash('sha1').update(sourceId).digest('hex').slice(0, 8)}`,
+        title: normalizeWechatText(dto.title, 255),
+        author: normalizeWechatText(dto.author, 100) || null,
+        digest: normalizeWechatText(dto.digest, 2000) || null,
+        coverUrl: normalizeWechatText(dto.coverUrl, 1000) || null,
+        contentHtml,
+        originalUrl: normalizeWechatText(dto.originalUrl, 1000) || null,
+        syncHash: createHash('sha256').update(sourceId).digest('hex'),
+        status,
+        publishedAt: dto.publishedAt ? new Date(dto.publishedAt) : (status === ContentStatus.ACTIVE ? new Date() : null)
+      }
+    });
+    await this.audit('CREATE_WEBSITE_ARTICLE', 'wechat_articles', article.id, undefined, article, audit);
+    return this.articleView(article);
+  }
+
+  async updateArticle(id: string, dto: UpdateWebsiteArticleDto, audit: AuditContext) {
     const before = await this.prisma.wechatArticle.findUnique({ where: { id } });
     if (!before) throw new BusinessException(404502, '文章不存在');
-    const article = await this.prisma.wechatArticle.update({ where: { id }, data: { status } });
+    const contentHtml = dto.contentHtml === undefined ? undefined : sanitizeWechatArticleHtml(dto.contentHtml);
+    if (contentHtml !== undefined && !contentHtml.trim()) throw new BusinessException(400505, '资讯正文不能为空');
+    const article = await this.prisma.wechatArticle.update({
+      where: { id },
+      data: {
+        ...(dto.title !== undefined ? { title: normalizeWechatText(dto.title, 255) } : {}),
+        ...(dto.author !== undefined ? { author: normalizeWechatText(dto.author, 100) || null } : {}),
+        ...(dto.digest !== undefined ? { digest: normalizeWechatText(dto.digest, 2000) || null } : {}),
+        ...(dto.coverUrl !== undefined ? { coverUrl: normalizeWechatText(dto.coverUrl, 1000) || null } : {}),
+        ...(contentHtml !== undefined ? { contentHtml } : {}),
+        ...(dto.originalUrl !== undefined ? { originalUrl: normalizeWechatText(dto.originalUrl, 1000) || null } : {}),
+        ...(dto.publishedAt !== undefined ? { publishedAt: new Date(dto.publishedAt) } : {}),
+        ...(dto.status !== undefined ? { status: dto.status, publishedAt: dto.status === ContentStatus.ACTIVE && !before.publishedAt ? new Date() : undefined } : {})
+      }
+    });
     await this.audit('UPDATE_WEBSITE_ARTICLE', 'wechat_articles', id, before, article, audit);
-    return article;
+    return this.articleView(article);
   }
 
-  async syncArticles(audit?: AuditContext) {
-    if (this.syncing) throw new BusinessException(409501, '公众号文章正在同步，请稍后再试');
-    this.syncing = true;
-    const startedAt = new Date();
-    try {
-      const accessToken = await this.officialAccount.getAccessToken();
-      let source: 'published' | 'material' = 'published';
-      let records: Array<{ mediaId: string; index: number; updatedAt?: number; article: WechatNewsItem }>;
-      try {
-        records = await this.fetchWechatNews(accessToken, 'https://api.weixin.qq.com/cgi-bin/freepublish/batchget');
-      } catch {
-        source = 'material';
-        records = await this.fetchWechatNews(accessToken, 'https://api.weixin.qq.com/cgi-bin/material/batchget_material');
-      }
-      let created = 0;
-      let updated = 0;
-      let unchanged = 0;
-      for (const record of records) {
-        const normalized = this.normalizeWechatArticle(record);
-        const existing = await this.prisma.wechatArticle.findUnique({ where: { wechatArticleId: normalized.wechatArticleId } });
-        if (existing?.syncHash === normalized.syncHash) {
-          await this.prisma.wechatArticle.update({ where: { id: existing.id }, data: { lastSyncedAt: new Date() } });
-          unchanged += 1;
-          continue;
-        }
-        await this.prisma.wechatArticle.upsert({
-          where: { wechatArticleId: normalized.wechatArticleId },
-          create: normalized,
-          update: { ...normalized, status: existing?.status || ContentStatus.ACTIVE }
-        });
-        if (existing) {
-          updated += 1;
-        } else {
-          created += 1;
-        }
-      }
-      const result = { source, total: records.length, created, updated, unchanged, startedAt, finishedAt: new Date() };
-      await this.prisma.systemConfig.upsert({ where: { key: 'websiteWechatSyncStatus' }, create: { key: 'websiteWechatSyncStatus', valueJson: result as unknown as Prisma.InputJsonValue, description: '官网微信公众号文章同步状态' }, update: { valueJson: result as unknown as Prisma.InputJsonValue } });
-      if (audit) await this.audit('SYNC_WECHAT_ARTICLES', 'wechat_articles', undefined, undefined, result, audit);
-      return result;
-    } finally {
-      this.syncing = false;
-    }
-  }
-
-  async syncStatus() {
-    const row = await this.prisma.systemConfig.findUnique({ where: { key: 'websiteWechatSyncStatus' } });
-    return row?.valueJson || null;
-  }
-
-  private async fetchWechatNews(accessToken: string, url: string) {
-    const result: Array<{ mediaId: string; index: number; updatedAt?: number; article: WechatNewsItem }> = [];
-    let offset = 0;
-    const count = 20;
-    for (let page = 0; page < 50; page += 1) {
-      const isMaterial = url.includes('material');
-      const response = await axios.post(url, isMaterial ? { type: 'news', offset, count } : { offset, count, no_content: 0 }, {
-        params: { access_token: accessToken }, responseType: 'arraybuffer', timeout: 15000
-      });
-      const text = new TextDecoder('utf-8').decode(response.data).replace(/^\uFEFF/, '');
-      if (text.includes('\uFFFD')) throw new BusinessException(502501, '微信文章返回内容不是有效 UTF-8，已停止同步以避免乱码');
-      const payload = JSON.parse(text) as Record<string, any>;
-      if (payload.errcode) throw new BusinessException(502502, `微信文章同步失败：${payload.errmsg || payload.errcode}`);
-      const items = Array.isArray(payload.item) ? payload.item : [];
-      for (const item of items) {
-        const newsItems = Array.isArray(item.content?.news_item) ? item.content.news_item : [];
-        newsItems.forEach((article: WechatNewsItem, index: number) => result.push({ mediaId: String(item.article_id || item.media_id || ''), index, updatedAt: Number(item.update_time || item.content?.update_time || 0), article }));
-      }
-      offset += items.length;
-      if (!items.length || offset >= Number(payload.total_count || 0)) break;
-    }
-    return result;
-  }
-
-  private normalizeWechatArticle(record: { mediaId: string; index: number; updatedAt?: number; article: WechatNewsItem }) {
-    const title = normalizeWechatText(record.article.title, 255) || '未命名文章';
-    const wechatArticleId = `${record.mediaId || createHash('sha1').update(String(record.article.url || title)).digest('hex')}:${record.index}`;
-    const contentHtml = sanitizeWechatArticleHtml(record.article.content);
-    const syncHash = createHash('sha256').update(JSON.stringify({ title, contentHtml, digest: record.article.digest, cover: record.article.thumb_url, updatedAt: record.updatedAt })).digest('hex');
-    return {
-      wechatArticleId,
-      mediaId: record.mediaId || null,
-      articleIndex: record.index,
-      slug: `wx-${createHash('sha1').update(wechatArticleId).digest('hex').slice(0, 24)}`,
-      title,
-      author: normalizeWechatText(record.article.author, 100) || null,
-      digest: normalizeWechatText(record.article.digest, 2000) || null,
-      coverUrl: normalizeWechatText(record.article.thumb_url, 1000) || null,
-      contentHtml,
-      sourceUrl: normalizeWechatText(record.article.content_source_url, 1000) || null,
-      originalUrl: normalizeWechatText(record.article.url, 1000) || null,
-      syncHash,
-      publishedAt: record.updatedAt ? new Date(record.updatedAt * 1000) : null,
-      wechatUpdatedAt: record.updatedAt ? new Date(record.updatedAt * 1000) : null,
-      lastSyncedAt: new Date()
-    };
+  async deleteArticle(id: string, audit: AuditContext) {
+    const before = await this.prisma.wechatArticle.findUnique({ where: { id } });
+    if (!before) throw new BusinessException(404502, '文章不存在');
+    await this.prisma.wechatArticle.delete({ where: { id } });
+    await this.audit('DELETE_WEBSITE_ARTICLE', 'wechat_articles', id, before, { deleted: true }, audit);
+    return { deleted: true };
   }
 
   private pageData(dto: CreateWebsitePageDto, creating: boolean) {
@@ -272,6 +207,11 @@ export class WebsiteService implements OnModuleInit, OnModuleDestroy {
   private doctorView(doctor: any) {
     const departments = doctor.departments?.map((item: any) => item.department) || [];
     return { ...doctor, departments: departments.length ? departments : [doctor.department].filter(Boolean) };
+  }
+
+  private articleView<T extends { wechatArticleId: string }>(article: T) {
+    const { wechatArticleId, ...publicFields } = article;
+    return { ...publicFields, sourceType: wechatArticleId.startsWith('manual:') ? 'MANUAL' : 'WECHAT' };
   }
 
   private audit(action: string, resourceType: string, resourceId: string | undefined, before: unknown, after: unknown, context: AuditContext) {

@@ -19,6 +19,7 @@ import PackageManage from '../views/PackageManage.vue';
 import MediaLibrary from '../views/MediaLibrary.vue';
 import MiniProgramLinks from '../views/MiniProgramLinks.vue';
 import WebsiteManage from '../views/WebsiteManage.vue';
+import TencentAdLeads from '../views/TencentAdLeads.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -32,6 +33,7 @@ export const router = createRouter({
         { path: 'dashboard', component: Dashboard },
         { path: 'users', component: Users },
         { path: 'appointments', component: Appointments },
+        { path: 'tencent-ad-leads', component: TencentAdLeads },
         { path: 'notifications', component: Notifications },
         { path: 'home-manage', component: HomeManage, meta: { permission: 'HOME_MANAGE' } },
         { path: 'doctor-manage', component: DoctorManage, meta: { permission: 'DOCTOR_MANAGE' } },

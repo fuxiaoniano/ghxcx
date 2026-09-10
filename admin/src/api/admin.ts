@@ -171,6 +171,65 @@ export interface FollowupForwardConfig {
   extraHeaders: Record<string, string>;
 }
 
+export interface TencentAdLeadItem {
+  id: string;
+  leadsId: string;
+  name?: string;
+  phoneMasked?: string;
+  area?: string;
+  campaignName?: string;
+  adName?: string;
+  leadsType?: string;
+  leadsSource?: string;
+  leadsSubType?: string;
+  leadsSubSource?: string;
+  leadsFollowTag?: string;
+  leadsTouchTag?: string;
+  leadsTags?: string;
+  potentialScore?: string;
+  status: 'NEW' | 'CONTACTED' | 'POTENTIAL' | 'HIGH_INTENT' | 'CONVERTED' | 'INVALID';
+  statusText: string;
+  ineffectiveReason?: string;
+  adminRemark?: string;
+  leadActionAt?: string;
+  leadCreatedAt?: string;
+  receivedAt: string;
+  accountId?: string;
+  advertiserId?: string;
+  campaignId?: string;
+  adgroupId?: string;
+  adgroupName?: string;
+  adId?: string;
+  adcreativeId?: string;
+  pageId?: string;
+  pageName?: string;
+  pageUrl?: string;
+  componentId?: string;
+  componentName?: string;
+  telLocation?: string;
+  email?: string;
+  qq?: string;
+  wechat?: string;
+  gender?: string;
+  age?: string;
+  profession?: string;
+  address?: string;
+  shopName?: string;
+  shopAddress?: string;
+  chatId?: string;
+  chatRecordUrl?: string;
+  rawPayload?: Record<string, unknown>;
+}
+
+export interface TencentAdsReceiverConfig {
+  enabled: boolean;
+  hasToken: boolean;
+  hasSecret: boolean;
+  signatureAlgorithm: string;
+  webhookPath: string;
+  webhookUrl: string;
+}
+
 export interface OfficialAutoReplyKeywordRule {
   id: string;
   keyword: string;
@@ -492,6 +551,31 @@ export function updateFollowupForwardConfig(data: Partial<FollowupForwardConfig>
   return http.patch<unknown, FollowupForwardConfig>('/api/admin/followup-forward', data);
 }
 
+const tencentAdsLeadsBase = '/api/admin/tencent-ads/leads';
+
+export function getTencentAdsReceiverConfig() {
+  return http.get<unknown, TencentAdsReceiverConfig>(`${tencentAdsLeadsBase}/receiver-config`);
+}
+
+export function getTencentAdLeads(params: Record<string, unknown>) {
+  return http.get<unknown, PageResult<TencentAdLeadItem>>(tencentAdsLeadsBase, { params });
+}
+
+export function getTencentAdLead(id: string) {
+  return http.get<unknown, TencentAdLeadItem>(`${tencentAdsLeadsBase}/${id}`);
+}
+
+export function revealTencentAdLeadPhone(id: string) {
+  return http.post<unknown, { phone: string }>(`${tencentAdsLeadsBase}/${id}/reveal-phone`);
+}
+
+export function updateTencentAdLead(
+  id: string,
+  data: Pick<TencentAdLeadItem, 'status'> & { ineffectiveReason?: string; adminRemark?: string }
+) {
+  return http.patch<unknown, TencentAdLeadItem>(`${tencentAdsLeadsBase}/${id}`, data);
+}
+
 export async function exportAppointments(params: Record<string, unknown>) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -594,9 +678,10 @@ export interface WebsitePageItem {
 }
 export interface WebsiteArticleItem {
   id: string; slug: string; title: string; author?: string; digest?: string; coverUrl?: string;
-  status: 'ACTIVE' | 'DISABLED'; publishedAt?: string; lastSyncedAt: string;
+  contentHtml?: string; originalUrl?: string; sourceType: 'MANUAL' | 'WECHAT';
+  status: 'ACTIVE' | 'DISABLED'; publishedAt?: string; lastSyncedAt?: string;
 }
-export interface WebsiteArticleSyncResult { source: string; total: number; created: number; updated: number; unchanged: number; startedAt: string; finishedAt: string }
+export type WebsiteArticlePayload = Pick<WebsiteArticleItem, 'title' | 'author' | 'digest' | 'coverUrl' | 'contentHtml' | 'originalUrl' | 'publishedAt' | 'status'>;
 const websiteAdminBase = '/api/admin/website';
 export const getWebsiteSettings = () => http.get<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`);
 export const updateWebsiteSettings = (settings: WebsiteSettings) => http.patch<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`, { settings });
@@ -605,6 +690,7 @@ export const createWebsitePage = (data: Omit<WebsitePageItem, 'id' | 'updatedAt'
 export const updateWebsitePage = (id: string, data: Partial<WebsitePageItem>) => http.patch<unknown, WebsitePageItem>(`${websiteAdminBase}/pages/${id}`, data);
 export const deleteWebsitePage = (id: string) => http.delete(`${websiteAdminBase}/pages/${id}`);
 export const getWebsiteArticles = () => http.get<unknown, { total: number; list: WebsiteArticleItem[] }>(`${websiteAdminBase}/articles`, { params: { page: 1, pageSize: 50 } });
-export const updateWebsiteArticle = (id: string, status: 'ACTIVE' | 'DISABLED') => http.patch<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`, { status });
-export const syncWebsiteArticles = () => http.post<unknown, WebsiteArticleSyncResult>(`${websiteAdminBase}/articles/sync`);
-export const getWebsiteArticleSyncStatus = () => http.get<unknown, WebsiteArticleSyncResult | null>(`${websiteAdminBase}/articles-sync/status`);
+export const getWebsiteArticle = (id: string) => http.get<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`);
+export const createWebsiteArticle = (data: WebsiteArticlePayload) => http.post<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles`, data);
+export const updateWebsiteArticle = (id: string, data: Partial<WebsiteArticlePayload>) => http.patch<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`, data);
+export const deleteWebsiteArticle = (id: string) => http.delete(`${websiteAdminBase}/articles/${id}`);

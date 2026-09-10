@@ -1,11 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from './views/HomeView.vue';
-import ServicesView from './views/ServicesView.vue';
-import DoctorsView from './views/DoctorsView.vue';
-import DoctorDetailView from './views/DoctorDetailView.vue';
-import ArticlesView from './views/ArticlesView.vue';
-import ArticleDetailView from './views/ArticleDetailView.vue';
-import ContentPageView from './views/ContentPageView.vue';
+
+const ServicesView = () => import('./views/ServicesView.vue');
+const DoctorsView = () => import('./views/DoctorsView.vue');
+const DoctorDetailView = () => import('./views/DoctorDetailView.vue');
+const ArticlesView = () => import('./views/ArticlesView.vue');
+const ArticleDetailView = () => import('./views/ArticleDetailView.vue');
+const ContentPageView = () => import('./views/ContentPageView.vue');
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,7 +16,7 @@ const router = createRouter({
     { path: '/services', component: ServicesView, meta: { title: '诊疗科室｜重庆种博士口腔' } },
     { path: '/doctors', component: DoctorsView, meta: { title: '医生团队｜重庆种博士口腔' } },
     { path: '/doctors/:id', component: DoctorDetailView },
-    { path: '/articles', component: ArticlesView, meta: { title: '口腔科普｜重庆种博士口腔' } },
+    { path: '/articles', component: ArticlesView, meta: { title: '口腔资讯｜重庆种博士口腔' } },
     { path: '/articles/:slug', component: ArticleDetailView },
     { path: '/page/:slug', component: ContentPageView }
   ]
