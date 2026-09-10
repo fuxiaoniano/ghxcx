@@ -46,7 +46,7 @@ const menuOpen=ref(false);
 const stored=localStorage.getItem('website-theme');
 const dark=ref(stored?stored==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches);
 const navPages=computed(()=>state.data?.pages.filter(page=>page.showInNav) || []);
-function applyTheme(){document.documentElement.dataset.theme=dark.value?'dark':'light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark.value?'#071b1a':'#076b65');}
+function applyTheme(){document.documentElement.dataset.theme=dark.value?'dark':'light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark.value?'#101722':'#ffffff');}
 function toggleTheme(){dark.value=!dark.value;localStorage.setItem('website-theme',dark.value?'dark':'light');applyTheme();}
 applyTheme();onMounted(loadSite);
 </script>
