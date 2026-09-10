@@ -10,12 +10,11 @@
       </div>
 
       <nav class="navigation" aria-label="后台主导航">
-        <el-menu router :default-active="$route.path" :collapse="sidebarCollapsed">
-          <el-menu-item index="/tencent-ad-leads"><el-icon><Promotion /></el-icon><template #title>腾讯广告线索</template></el-menu-item>
+        <el-menu router :default-active="$route.path" :collapse="sidebarCollapsed" :collapse-transition="false">
           <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
-          <el-sub-menu index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item index="/appointments">挂号管理</el-menu-item><el-menu-item index="/users">用户管理</el-menu-item><el-menu-item index="/notifications">通知记录</el-menu-item></el-sub-menu>
-          <el-sub-menu index="content"><template #title><el-icon><Menu /></el-icon><span>小程序内容</span></template><el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('HOME_MANAGE') || canAccess('DOCTOR_MANAGE') || canAccess('PACKAGE_MANAGE')" index="/media-library">图片库</el-menu-item><el-menu-item index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
-          <el-sub-menu v-if="canAccess('WEBSITE_MANAGE')" index="website"><template #title><el-icon><Monitor /></el-icon><span>官网内容</span></template><el-menu-item index="/website-manage">官网与文章</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">官网科室项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">官网医生团队</el-menu-item></el-sub-menu>
+          <el-sub-menu index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item index="/tencent-ad-leads">腾讯广告线索</el-menu-item><el-menu-item index="/appointments">挂号管理</el-menu-item><el-menu-item index="/users">用户管理</el-menu-item><el-menu-item index="/notifications">通知记录</el-menu-item></el-sub-menu>
+          <el-sub-menu index="content"><template #title><el-icon><Menu /></el-icon><span>内容管理</span></template><el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('HOME_MANAGE') || canAccess('DOCTOR_MANAGE') || canAccess('PACKAGE_MANAGE')" index="/media-library">图片库</el-menu-item><el-menu-item index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('WEBSITE_MANAGE')" index="website"><template #title><el-icon><Monitor /></el-icon><span>官网内容</span></template><el-menu-item index="/website-manage">官网与资讯</el-menu-item></el-sub-menu>
           <el-sub-menu index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item index="/official-menu">公众号菜单</el-menu-item><el-menu-item index="/official-auto-reply">自动回复</el-menu-item><el-menu-item index="/admin-users">成员与预约通知</el-menu-item></el-sub-menu>
           <el-sub-menu index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item index="/configs">系统配置</el-menu-item><el-menu-item index="/followup-forward">回访接口</el-menu-item><el-menu-item index="/audit-logs">审计日志</el-menu-item></el-sub-menu>
         </el-menu>
@@ -30,7 +29,7 @@
     <el-container class="main-shell">
       <el-header class="header">
         <div class="header-left">
-          <el-button class="collapse-button" text :aria-label="sidebarCollapsed ? '展开导航' : '收起导航'" @click="sidebarCollapsed = !sidebarCollapsed">
+          <el-button class="collapse-button" text :aria-label="sidebarCollapsed ? '展开导航' : '收起导航'" @click="toggleSidebar">
             <el-icon size="18"><Expand v-if="sidebarCollapsed" /><Fold v-else /></el-icon>
           </el-button>
           <div class="breadcrumb-copy">
@@ -73,27 +72,26 @@ import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   ArrowDown,
-  Bell,
   ChatLineRound,
   DataLine,
-  DocumentChecked,
   Expand,
   Fold,
   Menu,
   Monitor,
-  Promotion,
   Setting,
   SwitchButton,
   Tickets,
-  User,
-  UserFilled
 } from '@element-plus/icons-vue';
 import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
 const auth = useAuthStore();
-const sidebarCollapsed = ref(false);
+const sidebarCollapsed = ref(localStorage.getItem('admin_sidebar_collapsed') === '1');
 const canAccess = (permission: string) => auth.hasPermission(permission);
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+  localStorage.setItem('admin_sidebar_collapsed', sidebarCollapsed.value ? '1' : '0');
+}
 
 const pageTitles: Record<string, string> = {
   '/tencent-ad-leads': '腾讯广告线索',
@@ -185,7 +183,7 @@ const roleLabel = computed(() => {
 }
 
 .brand-copy span {
-  color: #8fb0aa;
+  color: #9ba9bc;
   font-size: 12px;
 }
 
@@ -194,6 +192,8 @@ const roleLabel = computed(() => {
   padding: 14px 10px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-color: #344158 transparent;
+  scrollbar-width: thin;
 }
 
 .nav-group-label {
@@ -216,7 +216,7 @@ const roleLabel = computed(() => {
   height: 44px;
   margin-bottom: 4px;
   padding: 0 12px !important;
-  color: #b9cbc7;
+  color: #c3cbd8;
   border-radius: 6px;
 }
 
@@ -224,7 +224,7 @@ const roleLabel = computed(() => {
   height: 44px;
   margin-bottom: 4px;
   padding: 0 12px !important;
-  color: #b9cbc7;
+  color: #c3cbd8;
   border-radius: 6px;
 }
 
@@ -236,13 +236,13 @@ const roleLabel = computed(() => {
 .navigation :deep(.el-sub-menu .el-menu-item) {
   min-width: 0;
   padding-left: 46px !important;
-  color: #9eb5b0;
+  color: #aeb9c9;
 }
 
 .navigation :deep(.el-menu-item .el-icon) {
   width: 20px;
   margin-right: 12px;
-  color: #8fb0aa;
+  color: #93a4bb;
 }
 
 .navigation :deep(.el-menu-item:hover) {
@@ -302,7 +302,7 @@ const roleLabel = computed(() => {
   align-items: center;
   gap: 9px;
   padding: 0 22px;
-  color: #8fb0aa;
+  color: #9ba9bc;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 12px;
   white-space: nowrap;
@@ -386,7 +386,7 @@ const roleLabel = computed(() => {
 
 .account-button:hover,
 .account-button:focus-visible {
-  background: #f3f7f6;
+  background: #f4f6f9;
   border-color: var(--admin-border);
   outline: none;
 }

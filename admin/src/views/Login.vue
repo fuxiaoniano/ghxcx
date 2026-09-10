@@ -102,6 +102,9 @@ async function createSession() {
     session.sessionId = result.sessionId;
     session.oauthUrl = result.oauthUrl;
     pollTimer = window.setInterval(pollSession, 1800);
+  } catch {
+    qrStatus.value = 'ERROR';
+    qrMessage.value = '登录服务暂时不可用，请刷新二维码重试';
   } finally {
     creating = false;
   }
@@ -109,15 +112,21 @@ async function createSession() {
 
 async function pollSession() {
   if (!session.sessionId || qrStatus.value !== 'PENDING') return;
-  const result = await pollAdminWechatLoginSession(session.sessionId);
-  const status = result.status || 'PENDING';
-  if (status === 'PENDING') return;
-  qrStatus.value = status;
-  qrMessage.value = result.message || '';
-  stopPolling();
-  if (status === 'CONFIRMED' && result.token && result.user) {
-    auth.acceptLogin({ token: result.token, user: result.user });
-    window.setTimeout(() => router.replace('/dashboard'), 450);
+  try {
+    const result = await pollAdminWechatLoginSession(session.sessionId);
+    const status = result.status || 'PENDING';
+    if (status === 'PENDING') return;
+    qrStatus.value = status;
+    qrMessage.value = result.message || '';
+    stopPolling();
+    if (status === 'CONFIRMED' && result.token && result.user) {
+      auth.acceptLogin({ token: result.token, user: result.user });
+      window.setTimeout(() => router.replace('/dashboard'), 450);
+    }
+  } catch {
+    qrStatus.value = 'ERROR';
+    qrMessage.value = '无法获取登录状态，请刷新二维码重试';
+    stopPolling();
   }
 }
 
@@ -147,21 +156,20 @@ onBeforeUnmount(stopPolling);
 </script>
 
 <style scoped>
-.login-page { display: grid; min-height: 100vh; padding: 32px; place-items: center; background: #edf3f1; }
-.login-shell { display: grid; width: min(940px, 100%); min-height: 640px; grid-template-columns: minmax(340px, .9fr) minmax(420px, 1.1fr); overflow: hidden; background: #fff; border: 1px solid #dce7e4; border-radius: 8px; box-shadow: 0 24px 70px rgba(19, 41, 38, .13); }
+.login-page { display: grid; min-height: 100vh; padding: 32px; place-items: center; background: #f2f4f8; }
+.login-shell { display: grid; width: min(940px, 100%); min-height: 640px; grid-template-columns: minmax(340px, .9fr) minmax(420px, 1.1fr); overflow: hidden; background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; box-shadow: 0 24px 70px rgba(20, 31, 49, .12); }
 .identity-panel { position: relative; display: flex; flex-direction: column; justify-content: space-between; padding: 42px; overflow: hidden; color: #fff; background: var(--admin-sidebar); }
-.identity-panel::after { position: absolute; right: -90px; bottom: -120px; width: 280px; height: 280px; border: 50px solid rgba(117, 184, 174, .08); border-radius: 50%; content: ''; }
 .identity-brand, .mobile-brand, .identity-footer, .scan-status, .pc-wechat-link { display: flex; align-items: center; }
 .identity-brand, .mobile-brand { gap: 12px; }
 .identity-mark { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; color: #fff; background: var(--admin-primary); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; font-size: 19px; font-weight: 750; }
 .identity-brand > div { display: flex; flex-direction: column; }
 .identity-brand strong { font-size: 17px; }
-.identity-brand span:last-child { color: #93afa9; font-size: 12px; }
+.identity-brand span:last-child { color: #a6b3c6; font-size: 12px; }
 .identity-message { position: relative; z-index: 1; }
-.identity-label, .form-heading > span { color: #7dc6bb; font-size: 11px; font-weight: 700; }
+.identity-label, .form-heading > span { color: #8eb5ff; font-size: 11px; font-weight: 700; }
 .identity-message h1 { margin: 18px 0; font-size: 36px; font-weight: 680; line-height: 1.35; letter-spacing: 0; }
-.identity-message p { margin: 0; color: #a8c1bc; font-size: 14px; }
-.identity-footer { position: relative; z-index: 1; gap: 8px; color: #8fa9a4; font-size: 12px; }
+.identity-message p { margin: 0; color: #b6c0cf; font-size: 14px; }
+.identity-footer { position: relative; z-index: 1; gap: 8px; color: #a6b3c6; font-size: 12px; }
 .login-panel { display: flex; flex-direction: column; justify-content: center; padding: 38px 72px; }
 .mobile-brand { display: none; }
 .form-heading { margin-bottom: 18px; text-align: center; }

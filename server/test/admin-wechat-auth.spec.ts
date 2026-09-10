@@ -150,6 +150,10 @@ describe('AdminService WeChat member flow', () => {
     const { service } = createService();
     const session = await service.createWechatLoginSession();
 
+    expect(session.oauthUrl).toBe(
+      `https://zbsfxn.cqzbskq.com/api/admin/auth/wechat/oauth?sessionId=${session.sessionId}`
+    );
+
     const confirmation = await service.completeWechatLogin('wechat-code', session.sessionId);
     const result = await service.pollWechatLoginSession(session.sessionId);
 
