@@ -9,7 +9,6 @@ coverage/
 server/generated/
 server/prisma/migrations/*/migration_lock.toml
 admin/dist/
-website/dist-domain/
 miniprogram/miniprogram_npm/
 miniprogram/dist/
 /output/
