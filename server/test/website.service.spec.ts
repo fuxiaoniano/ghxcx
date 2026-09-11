@@ -34,6 +34,9 @@ describe('WebsiteService article management', () => {
       title: '  种植牙术后护理  ',
       author: '院方编辑',
       digest: '术后护理要点',
+      seoTitle: '种植牙术后护理指南',
+      seoKeywords: '种植牙,术后护理',
+      seoDescription: '了解种植牙术后清洁、饮食和复查注意事项。',
       contentHtml: '<p>保持清洁</p><script>alert(1)</script>',
       status: ContentStatus.ACTIVE
     }, { adminUserId: 'admin-1' });
@@ -41,6 +44,9 @@ describe('WebsiteService article management', () => {
     const data = prisma.wechatArticle.create.mock.calls[0][0].data;
     expect(data.wechatArticleId).toMatch(/^manual:/);
     expect(data.title).toBe('种植牙术后护理');
+    expect(data.seoTitle).toBe('种植牙术后护理指南');
+    expect(data.seoKeywords).toBe('种植牙,术后护理');
+    expect(data.seoDescription).toBe('了解种植牙术后清洁、饮食和复查注意事项。');
     expect(data.contentHtml).toContain('保持清洁');
     expect(data.contentHtml).not.toContain('script');
     expect(result.sourceType).toBe('MANUAL');

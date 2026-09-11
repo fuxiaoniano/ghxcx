@@ -192,7 +192,7 @@ const permissionOptions = [
   { value: 'MANAGE_CONFIGS', label: '管理配置' },
   { value: 'MANAGE_ADMINS', label: '管理成员' },
   { value: 'HOME_MANAGE', label: '首页管理' },
-  { value: 'WEBSITE_MANAGE', label: '官网页面与公众号文章' },
+  { value: 'WEBSITE_MANAGE', label: '官网设置、页面与口腔资讯' },
   { value: 'DOCTOR_MANAGE', label: '医生与科室管理' },
   { value: 'PACKAGE_MANAGE', label: '套餐管理' },
   { value: 'APPOINTMENT_MANAGE', label: '新版预约管理（兼容旧挂号权限）' }

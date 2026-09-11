@@ -4,7 +4,7 @@
     <div class="top-line"><div class="container top-line-inner"><span>专业口腔医疗服务</span><span>{{ settings?.serviceHours }}<template v-if="settings?.phone"> · 咨询 {{ settings.phone }}</template></span></div></div>
     <div class="container nav-wrap">
       <RouterLink to="/" class="brand" aria-label="重庆种博士口腔首页">
-        <span class="brand-mark" aria-hidden="true">Z</span>
+        <img class="brand-logo" :src="brandLogoUrl" alt="" width="48" height="48" />
         <span><strong>{{ settings?.brandName || '重庆种博士口腔' }}</strong><small>ZHONG BOSHI DENTAL</small></span>
       </RouterLink>
       <button class="mobile-menu-button" type="button" :aria-expanded="menuOpen" aria-label="打开网站导航" @click="menuOpen=!menuOpen"><span></span><span></span><span></span></button>
@@ -45,6 +45,7 @@ const menuOpen=ref(false);
 const stored=localStorage.getItem('website-theme');
 const dark=ref(stored?stored==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches);
 const navPages=computed(()=>state.data?.pages.filter(page=>page.showInNav) || []);
+const brandLogoUrl=`${import.meta.env.BASE_URL}brand-logo.jpg`;
 function applyTheme(){document.documentElement.dataset.theme=dark.value?'dark':'light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content',dark.value?'#101722':'#ffffff');}
 function toggleTheme(){dark.value=!dark.value;localStorage.setItem('website-theme',dark.value?'dark':'light');applyTheme();}
 applyTheme();onMounted(loadSite);

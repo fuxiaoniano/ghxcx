@@ -374,25 +374,28 @@ model WebsitePage {
 }
 
 model WechatArticle {
-  id               String        @id @default(cuid()) @db.VarChar(32)
-  wechatArticleId  String        @unique @db.VarChar(191)
-  mediaId          String?       @db.VarChar(191)
-  articleIndex     Int           @default(0)
-  slug             String        @unique @db.VarChar(191)
-  title            String        @db.VarChar(255)
-  author           String?       @db.VarChar(100)
-  digest           String?       @db.Text
-  coverUrl         String?       @db.VarChar(1000)
-  contentHtml      String        @db.LongText
-  sourceUrl        String?       @db.VarChar(1000)
-  originalUrl      String?       @db.VarChar(1000)
-  syncHash         String        @db.VarChar(64)
-  status           ContentStatus @default(ACTIVE)
-  publishedAt      DateTime?
-  wechatUpdatedAt  DateTime?
-  lastSyncedAt     DateTime      @default(now())
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id              String        @id @default(cuid()) @db.VarChar(32)
+  wechatArticleId String        @unique @db.VarChar(191)
+  mediaId         String?       @db.VarChar(191)
+  articleIndex    Int           @default(0)
+  slug            String        @unique @db.VarChar(191)
+  title           String        @db.VarChar(255)
+  author          String?       @db.VarChar(100)
+  digest          String?       @db.Text
+  seoTitle        String?       @db.VarChar(160)
+  seoKeywords     String?       @db.VarChar(300)
+  seoDescription  String?       @db.VarChar(300)
+  coverUrl        String?       @db.VarChar(1000)
+  contentHtml     String        @db.LongText
+  sourceUrl       String?       @db.VarChar(1000)
+  originalUrl     String?       @db.VarChar(1000)
+  syncHash        String        @db.VarChar(64)
+  status          ContentStatus @default(ACTIVE)
+  publishedAt     DateTime?
+  wechatUpdatedAt DateTime?
+  lastSyncedAt    DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([status, publishedAt])
   @@index([mediaId])

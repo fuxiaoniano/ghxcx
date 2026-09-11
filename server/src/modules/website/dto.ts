@@ -29,6 +29,9 @@ export class CreateWebsiteArticleDto {
   @IsString() @IsNotEmpty() @MaxLength(255) title!: string;
   @IsString() @IsOptional() @MaxLength(100) author?: string;
   @IsString() @IsOptional() @MaxLength(2000) digest?: string;
+  @IsString() @IsOptional() @MaxLength(160) seoTitle?: string;
+  @IsString() @IsOptional() @MaxLength(300) seoKeywords?: string;
+  @IsString() @IsOptional() @MaxLength(300) seoDescription?: string;
   @IsString() @IsOptional() @MaxLength(1000) coverUrl?: string;
   @IsString() @IsNotEmpty() contentHtml!: string;
   @IsString() @IsOptional() @MaxLength(1000) originalUrl?: string;
@@ -40,6 +43,9 @@ export class UpdateWebsiteArticleDto {
   @IsString() @IsNotEmpty() @MaxLength(255) @IsOptional() title?: string;
   @IsString() @MaxLength(100) @IsOptional() author?: string;
   @IsString() @MaxLength(2000) @IsOptional() digest?: string;
+  @IsString() @MaxLength(160) @IsOptional() seoTitle?: string;
+  @IsString() @MaxLength(300) @IsOptional() seoKeywords?: string;
+  @IsString() @MaxLength(300) @IsOptional() seoDescription?: string;
   @IsString() @MaxLength(1000) @IsOptional() coverUrl?: string;
   @IsString() @IsNotEmpty() @IsOptional() contentHtml?: string;
   @IsString() @MaxLength(1000) @IsOptional() originalUrl?: string;

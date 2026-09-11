@@ -108,7 +108,7 @@ export class WebsiteService {
     const [total, rows] = await Promise.all([
       this.prisma.wechatArticle.count({ where }),
       this.prisma.wechatArticle.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }], select: admin
-        ? { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, status: true, publishedAt: true, lastSyncedAt: true, createdAt: true, updatedAt: true }
+        ? { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, seoTitle: true, seoKeywords: true, seoDescription: true, coverUrl: true, status: true, publishedAt: true, lastSyncedAt: true, createdAt: true, updatedAt: true }
         : { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, publishedAt: true } })
     ]);
     const list = rows.map((row) => this.articleView(row));
@@ -118,7 +118,7 @@ export class WebsiteService {
   async article(slug: string) {
     const article = await this.prisma.wechatArticle.findFirst({
       where: { slug, status: ContentStatus.ACTIVE },
-      select: { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, contentHtml: true, sourceUrl: true, originalUrl: true, publishedAt: true }
+      select: { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, seoTitle: true, seoKeywords: true, seoDescription: true, coverUrl: true, contentHtml: true, sourceUrl: true, originalUrl: true, publishedAt: true }
     });
     if (!article) throw new BusinessException(404502, '文章不存在或尚未发布');
     return this.articleView(article);
@@ -127,7 +127,7 @@ export class WebsiteService {
   async adminArticle(id: string) {
     const article = await this.prisma.wechatArticle.findUnique({
       where: { id },
-      select: { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, coverUrl: true, contentHtml: true, originalUrl: true, status: true, publishedAt: true, lastSyncedAt: true }
+      select: { id: true, wechatArticleId: true, slug: true, title: true, author: true, digest: true, seoTitle: true, seoKeywords: true, seoDescription: true, coverUrl: true, contentHtml: true, originalUrl: true, status: true, publishedAt: true, lastSyncedAt: true }
     });
     if (!article) throw new BusinessException(404502, '文章不存在');
     return this.articleView(article);
@@ -145,6 +145,9 @@ export class WebsiteService {
         title: normalizeWechatText(dto.title, 255),
         author: normalizeWechatText(dto.author, 100) || null,
         digest: normalizeWechatText(dto.digest, 2000) || null,
+        seoTitle: normalizeWechatText(dto.seoTitle, 160) || null,
+        seoKeywords: normalizeWechatText(dto.seoKeywords, 300) || null,
+        seoDescription: normalizeWechatText(dto.seoDescription, 300) || null,
         coverUrl: normalizeWechatText(dto.coverUrl, 1000) || null,
         contentHtml,
         originalUrl: normalizeWechatText(dto.originalUrl, 1000) || null,
@@ -168,6 +171,9 @@ export class WebsiteService {
         ...(dto.title !== undefined ? { title: normalizeWechatText(dto.title, 255) } : {}),
         ...(dto.author !== undefined ? { author: normalizeWechatText(dto.author, 100) || null } : {}),
         ...(dto.digest !== undefined ? { digest: normalizeWechatText(dto.digest, 2000) || null } : {}),
+        ...(dto.seoTitle !== undefined ? { seoTitle: normalizeWechatText(dto.seoTitle, 160) || null } : {}),
+        ...(dto.seoKeywords !== undefined ? { seoKeywords: normalizeWechatText(dto.seoKeywords, 300) || null } : {}),
+        ...(dto.seoDescription !== undefined ? { seoDescription: normalizeWechatText(dto.seoDescription, 300) || null } : {}),
         ...(dto.coverUrl !== undefined ? { coverUrl: normalizeWechatText(dto.coverUrl, 1000) || null } : {}),
         ...(contentHtml !== undefined ? { contentHtml } : {}),
         ...(dto.originalUrl !== undefined ? { originalUrl: normalizeWechatText(dto.originalUrl, 1000) || null } : {}),

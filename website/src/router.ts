@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from './views/HomeView.vue';
+import { setSeo } from './site';
 
 const ServicesView = () => import('./views/ServicesView.vue');
 const DoctorsView = () => import('./views/DoctorsView.vue');
@@ -23,7 +24,7 @@ const router = createRouter({
 });
 
 router.afterEach((to) => {
-  document.title = String(to.meta.title || '重庆种博士口腔');
+  setSeo({ title: String(to.meta.title || '重庆种博士口腔'), canonicalPath: to.path });
   requestAnimationFrame(() => document.querySelector<HTMLElement>('#main-content')?.focus({ preventScroll: true }));
 });
 

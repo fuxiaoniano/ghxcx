@@ -31,6 +31,6 @@ const scheduleDays=computed(()=>{const groups=new Map<string,NonNullable<Doctor[
 function scheduleDate(value:string){return new Date(`${value}T00:00:00`);}
 function formatScheduleDate(value:string){const date=scheduleDate(value);return `${date.getMonth()+1}.${date.getDate()}`;}
 function formatWeekday(value:string){return new Intl.DateTimeFormat('zh-CN',{weekday:'short'}).format(scheduleDate(value));}
-async function load(){doctor.value=null;error.value='';try{doctor.value=await websiteApi.doctor(String(route.params.id));setSeo(`${doctor.value.name} ${doctor.value.title}｜重庆种博士口腔`,doctor.value.specialty);}catch(e){error.value=e instanceof Error?e.message:'医生资料加载失败';}}
+async function load(){doctor.value=null;error.value='';try{doctor.value=await websiteApi.doctor(String(route.params.id));setSeo({title:`${doctor.value.name} ${doctor.value.title}｜重庆种博士口腔`,description:doctor.value.specialty,image:doctor.value.avatar,canonicalPath:route.path});}catch(e){error.value=e instanceof Error?e.message:'医生资料加载失败';}}
 watch(()=>route.params.id,load,{immediate:true});
 </script>

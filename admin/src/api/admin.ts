@@ -678,10 +678,11 @@ export interface WebsitePageItem {
 }
 export interface WebsiteArticleItem {
   id: string; slug: string; title: string; author?: string; digest?: string; coverUrl?: string;
+  seoTitle?: string; seoKeywords?: string; seoDescription?: string;
   contentHtml?: string; originalUrl?: string; sourceType: 'MANUAL' | 'WECHAT';
   status: 'ACTIVE' | 'DISABLED'; publishedAt?: string; lastSyncedAt?: string;
 }
-export type WebsiteArticlePayload = Pick<WebsiteArticleItem, 'title' | 'author' | 'digest' | 'coverUrl' | 'contentHtml' | 'originalUrl' | 'publishedAt' | 'status'>;
+export type WebsiteArticlePayload = Pick<WebsiteArticleItem, 'title' | 'author' | 'digest' | 'seoTitle' | 'seoKeywords' | 'seoDescription' | 'coverUrl' | 'contentHtml' | 'originalUrl' | 'publishedAt' | 'status'>;
 const websiteAdminBase = '/api/admin/website';
 export const getWebsiteSettings = () => http.get<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`);
 export const updateWebsiteSettings = (settings: WebsiteSettings) => http.patch<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`, { settings });

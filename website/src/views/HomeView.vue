@@ -23,7 +23,7 @@
     <div class="container">
       <div class="section-heading"><div><p class="eyebrow">CLINICAL SERVICES</p><h2>一站式口腔诊疗服务</h2></div><RouterLink to="/services" class="text-link">查看全部科室 →</RouterLink></div>
       <div class="service-grid">
-        <RouterLink v-for="(item,index) in data.categories.slice(0,8)" :key="item.id" :to="`/services#category-${item.id}`" class="service-card service-card-simple">
+        <RouterLink v-for="(item,index) in data.categories.slice(0,8)" :key="item.id" :to="`/services#category-${item.id}`" class="service-card service-card-simple" :class="{ 'has-icon': Boolean(item.icon) }">
           <span class="service-number">{{String(index+1).padStart(2,'0')}}</span><img v-if="item.icon" :src="item.icon" :alt="item.name" loading="lazy" /><h3>{{item.name}}</h3><span class="card-link">查看科室</span>
         </RouterLink>
       </div>
