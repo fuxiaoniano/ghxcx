@@ -190,7 +190,7 @@ onBeforeUnmount(stopPolling);
 .fallback-login :deep(.el-form-item) { margin-bottom: 14px; }
 .password-button { width: 100%; }
 .form-footer { margin-top: 12px; text-align: center; font-size: 11px; }
-@media (max-width: 780px) {
+@media (max-width: 900px) {
   .login-page { padding: 20px; }
   .login-shell { min-height: auto; grid-template-columns: 1fr; }
   .identity-panel { display: none; }

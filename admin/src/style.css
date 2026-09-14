@@ -334,9 +334,15 @@ select {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
+  body {
+    overscroll-behavior-x: none;
+  }
+
   .page-heading {
+    align-items: stretch;
     flex-direction: column;
+    gap: 12px;
   }
 
   .page-heading > .el-button,
@@ -349,11 +355,14 @@ select {
     width: 100%;
   }
   .page-title {
-    font-size: 21px;
+    margin-bottom: 12px;
+    font-size: 20px;
+    line-height: 28px;
   }
 
   .content-panel {
-    padding: 14px;
+    min-width: 0;
+    padding: 14px 12px;
   }
 
   .metric-grid {
@@ -371,22 +380,202 @@ select {
 
   .toolbar {
     align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
     padding: 12px;
   }
 
   .toolbar > .el-input,
   .toolbar > .el-select,
-  .toolbar > .el-date-editor {
+  .toolbar > .el-date-editor,
+  .toolbar > .el-button,
+  .toolbar > .el-upload,
+  .toolbar > .el-dropdown {
     width: 100% !important;
   }
 
+  .toolbar > .el-upload .el-button,
+  .toolbar > .el-dropdown .el-button,
+  .toolbar > .el-button {
+    width: 100%;
+  }
+
+  .toolbar .el-button + .el-button {
+    margin-left: 0;
+  }
+
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .el-form .el-select,
+  .el-form .el-date-editor,
+  .el-form .el-input-number {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .el-form-item {
+    display: block;
+  }
+
+  .el-form-item__label {
+    display: flex;
+    width: 100% !important;
+    height: auto;
+    min-height: 28px;
+    margin-bottom: 6px;
+    padding: 0;
+    justify-content: flex-start;
+    line-height: 1.5;
+    text-align: left;
+  }
+
+  .el-form-item__content {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .el-button {
+    touch-action: manipulation;
+  }
+
+  .page-heading .el-button,
+  .toolbar .el-button,
+  .el-dialog__footer .el-button,
+  .el-drawer .el-button {
+    min-height: 44px;
+  }
+
+  .el-table {
+    max-width: 100%;
+  }
+
+  .el-table .el-scrollbar__wrap {
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+  }
+
+  .el-table .el-table-fixed-column--left,
+  .el-table .el-table-fixed-column--right {
+    position: static !important;
+  }
+
+  .el-table th.el-table__cell {
+    height: 46px;
+  }
+
+  .el-table td.el-table__cell {
+    height: 48px;
+  }
+
+  .el-dialog {
+    display: flex;
+    width: calc(100vw - 16px) !important;
+    max-width: none;
+    max-height: calc(100dvh - 16px);
+    margin: 8px auto !important;
+    flex-direction: column;
+  }
+
+  .el-dialog__header,
+  .el-dialog__body,
+  .el-dialog__footer {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .el-dialog__body {
+    min-height: 0;
+    max-height: none;
+    padding-top: 16px;
+    padding-bottom: 16px;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .el-dialog__footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .el-dialog__footer .el-button {
+    min-width: 104px;
+    margin-left: 0;
+    flex: 1;
+  }
+
   .el-drawer {
-    width: min(100vw, 620px) !important;
+    width: 100vw !important;
+    max-width: 100vw;
+  }
+
+  .el-drawer__header {
+    min-height: 58px;
+    margin-bottom: 0;
+    padding: 14px 16px;
+  }
+
+  .el-drawer__body {
+    padding: 16px 12px calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .el-message-box {
+    width: calc(100vw - 32px);
+    max-width: 420px;
+  }
+
+  .el-descriptions__body {
+    overflow-x: hidden;
+  }
+
+  .el-descriptions__table,
+  .el-descriptions__table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .el-descriptions__table tr {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(88px, 32%) minmax(0, 1fr);
+  }
+
+  .el-descriptions__table .el-descriptions__cell {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .el-tabs__nav-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .el-tabs__nav-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .el-tabs__nav {
+    float: none;
+    white-space: nowrap;
   }
 
   .el-pagination {
     justify-content: center;
     overflow-x: auto;
+    padding-bottom: 2px;
+    white-space: nowrap;
+  }
+
+  .save-config-row {
+    bottom: env(safe-area-inset-bottom) !important;
   }
 }
 

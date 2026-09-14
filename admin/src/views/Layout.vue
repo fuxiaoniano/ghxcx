@@ -1,16 +1,28 @@
 <template>
-  <el-container class="layout" :class="{ 'is-collapsed': sidebarCollapsed }">
-    <el-aside :width="sidebarCollapsed ? '76px' : '232px'" class="aside">
+  <el-container
+    class="layout"
+    :class="{
+      'is-collapsed': !isMobile && sidebarCollapsed,
+      'is-mobile-nav-open': isMobile && mobileNavOpen
+    }"
+  >
+    <el-aside id="admin-navigation" :width="isMobile ? '280px' : sidebarCollapsed ? '76px' : '232px'" class="aside">
       <div class="brand">
         <div class="brand-mark">种</div>
-        <div v-show="!sidebarCollapsed" class="brand-copy">
+        <div v-show="isMobile || !sidebarCollapsed" class="brand-copy">
           <strong>种博士口腔</strong>
           <span>预约管理中心</span>
         </div>
       </div>
 
       <nav class="navigation" aria-label="后台主导航">
-        <el-menu router :default-active="$route.path" :collapse="sidebarCollapsed" :collapse-transition="false">
+        <el-menu
+          router
+          :default-active="$route.path"
+          :collapse="!isMobile && sidebarCollapsed"
+          :collapse-transition="false"
+          @select="handleMenuSelect"
+        >
           <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
           <el-sub-menu index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item index="/tencent-ad-leads">腾讯广告线索</el-menu-item><el-menu-item index="/appointments">挂号管理</el-menu-item><el-menu-item index="/users">用户管理</el-menu-item><el-menu-item index="/notifications">通知记录</el-menu-item></el-sub-menu>
           <el-sub-menu index="content"><template #title><el-icon><Menu /></el-icon><span>内容管理</span></template><el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('HOME_MANAGE') || canAccess('DOCTOR_MANAGE') || canAccess('PACKAGE_MANAGE')" index="/media-library">图片库</el-menu-item><el-menu-item index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
@@ -22,15 +34,30 @@
 
       <div class="sidebar-footer">
         <span class="status-dot" />
-        <span v-show="!sidebarCollapsed">系统运行中</span>
+        <span v-show="isMobile || !sidebarCollapsed">系统运行中</span>
       </div>
     </el-aside>
+
+    <button
+      v-if="isMobile && mobileNavOpen"
+      class="mobile-nav-backdrop"
+      type="button"
+      aria-label="关闭导航"
+      @click="closeMobileNav"
+    />
 
     <el-container class="main-shell">
       <el-header class="header">
         <div class="header-left">
-          <el-button class="collapse-button" text :aria-label="sidebarCollapsed ? '展开导航' : '收起导航'" @click="toggleSidebar">
-            <el-icon size="18"><Expand v-if="sidebarCollapsed" /><Fold v-else /></el-icon>
+          <el-button
+            class="collapse-button"
+            text
+            aria-controls="admin-navigation"
+            :aria-expanded="isMobile ? mobileNavOpen : !sidebarCollapsed"
+            :aria-label="navigationButtonLabel"
+            @click="toggleSidebar"
+          >
+            <el-icon size="18"><Expand v-if="isMobile ? !mobileNavOpen : sidebarCollapsed" /><Fold v-else /></el-icon>
           </el-button>
           <div class="breadcrumb-copy">
             <span>管理后台</span>
@@ -68,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   ArrowDown,
@@ -87,11 +114,49 @@ import { useAuthStore } from '../stores/auth';
 const route = useRoute();
 const auth = useAuthStore();
 const sidebarCollapsed = ref(localStorage.getItem('admin_sidebar_collapsed') === '1');
+const isMobile = ref(window.matchMedia('(max-width: 900px)').matches);
+const mobileNavOpen = ref(false);
 const canAccess = (permission: string) => auth.hasPermission(permission);
+
 function toggleSidebar() {
+  if (isMobile.value) {
+    mobileNavOpen.value = !mobileNavOpen.value;
+    return;
+  }
   sidebarCollapsed.value = !sidebarCollapsed.value;
   localStorage.setItem('admin_sidebar_collapsed', sidebarCollapsed.value ? '1' : '0');
 }
+
+function closeMobileNav() {
+  mobileNavOpen.value = false;
+}
+
+function handleMenuSelect() {
+  if (isMobile.value) closeMobileNav();
+}
+
+function updateViewport() {
+  const nextIsMobile = window.innerWidth <= 900;
+  if (!nextIsMobile) mobileNavOpen.value = false;
+  isMobile.value = nextIsMobile;
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && mobileNavOpen.value) closeMobileNav();
+}
+
+onMounted(() => {
+  updateViewport();
+  window.addEventListener('resize', updateViewport, { passive: true });
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewport);
+  window.removeEventListener('keydown', handleKeydown);
+});
+
+watch(() => route.fullPath, closeMobileNav);
 
 const pageTitles: Record<string, string> = {
   '/tencent-ad-leads': '腾讯广告线索',
@@ -118,6 +183,10 @@ const pageTitles: Record<string, string> = {
 };
 
 const currentPageTitle = computed(() => pageTitles[route.path] || '管理后台');
+const navigationButtonLabel = computed(() => {
+  if (isMobile.value) return mobileNavOpen.value ? '关闭导航' : '打开导航';
+  return sidebarCollapsed.value ? '展开导航' : '收起导航';
+});
 const accountInitial = computed(() => (auth.user?.nickname || auth.user?.username || '管').slice(0, 1).toUpperCase());
 const roleLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -435,73 +504,106 @@ const roleLabel = computed(() => {
   margin: 0 auto;
 }
 
+.mobile-nav-backdrop {
+  display: none;
+}
+
 @media (max-width: 900px) {
+  .layout.is-mobile-nav-open {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
   .aside {
-    width: 76px !important;
+    z-index: 50;
+    width: min(280px, calc(100vw - 48px)) !important;
+    max-width: 280px;
+    transform: translateX(-100%);
+    box-shadow: 18px 0 48px rgba(15, 23, 42, 0.24);
+    transition: transform 200ms ease;
+  }
+
+  .is-mobile-nav-open .aside {
+    transform: translateX(0);
   }
 
   .brand-copy,
-  .nav-group-label,
   .sidebar-footer span:not(.status-dot) {
-    display: none !important;
+    display: flex !important;
   }
 
   .navigation :deep(.el-menu) {
-    width: 56px;
+    width: 100%;
   }
 
-  .navigation :deep(.el-menu-item) {
-    justify-content: center;
-    padding: 0 !important;
+  .navigation :deep(.el-menu-item),
+  .navigation :deep(.el-sub-menu__title) {
+    justify-content: flex-start;
+    padding: 0 12px !important;
   }
 
-  .navigation :deep(.el-menu-item .el-icon) {
-    margin: 0;
+  .navigation :deep(.el-menu-item .el-icon),
+  .navigation :deep(.el-sub-menu__title > .el-icon) {
+    margin-right: 12px !important;
+  }
+
+  .navigation :deep(.el-sub-menu .el-menu-item) {
+    padding-left: 46px !important;
   }
 
   .main-shell,
   .is-collapsed .main-shell {
-    margin-left: 76px;
+    margin-left: 0;
   }
 
   .collapse-button {
-    display: none;
+    display: inline-flex;
+  }
+
+  .mobile-nav-backdrop {
+    position: fixed;
+    z-index: 40;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.5);
+    border: 0;
+    cursor: pointer;
   }
 }
 
 @media (max-width: 640px) {
-  .aside {
-    width: 64px !important;
-  }
-
-  .brand {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .brand-mark {
-    width: 36px;
-    height: 36px;
-    flex-basis: 36px;
-  }
-
-  .navigation {
-    padding-right: 4px;
-    padding-left: 4px;
-  }
-
-  .navigation :deep(.el-menu) {
-    width: 56px;
-  }
-
   .main-shell,
   .is-collapsed .main-shell {
-    margin-left: 64px;
+    margin-left: 0;
   }
 
   .header {
-    height: 58px;
-    padding: 0 12px;
+    height: 60px;
+    padding: 0 max(10px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+  }
+
+  .header-left {
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .breadcrumb-copy {
+    min-width: 0;
+  }
+
+  .breadcrumb-copy span {
+    display: none;
+  }
+
+  .breadcrumb-copy strong {
+    max-width: calc(100vw - 132px);
+    overflow: hidden;
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .account-copy,
@@ -510,7 +612,7 @@ const roleLabel = computed(() => {
   }
 
   .main-content {
-    padding: 14px 10px;
+    padding: 12px 10px calc(18px + env(safe-area-inset-bottom));
   }
 }
 </style>

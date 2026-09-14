@@ -90,4 +90,4 @@ async function removeAd(row: HomeAdItem) { await ElMessageBox.confirm('确认删
 onMounted(load);
 </script>
 
-<style scoped>.thumb{width:120px;height:64px;border-radius:6px}.image-field{display:flex;width:100%;gap:10px}.image-field .el-input{flex:1}.field-stack{width:100%}.field-tip{margin-top:6px;color:var(--admin-text-muted);font-size:12px;line-height:1.5}.field-tip a{margin-left:8px;color:var(--admin-primary);text-decoration:none}.page-heading p{margin:0 0 18px;color:var(--admin-text-secondary)}</style>
+<style scoped>.thumb{width:120px;height:64px;border-radius:6px}.image-field{display:flex;width:100%;gap:10px}.image-field .el-input{flex:1}.field-stack{width:100%}.field-tip{margin-top:6px;color:var(--admin-text-muted);font-size:12px;line-height:1.5}.field-tip a{margin-left:8px;color:var(--admin-primary);text-decoration:none}.page-heading p{margin:0 0 18px;color:var(--admin-text-secondary)}@media(max-width:760px){.image-field{align-items:stretch;flex-direction:column}.image-field :deep(.el-button),.image-field :deep(.el-upload),.image-field :deep(.el-upload .el-button){width:100%}.thumb{width:96px;height:58px}}</style>
