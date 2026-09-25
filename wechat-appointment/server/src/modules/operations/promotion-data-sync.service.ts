@@ -53,10 +53,12 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
       if (existing?.isArchived) { result.skippedArchived++; continue; }
       try {
         const data = await this.fetchMetrics(provider, config.reportUrl, token, account.accountNo, statDate);
+        // 到院、成交、实收及自定义指标来自院内经营数据，不属于广告平台日报；同步时必须保留人工维护的值。
+        const storedData = { ...data, validLeads: existing?.validLeads ?? 0, appointments: existing?.appointments ?? 0, transactions: existing?.transactions ?? 0, revenue: existing?.revenue ?? 0, customMetrics: existing?.customMetrics ?? {}, remark: existing?.remark ?? null };
         await this.prisma.promotionDailyMetric.upsert({
           where: { accountId_statDate: { accountId: account.id, statDate: dayjs(statDate).startOf('day').toDate() } },
-          create: { accountId: account.id, statDate: dayjs(statDate).startOf('day').toDate(), ...data, syncSource: provider, syncedAt: new Date() },
-          update: { ...data, syncSource: provider, syncedAt: new Date() }
+          create: { accountId: account.id, statDate: dayjs(statDate).startOf('day').toDate(), ...storedData, syncSource: provider, syncedAt: new Date() },
+          update: { ...storedData, syncSource: provider, syncedAt: new Date() }
         });
         result.synced++;
       } catch (error) { result.errors.push(`${account.name}: ${error instanceof Error ? error.message : '同步失败'}`); }
@@ -79,8 +81,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
     return {
       spend: number('spend', 'stat_cost', 'cost', 'total_cost'),
       impressions: Math.round(number('impressions', 'show', 'show_count', 'stat_show')), clicks: Math.round(number('clicks', 'click', 'click_count', 'stat_click')),
-      leads: Math.round(number('leads', 'convert', 'convert_num', 'form_submit')), validLeads: Math.round(number('valid_leads', 'validLeads')),
-      appointments: 0, transactions: 0, revenue: 0, customMetrics: {}
+      leads: Math.round(number('leads', 'convert', 'convert_num', 'form_submit'))
     };
   }
 }
