@@ -352,7 +352,20 @@ export interface PromotionDailyMetricItem {
   customMetrics: Record<string, string | number>;
   calculated: PromotionCalculatedMetrics;
   remark?: string | null;
+  syncSource?: string;
+  syncedAt?: string | null;
+  isArchived: boolean;
   account: PromotionAccountItem;
+}
+
+export interface PromotionDataSyncConfigItem {
+  id: string;
+  provider: 'TENCENT_ADS' | 'OCEANENGINE';
+  enabled: boolean;
+  reportUrl: string;
+  hasAccessToken: boolean;
+  lastSyncedAt?: string | null;
+  lastSyncMessage?: string | null;
 }
 
 export interface PromotionCalculatedMetrics {
@@ -671,6 +684,10 @@ export const getPromotionDailyMetrics = (params: Record<string, string>) => http
 export const createPromotionDailyMetric = (data: PromotionDailyMetricPayload) => http.post<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily`, data);
 export const updatePromotionDailyMetric = (id: string, data: PromotionDailyMetricPayload) => http.patch<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily/${id}`, data);
 export const deletePromotionDailyMetric = (id: string) => http.delete<unknown, { id: string; deleted: boolean }>(`${operationsBase}/daily/${id}`);
+export const archivePromotionDailyMetric = (id: string, isArchived: boolean) => http.patch<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily/${id}/archive`, { isArchived });
+export const getPromotionSyncConfigs = () => http.get<unknown, PromotionDataSyncConfigItem[]>(`${operationsBase}/sync-configs`);
+export const updatePromotionSyncConfig = (data: { provider: 'TENCENT_ADS' | 'OCEANENGINE'; enabled: boolean; reportUrl: string; accessToken?: string }) => http.put<unknown, PromotionDataSyncConfigItem>(`${operationsBase}/sync-configs`, data);
+export const syncPromotionDailyMetrics = (data: { statDate: string; provider?: 'TENCENT_ADS' | 'OCEANENGINE'; accountIds?: string[] }) => http.post<unknown, Array<{ provider: string; synced: number; skippedArchived: number; skipped: number; errors: string[] }>>(`${operationsBase}/daily/sync`, data);
 export const getPromotionWeekly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/weekly`, { params: operationParams(params) });
 export const getPromotionMonthly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/monthly`, { params: operationParams(params) });
 export const getPromotionDailyReport = (date: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/daily-report`, { params: { date } });

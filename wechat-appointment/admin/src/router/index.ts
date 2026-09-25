@@ -31,6 +31,7 @@ const PromotionDailyReport = () => import('../views/PromotionDailyReport.vue');
 const PromotionWeeklyReport = () => import('../views/PromotionWeeklyReport.vue');
 const PromotionMonthlyReport = () => import('../views/PromotionMonthlyReport.vue');
 const PromotionAccounts = () => import('../views/PromotionAccounts.vue');
+const PromotionSyncSettings = () => import('../views/PromotionSyncSettings.vue');
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -49,6 +50,7 @@ export const router = createRouter({
         { path: 'operations/weekly', component: OperationsWeekly, meta: { permission: 'MANAGE_CONFIGS' } },
         { path: 'operations/monthly', component: OperationsMonthly, meta: { permission: 'MANAGE_CONFIGS' } },
         { path: 'operations/accounts', component: PromotionAccounts, meta: { permission: 'MANAGE_CONFIGS' } },
+        { path: 'operations/sync-settings', component: PromotionSyncSettings, meta: { permission: 'MANAGE_CONFIGS' } },
         { path: 'operations/fields', component: PromotionFieldSettings, meta: { permission: 'MANAGE_CONFIGS' } },
         { path: 'operations/daily-report', component: PromotionDailyReport, meta: { permission: 'MANAGE_CONFIGS' } },
         { path: 'operations/weekly-report', component: PromotionWeeklyReport, meta: { permission: 'MANAGE_CONFIGS' } },

@@ -655,6 +655,9 @@ model PromotionDailyMetric {
   revenue     Decimal          @default(0) @db.Decimal(12, 2)
   customMetrics Json?
   remark      String?          @db.VarChar(500)
+  syncSource  String           @default("MANUAL") @db.VarChar(24)
+  syncedAt    DateTime?
+  isArchived  Boolean          @default(false)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   account     PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -662,6 +665,21 @@ model PromotionDailyMetric {
   @@unique([accountId, statDate])
   @@index([statDate])
   @@map("promotion_daily_metrics")
+}
+
+model PromotionDataSyncConfig {
+  id                String   @id @default(cuid()) @db.VarChar(32)
+  provider          String   @unique @db.VarChar(32)
+  enabled           Boolean  @default(false)
+  reportUrl         String   @db.VarChar(500)
+  accessTokenCipher String?  @db.Text
+  extraConfig       Json?
+  lastSyncedAt      DateTime?
+  lastSyncMessage   String?  @db.VarChar(1000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("promotion_data_sync_configs")
 }
 
 model PromotionMetricField {

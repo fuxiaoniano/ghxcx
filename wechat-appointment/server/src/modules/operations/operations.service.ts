@@ -5,13 +5,15 @@ import { AdminCurrentUser } from '../../common/decorators/current-user.decorator
 import { BusinessException } from '../../common/utils/business-exception';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
-import { DateRangeQueryDto, PromotionAccountDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionMetricFieldDto } from './dto';
+import { CryptoService } from '../crypto/crypto.service';
+import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, PromotionMetricFieldDto, SyncPromotionDailyMetricsDto } from './dto';
+import { PromotionDataSyncService } from './promotion-data-sync.service';
 
 type SummaryUnit = 'week' | 'month';
 
 @Injectable()
 export class OperationsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditLogsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditLogsService, private readonly crypto: CryptoService, private readonly syncService: PromotionDataSyncService) {}
 
   accounts() {
     return this.prisma.promotionAccount.findMany({ orderBy: [{ status: 'asc' }, { platform: 'asc' }, { name: 'asc' }] });
@@ -147,7 +149,7 @@ export class OperationsService {
     await this.accountOrThrow(dto.accountId);
     const sameDay = await this.prisma.promotionDailyMetric.findUnique({ where: { accountId_statDate: { accountId: dto.accountId, statDate: this.date(dto.statDate) } } });
     if (sameDay && sameDay.id !== id) throw new BusinessException(409701, '该账户当天已有数据，请编辑现有记录', 409);
-    const metric = await this.prisma.promotionDailyMetric.update({ where: { id }, data: this.metricData(dto), include: { account: true } });
+    const metric = await this.prisma.promotionDailyMetric.update({ where: { id }, data: { ...this.metricData(dto), syncSource: 'MANUAL' }, include: { account: true } });
     const item = this.metricItem(metric);
     await this.log('UPDATE_PROMOTION_DAILY_METRIC', 'promotion_daily_metrics', id, this.metricItem(before), item, user, ip, userAgent);
     return item;
@@ -159,6 +161,42 @@ export class OperationsService {
     await this.prisma.promotionDailyMetric.delete({ where: { id } });
     await this.log('DELETE_PROMOTION_DAILY_METRIC', 'promotion_daily_metrics', id, this.metricItem(before), undefined, user, ip, userAgent);
     return { id, deleted: true };
+  }
+
+  async archiveDaily(id: string, dto: ArchivePromotionDailyMetricDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const before = await this.prisma.promotionDailyMetric.findUnique({ where: { id }, include: { account: true } });
+    if (!before) throw new BusinessException(404701, '运营日数据不存在', 404);
+    const metric = await this.prisma.promotionDailyMetric.update({ where: { id }, data: { isArchived: Boolean(dto.isArchived) }, include: { account: true } });
+    const item = this.metricItem(metric);
+    await this.log(dto.isArchived ? 'ARCHIVE_PROMOTION_DAILY_METRIC' : 'UNARCHIVE_PROMOTION_DAILY_METRIC', 'promotion_daily_metrics', id, this.metricItem(before), item, user, ip, userAgent);
+    return item;
+  }
+
+  async syncConfigs() {
+    const defaults = [
+      { provider: 'TENCENT_ADS', reportUrl: 'https://api.e.qq.com/v1.3/report/advertiser_daily' },
+      { provider: 'OCEANENGINE', reportUrl: 'https://ad.oceanengine.com/open_api/2/report/custom/get/' }
+    ];
+    await Promise.all(defaults.map((item) => this.prisma.promotionDataSyncConfig.upsert({ where: { provider: item.provider }, update: {}, create: item })));
+    const rows = await this.prisma.promotionDataSyncConfig.findMany({ orderBy: { provider: 'asc' } });
+    return rows.map((row) => ({ ...row, accessTokenCipher: undefined, hasAccessToken: Boolean(row.accessTokenCipher) }));
+  }
+
+  async updateSyncConfig(dto: PromotionDataSyncConfigDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const before = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: dto.provider } });
+    const config = await this.prisma.promotionDataSyncConfig.upsert({
+      where: { provider: dto.provider },
+      create: { provider: dto.provider, enabled: dto.enabled, reportUrl: dto.reportUrl.trim(), ...(dto.accessToken?.trim() ? { accessTokenCipher: this.crypto.encryptText(dto.accessToken.trim()) } : {}) },
+      update: { enabled: dto.enabled, reportUrl: dto.reportUrl.trim(), ...(dto.accessToken?.trim() ? { accessTokenCipher: this.crypto.encryptText(dto.accessToken.trim()) } : {}) }
+    });
+    await this.log('UPDATE_PROMOTION_SYNC_CONFIG', 'promotion_data_sync_configs', config.id, before ? { ...before, accessTokenCipher: undefined } : undefined, { ...config, accessTokenCipher: undefined }, user, ip, userAgent);
+    return { ...config, accessTokenCipher: undefined, hasAccessToken: Boolean(config.accessTokenCipher) };
+  }
+
+  async syncDaily(dto: SyncPromotionDailyMetricsDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const result = await this.syncService.sync(dto.statDate, dto.provider, dto.accountIds);
+    await this.log('SYNC_PROMOTION_DAILY_METRICS', 'promotion_daily_metrics', dto.statDate, undefined, result, user, ip, userAgent);
+    return result;
   }
 
   async summary(query: DateRangeQueryDto, unit: SummaryUnit) {

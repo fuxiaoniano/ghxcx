@@ -45,6 +45,10 @@ export class CryptoService {
     return [iv.toString('base64'), tag.toString('base64'), encrypted.toString('base64')].join(':');
   }
 
+  decryptText(payload: string): string {
+    return this.decryptPhone(payload);
+  }
+
   private getAesKey(): Buffer {
     const raw = this.getRequiredConfig('PHONE_ENCRYPTION_KEY');
     return createHash('sha256').update(raw).digest();

@@ -49,3 +49,20 @@ export class PromotionDailyReportNoteDto {
   @IsString() @MaxLength(500) problem!: string;
   @IsString() @MaxLength(500) adjustment!: string;
 }
+
+export class PromotionDataSyncConfigDto {
+  @IsIn(['TENCENT_ADS', 'OCEANENGINE']) provider!: 'TENCENT_ADS' | 'OCEANENGINE';
+  enabled!: boolean;
+  @IsString() @MaxLength(500) reportUrl!: string;
+  @IsOptional() @IsString() @MaxLength(4000) accessToken?: string;
+}
+
+export class SyncPromotionDailyMetricsDto {
+  @IsDateString() statDate!: string;
+  @IsOptional() @IsIn(['TENCENT_ADS', 'OCEANENGINE']) provider?: 'TENCENT_ADS' | 'OCEANENGINE';
+  @IsOptional() @IsString({ each: true }) @MaxLength(32, { each: true }) accountIds?: string[];
+}
+
+export class ArchivePromotionDailyMetricDto {
+  isArchived!: boolean;
+}

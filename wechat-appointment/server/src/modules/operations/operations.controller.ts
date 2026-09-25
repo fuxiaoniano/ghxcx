@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import dayjs from 'dayjs';
@@ -6,7 +6,7 @@ import { AdminCurrentUser, CurrentUser } from '../../common/decorators/current-u
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
-import { DateRangeQueryDto, PromotionAccountDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionMetricFieldDto } from './dto';
+import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, PromotionMetricFieldDto, SyncPromotionDailyMetricsDto } from './dto';
 import { OperationsService } from './operations.service';
 
 @ApiTags('管理后台 - 信息流运营报表')
@@ -36,6 +36,11 @@ export class OperationsController {
   @Post('/daily') createDaily(@Body() dto: PromotionDailyMetricDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.createDaily(dto, user, req.ip, req.headers['user-agent']); }
   @Patch('/daily/:id') updateDaily(@Param('id') id: string, @Body() dto: PromotionDailyMetricDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.updateDaily(id, dto, user, req.ip, req.headers['user-agent']); }
   @Delete('/daily/:id') deleteDaily(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.deleteDaily(id, user, req.ip, req.headers['user-agent']); }
+  @Patch('/daily/:id/archive') archiveDaily(@Param('id') id: string, @Body() dto: ArchivePromotionDailyMetricDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.archiveDaily(id, dto, user, req.ip, req.headers['user-agent']); }
+
+  @Get('/sync-configs') syncConfigs() { return this.operations.syncConfigs(); }
+  @Put('/sync-configs') updateSyncConfig(@Body() dto: PromotionDataSyncConfigDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.updateSyncConfig(dto, user, req.ip, req.headers['user-agent']); }
+  @Post('/daily/sync') syncDaily(@Body() dto: SyncPromotionDailyMetricsDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.syncDaily(dto, user, req.ip, req.headers['user-agent']); }
 
   @Get('/weekly') weekly(@Query() query: DateRangeQueryDto) { return this.operations.summary(query, 'week'); }
   @Get('/monthly') monthly(@Query() query: DateRangeQueryDto) { return this.operations.summary(query, 'month'); }
