@@ -674,7 +674,7 @@ export const deletePromotionDailyMetric = (id: string) => http.delete<unknown, {
 export const getPromotionWeekly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/weekly`, { params: operationParams(params) });
 export const getPromotionMonthly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/monthly`, { params: operationParams(params) });
 export const getPromotionDailyReport = (date: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/daily-report`, { params: { date } });
-export const getPromotionWeeklyReport = (date: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/weekly-report`, { params: { date } });
+export const getPromotionWeeklyReport = (date: string, dateTo?: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/weekly-report`, { params: { date, dateTo } });
 export const getPromotionMonthlyReport = (date: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/monthly-report`, { params: { date } });
 export const updatePromotionDailyReportNote = (data: { statDate: string; periodType?: 'day' | 'week' | 'month'; project: string; channel: string; problem: string; adjustment: string }) => http.patch<unknown, unknown>(`${operationsBase}/daily-report/note`, data);
 

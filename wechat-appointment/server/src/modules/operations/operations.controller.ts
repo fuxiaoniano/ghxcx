@@ -28,7 +28,7 @@ export class OperationsController {
   @Delete('/fields/:id') deleteField(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.deleteField(id, user, req.ip, req.headers['user-agent']); }
 
   @Get('/daily-report') dailyReport(@Query('date') date?: string) { return this.operations.dailyReport(date || dayjs().subtract(1, 'day').format('YYYY-MM-DD')); }
-  @Get('/weekly-report') weeklyReport(@Query('date') date?: string) { return this.operations.weeklyReport(date || dayjs().format('YYYY-MM-DD')); }
+  @Get('/weekly-report') weeklyReport(@Query('date') date?: string, @Query('dateTo') dateTo?: string) { return this.operations.weeklyReport(date || dayjs().format('YYYY-MM-DD'), dateTo); }
   @Get('/monthly-report') monthlyReport(@Query('date') date?: string) { return this.operations.monthlyReport(date || dayjs().format('YYYY-MM-DD')); }
   @Patch('/daily-report/note') updateDailyReportNote(@Body() dto: PromotionDailyReportNoteDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.updateDailyReportNote(dto, user, req.ip, req.headers['user-agent']); }
 

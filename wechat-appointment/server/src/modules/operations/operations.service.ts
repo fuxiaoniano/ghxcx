@@ -53,7 +53,8 @@ export class OperationsService {
     return this.periodReport(date, date, date, 'day');
   }
 
-  async weeklyReport(date: string) {
+  async weeklyReport(date: string, dateTo?: string) {
+    if (dateTo) return this.periodReport(date, dateTo, date, 'week');
     const start = this.monday(date);
     return this.periodReport(start, dayjs(start).add(6, 'day').format('YYYY-MM-DD'), start, 'week');
   }
