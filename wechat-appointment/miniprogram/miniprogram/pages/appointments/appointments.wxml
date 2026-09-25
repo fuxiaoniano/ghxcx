@@ -1,0 +1,14 @@
+<view class="page">
+  <block wx:if="{{list.length}}">
+    <view class="item" wx:for="{{list}}" wx:key="id" bindtap="openDetail" data-id="{{item.id}}">
+      <view class="top">
+        <text class="no">{{item.appointmentNo}}</text>
+      </view>
+      <view class="info">{{item.name}} ｜ {{item.phoneMasked}}</view>
+      <view class="info">{{item.ageRange}} ｜ {{item.missingTeethType}}</view>
+      <view class="time">{{item.createdAt}}</view>
+    </view>
+  </block>
+  <view wx:else class="empty">暂无挂号记录</view>
+  <button class="primary-button" bindtap="goHome">返回首页</button>
+</view>

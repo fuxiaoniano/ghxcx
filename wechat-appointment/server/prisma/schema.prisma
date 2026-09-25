@@ -1,0 +1,696 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("MYSQL_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AppointmentStatus {
+  PENDING_CONTACT
+  CONTACTED
+  CONFIRMED
+  VISITED
+  CANCELLED
+  INVALID
+}
+
+enum NotificationChannel {
+  OFFICIAL_ACCOUNT_TEMPLATE
+  MINI_PROGRAM_SUBSCRIBE
+}
+
+enum NotificationStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum FollowupForwardStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  MANAGER
+  STAFF
+}
+
+enum AdminStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AdminInviteStatus {
+  PENDING
+  BOUND
+  CANCELLED
+  EXPIRED
+}
+
+enum ClinicStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ContentStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AppointmentType {
+  LEGACY_REGISTRATION
+  DOCTOR_APPOINTMENT
+  PACKAGE_APPLICATION
+}
+
+enum DoctorScheduleStatus {
+  AVAILABLE
+  FULL
+  DISABLED
+}
+
+enum TencentAdLeadStatus {
+  NEW
+  CONTACTED
+  POTENTIAL
+  HIGH_INTENT
+  CONVERTED
+  INVALID
+}
+
+model User {
+  id             String            @id @default(cuid()) @db.VarChar(32)
+  name           String?           @db.VarChar(64)
+  phoneEncrypted String?           @db.Text
+  phoneHash      String?           @unique @db.VarChar(128)
+  phoneMasked    String?           @db.VarChar(32)
+  ageRange       String?           @db.VarChar(32)
+  status         UserStatus        @default(ACTIVE)
+  lastLoginAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  identities     WechatIdentity[]
+  appointments   Appointment[]
+  notifications  NotificationLog[]
+
+  @@map("users")
+}
+
+model WechatIdentity {
+  id                        String   @id @default(cuid()) @db.VarChar(32)
+  userId                    String   @db.VarChar(32)
+  miniOpenId                String?  @unique @db.VarChar(128)
+  oaOpenId                  String?  @unique @db.VarChar(128)
+  unionId                   String?  @db.VarChar(128)
+  sessionKeyEncrypted       String?  @db.Text
+  subscribedOfficialAccount Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([miniOpenId])
+  @@index([oaOpenId])
+  @@index([unionId])
+  @@map("wechat_identities")
+}
+
+model Appointment {
+  id                          String                @id @default(cuid()) @db.VarChar(32)
+  appointmentNo               String                @unique @db.VarChar(40)
+  userId                      String                @db.VarChar(32)
+  name                        String                @db.VarChar(64)
+  phoneEncrypted              String                @db.Text
+  phoneHash                   String                @db.VarChar(128)
+  phoneMasked                 String                @db.VarChar(32)
+  ageRange                    String                @db.VarChar(32)
+  missingTeethType            String                @db.VarChar(32)
+  type                        AppointmentType       @default(LEGACY_REGISTRATION)
+  clinicId                    String?               @db.VarChar(32)
+  doctorId                    String?               @db.VarChar(32)
+  dentalCategoryId            String?               @db.VarChar(32)
+  dentalProjectId             String?               @db.VarChar(32)
+  packageId                   String?               @db.VarChar(32)
+  landingPageId               String?               @db.VarChar(32)
+  appointmentDate             DateTime?             @db.Date
+  appointmentTime             String?               @db.VarChar(32)
+  symptomDescription          String?               @db.Text
+  gender                      String?               @db.VarChar(16)
+  source                      String?               @db.VarChar(120)
+  status                      AppointmentStatus     @default(PENDING_CONTACT)
+  remark                      String?               @db.Text
+  adminRemark                 String?               @db.Text
+  assignedToAdminId           String?               @db.VarChar(32)
+  followupForwardStatus       FollowupForwardStatus @default(PENDING)
+  followupForwardedAt         DateTime?
+  followupForwardLastTriedAt  DateTime?
+  followupForwardErrorCode    String?               @db.VarChar(64)
+  followupForwardErrorMessage String?               @db.Text
+  followupForwardResponse     Json?
+  followupForwardRetryCount   Int                   @default(0)
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+  contactedAt                 DateTime?
+  confirmedAt                 DateTime?
+  cancelledAt                 DateTime?
+  user                        User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  clinic                      Clinic?               @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  doctor                      Doctor?               @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  dentalCategory              DentalCategory?       @relation(fields: [dentalCategoryId], references: [id], onDelete: SetNull)
+  dentalProject               DentalProject?        @relation(fields: [dentalProjectId], references: [id], onDelete: SetNull)
+  package                     Package?              @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  landingPage                 LandingPage?          @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
+  assignedTo                  AdminUser?            @relation(fields: [assignedToAdminId], references: [id], onDelete: SetNull)
+  notifications               NotificationLog[]
+
+  @@index([userId])
+  @@index([phoneHash])
+  @@index([status])
+  @@index([followupForwardStatus])
+  @@index([clinicId])
+  @@index([type])
+  @@index([doctorId])
+  @@index([dentalCategoryId])
+  @@index([dentalProjectId])
+  @@index([packageId])
+  @@index([landingPageId])
+  @@index([appointmentDate])
+  @@index([createdAt])
+  @@map("appointments")
+}
+
+model TencentAdLead {
+  id                String              @id @default(cuid()) @db.VarChar(32)
+  leadsId           String              @unique @db.VarChar(64)
+  clickId           String?             @db.VarChar(191)
+  accountId         String?             @db.VarChar(64)
+  accountType       String?             @db.VarChar(64)
+  advertiserId      String?             @db.VarChar(64)
+  campaignId        String?             @db.VarChar(64)
+  campaignName      String?             @db.VarChar(255)
+  adgroupId         String?             @db.VarChar(64)
+  adgroupName       String?             @db.VarChar(255)
+  adId              String?             @db.VarChar(64)
+  adName            String?             @db.VarChar(255)
+  adcreativeId      String?             @db.VarChar(64)
+  adcreativeName    String?             @db.VarChar(255)
+  pageId            String?             @db.VarChar(64)
+  pageName          String?             @db.VarChar(255)
+  pageUrl           String?             @db.VarChar(1000)
+  componentId       String?             @db.VarChar(64)
+  componentName     String?             @db.VarChar(255)
+  leadsType         String?             @db.VarChar(80)
+  leadsSubType      String?             @db.VarChar(100)
+  leadsSource       String?             @db.VarChar(80)
+  leadsSubSource    String?             @db.VarChar(100)
+  leadsFollowTag    String?             @db.VarChar(100)
+  leadsTouchTag     String?             @db.VarChar(100)
+  leadsTags         String?             @db.Text
+  potentialScore    String?             @db.VarChar(32)
+  name              String?             @db.VarChar(64)
+  phoneEncrypted    String?             @db.Text
+  phoneHash         String?             @db.VarChar(128)
+  phoneMasked       String?             @db.VarChar(32)
+  telLocation       String?             @db.VarChar(120)
+  area              String?             @db.VarChar(255)
+  email             String?             @db.VarChar(255)
+  qq                String?             @db.VarChar(64)
+  wechat            String?             @db.VarChar(128)
+  gender            String?             @db.VarChar(32)
+  age               String?             @db.VarChar(32)
+  profession        String?             @db.VarChar(120)
+  address           String?             @db.VarChar(500)
+  shopName          String?             @db.VarChar(255)
+  shopAddress       String?             @db.VarChar(500)
+  chatId            String?             @db.VarChar(128)
+  chatRecordUrl     String?             @db.VarChar(1000)
+  leadCreatedAt     DateTime?
+  leadActionAt      DateTime?
+  status            TencentAdLeadStatus @default(NEW)
+  ineffectiveReason String?             @db.VarChar(100)
+  adminRemark       String?             @db.Text
+  rawPayload        Json
+  receivedAt        DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([phoneHash])
+  @@index([status])
+  @@index([advertiserId])
+  @@index([campaignId])
+  @@index([leadActionAt])
+  @@index([receivedAt])
+  @@map("tencent_ad_leads")
+}
+
+model NotificationLog {
+  id            String              @id @default(cuid()) @db.VarChar(32)
+  userId        String              @db.VarChar(32)
+  appointmentId String?             @db.VarChar(32)
+  channel       NotificationChannel
+  targetOpenId  String?             @db.VarChar(128)
+  templateId    String?             @db.VarChar(128)
+  payloadJson   Json
+  status        NotificationStatus  @default(PENDING)
+  errorCode     String?             @db.VarChar(64)
+  errorMessage  String?             @db.Text
+  retryCount    Int                 @default(0)
+  createdAt     DateTime            @default(now())
+  sentAt        DateTime?
+  user          User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  appointment   Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([appointmentId])
+  @@index([channel])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notification_logs")
+}
+
+model AdminUser {
+  id                        String        @id @default(cuid()) @db.VarChar(32)
+  username                  String        @unique @db.VarChar(64)
+  nickname                  String        @default("") @db.VarChar(64)
+  passwordHash              String?       @db.VarChar(255)
+  role                      AdminRole     @default(STAFF)
+  permissionsJson           Json
+  status                    AdminStatus   @default(ACTIVE)
+  oaOpenId                  String?       @unique @db.VarChar(128)
+  unionId                   String?       @db.VarChar(128)
+  subscribedOfficialAccount Boolean       @default(false)
+  notifyEnabled             Boolean       @default(true)
+  wechatBoundAt             DateTime?
+  lastLoginAt               DateTime?
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+  assigned                  Appointment[]
+  auditLogs                 AuditLog[]
+
+  @@index([unionId])
+  @@index([notifyEnabled, status])
+  @@map("admin_users")
+}
+
+model AdminWechatInvite {
+  id               String            @id @default(cuid()) @db.VarChar(32)
+  tokenHash        String            @unique @db.VarChar(128)
+  nickname         String            @db.VarChar(64)
+  role             AdminRole         @default(STAFF)
+  permissionsJson  Json
+  notifyEnabled    Boolean           @default(true)
+  status           AdminInviteStatus @default(PENDING)
+  adminUserId      String?           @db.VarChar(32)
+  createdByAdminId String            @db.VarChar(32)
+  expiresAt        DateTime
+  boundAt          DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([createdByAdminId])
+  @@map("admin_wechat_invites")
+}
+
+model AuditLog {
+  id           String     @id @default(cuid()) @db.VarChar(32)
+  adminUserId  String?    @db.VarChar(32)
+  action       String     @db.VarChar(80)
+  resourceType String     @db.VarChar(80)
+  resourceId   String?    @db.VarChar(80)
+  beforeJson   Json?
+  afterJson    Json?
+  ip           String?    @db.VarChar(80)
+  userAgent    String?    @db.VarChar(255)
+  createdAt    DateTime   @default(now())
+  adminUser    AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([adminUserId])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  id          String   @id @default(cuid()) @db.VarChar(32)
+  key         String   @unique @db.VarChar(120)
+  valueJson   Json
+  description String?  @db.VarChar(255)
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_configs")
+}
+
+model WebsitePage {
+  id             String        @id @default(cuid()) @db.VarChar(32)
+  slug           String        @unique @db.VarChar(80)
+  title          String        @db.VarChar(160)
+  menuTitle      String        @db.VarChar(40)
+  summary        String?       @db.VarChar(500)
+  coverUrl       String?       @db.VarChar(500)
+  contentHtml    String        @db.LongText
+  seoTitle       String?       @db.VarChar(160)
+  seoDescription String?       @db.VarChar(300)
+  showInNav      Boolean       @default(true)
+  sort           Int           @default(0)
+  status         ContentStatus @default(ACTIVE)
+  publishedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, showInNav, sort])
+  @@map("website_pages")
+}
+
+model WechatArticle {
+  id              String        @id @default(cuid()) @db.VarChar(32)
+  wechatArticleId String        @unique @db.VarChar(191)
+  mediaId         String?       @db.VarChar(191)
+  articleIndex    Int           @default(0)
+  slug            String        @unique @db.VarChar(191)
+  title           String        @db.VarChar(255)
+  author          String?       @db.VarChar(100)
+  digest          String?       @db.Text
+  seoTitle        String?       @db.VarChar(160)
+  seoKeywords     String?       @db.VarChar(300)
+  seoDescription  String?       @db.VarChar(300)
+  coverUrl        String?       @db.VarChar(1000)
+  contentHtml     String        @db.LongText
+  sourceUrl       String?       @db.VarChar(1000)
+  originalUrl     String?       @db.VarChar(1000)
+  syncHash        String        @db.VarChar(64)
+  status          ContentStatus @default(ACTIVE)
+  publishedAt     DateTime?
+  wechatUpdatedAt DateTime?
+  lastSyncedAt    DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([mediaId])
+  @@map("wechat_articles")
+}
+
+model LandingPage {
+  id           String        @id @default(cuid()) @db.VarChar(32)
+  pageKey      String        @unique @db.VarChar(64)
+  name         String        @db.VarChar(120)
+  configJson   Json
+  status       ContentStatus @default(ACTIVE)
+  isDefault    Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+
+  @@index([status])
+  @@index([isDefault])
+  @@map("landing_pages")
+}
+
+model Clinic {
+  id           String           @id @default(cuid()) @db.VarChar(32)
+  name         String           @db.VarChar(120)
+  address      String?          @db.VarChar(255)
+  phone        String?          @db.VarChar(32)
+  status       ClinicStatus     @default(ACTIVE)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  appointments Appointment[]
+  doctors      Doctor[]
+  schedules    DoctorSchedule[]
+
+  @@index([status])
+  @@map("clinics")
+}
+
+model HomeBanner {
+  id        String        @id @default(cuid()) @db.VarChar(32)
+  imageUrl  String        @db.VarChar(500)
+  title     String        @default("") @db.VarChar(120)
+  linkType  String        @default("NONE") @db.VarChar(32)
+  linkValue String?       @db.VarChar(500)
+  sort      Int           @default(0)
+  status    ContentStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([status, sort])
+  @@map("home_banners")
+}
+
+model HomeAd {
+  id        String        @id @default(cuid()) @db.VarChar(32)
+  imageUrl  String        @db.VarChar(500)
+  title     String        @default("") @db.VarChar(120)
+  linkType  String        @default("NONE") @db.VarChar(32)
+  linkValue String?       @db.VarChar(500)
+  sort      Int           @default(0)
+  status    ContentStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([status, sort])
+  @@map("home_ads")
+}
+
+model DentalCategory {
+  id           String             @id @default(cuid()) @db.VarChar(32)
+  name         String             @db.VarChar(80)
+  icon         String?            @db.VarChar(500)
+  sort         Int                @default(0)
+  status       ContentStatus      @default(ACTIVE)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  projects     DentalProject[]
+  doctors      Doctor[]
+  doctorLinks  DoctorDepartment[]
+  appointments Appointment[]
+
+  @@unique([name])
+  @@index([status, sort])
+  @@map("dental_categories")
+}
+
+model DentalProject {
+  id           String         @id @default(cuid()) @db.VarChar(32)
+  categoryId   String         @db.VarChar(32)
+  name         String         @db.VarChar(100)
+  description  String?        @db.VarChar(500)
+  sort         Int            @default(0)
+  status       ContentStatus  @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  category     DentalCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+
+  @@unique([categoryId, name])
+  @@index([categoryId, status, sort])
+  @@map("dental_projects")
+}
+
+model Doctor {
+  id           String             @id @default(cuid()) @db.VarChar(32)
+  name         String             @db.VarChar(64)
+  avatar       String             @db.VarChar(500)
+  title        String             @db.VarChar(100)
+  displayText  String?            @db.VarChar(120)
+  departmentId String             @db.VarChar(32)
+  clinicId     String?            @db.VarChar(32)
+  specialty    String             @db.Text
+  description  String             @db.Text
+  images       Json?
+  sort         Int                @default(0)
+  status       ContentStatus      @default(ACTIVE)
+  recommend    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  department   DentalCategory     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  departments  DoctorDepartment[]
+  clinic       Clinic?            @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  schedules    DoctorSchedule[]
+  appointments Appointment[]
+
+  @@index([departmentId, status, sort])
+  @@index([clinicId])
+  @@index([recommend, status, sort])
+  @@map("doctors")
+}
+
+model DoctorDepartment {
+  id           String         @id @default(cuid()) @db.VarChar(32)
+  doctorId     String         @db.VarChar(32)
+  departmentId String         @db.VarChar(32)
+  createdAt    DateTime       @default(now())
+  doctor       Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  department   DentalCategory @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@unique([doctorId, departmentId])
+  @@index([departmentId, doctorId])
+  @@map("doctor_departments")
+}
+
+model DoctorSchedule {
+  id          String               @id @default(cuid()) @db.VarChar(32)
+  doctorId    String               @db.VarChar(32)
+  clinicId    String?              @db.VarChar(32)
+  date        DateTime             @db.Date
+  timeSlot    String               @db.VarChar(32)
+  capacity    Int                  @default(1)
+  bookedCount Int                  @default(0)
+  sort        Int                  @default(0)
+  status      DoctorScheduleStatus @default(AVAILABLE)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  doctor      Doctor               @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  clinic      Clinic?              @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+
+  @@unique([doctorId, date, timeSlot])
+  @@index([date, status])
+  @@index([clinicId])
+  @@map("doctor_schedules")
+}
+
+model PackageCategory {
+  id        String        @id @default(cuid()) @db.VarChar(32)
+  name      String        @db.VarChar(80)
+  icon      String?       @db.VarChar(500)
+  sort      Int           @default(0)
+  status    ContentStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  packages  Package[]
+
+  @@unique([name])
+  @@index([status, sort])
+  @@map("package_categories")
+}
+
+model Package {
+  id            String          @id @default(cuid()) @db.VarChar(32)
+  categoryId    String          @db.VarChar(32)
+  title         String          @db.VarChar(160)
+  cover         String          @db.VarChar(500)
+  originalPrice Decimal         @db.Decimal(10, 2)
+  salePrice     Decimal         @db.Decimal(10, 2)
+  salesCount    Int             @default(0)
+  description   String          @db.LongText
+  status        ContentStatus   @default(ACTIVE)
+  sort          Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  category      PackageCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images        PackageImage[]
+  appointments  Appointment[]
+
+  @@index([categoryId, status, sort])
+  @@map("packages")
+}
+
+model PackageImage {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  packageId String   @db.VarChar(32)
+  imageUrl  String   @db.VarChar(500)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  package   Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId, sort])
+  @@map("package_images")
+}
+
+model MediaAsset {
+  id              String   @id @default(cuid()) @db.VarChar(32)
+  name            String   @db.VarChar(255)
+  url             String   @db.VarChar(500)
+  mimeType        String   @db.VarChar(100)
+  size            Int
+  uploaderAdminId String?  @db.VarChar(32)
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([uploaderAdminId])
+  @@map("media_assets")
+}
+
+model PromotionAccount {
+  id        String                 @id @default(cuid()) @db.VarChar(32)
+  name      String                 @db.VarChar(120)
+  project   String                 @default("重庆") @db.VarChar(40)
+  platform  String                 @db.VarChar(80)
+  accountNo String?                @db.VarChar(120)
+  status    ContentStatus          @default(ACTIVE)
+  remark    String?                @db.VarChar(500)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  metrics   PromotionDailyMetric[]
+
+  @@unique([project, platform, name])
+  @@index([status])
+  @@map("promotion_accounts")
+}
+
+model PromotionDailyMetric {
+  id          String           @id @default(cuid()) @db.VarChar(32)
+  accountId   String           @db.VarChar(32)
+  statDate    DateTime         @db.Date
+  spend       Decimal          @default(0) @db.Decimal(12, 2)
+  impressions Int              @default(0)
+  clicks      Int              @default(0)
+  leads       Int              @default(0)
+  validLeads  Int              @default(0)
+  appointments Int             @default(0)
+  transactions Int             @default(0)
+  revenue     Decimal          @default(0) @db.Decimal(12, 2)
+  customMetrics Json?
+  remark      String?          @db.VarChar(500)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  account     PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, statDate])
+  @@index([statDate])
+  @@map("promotion_daily_metrics")
+}
+
+model PromotionMetricField {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  key       String   @unique @db.VarChar(80)
+  label     String   @db.VarChar(80)
+  source    String   @db.VarChar(16)
+  dataType  String   @default("NUMBER") @db.VarChar(16)
+  isVisible Boolean  @default(true)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sort])
+  @@map("promotion_metric_fields")
+}
+
+model PromotionDailyReportNote {
+  id         String   @id @default(cuid()) @db.VarChar(32)
+  statDate   DateTime @db.Date
+  periodType String   @default("day") @db.VarChar(12)
+  project    String   @db.VarChar(120)
+  channel    String   @db.VarChar(80)
+  problem    String   @db.VarChar(500)
+  adjustment String   @db.VarChar(500)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([statDate, periodType, project, channel])
+  @@index([statDate])
+  @@map("promotion_daily_report_notes")
+}

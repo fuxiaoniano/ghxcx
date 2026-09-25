@@ -1,0 +1,45 @@
+services:
+  mysql:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-wechat_appointment}
+      MYSQL_USER: ${MYSQL_USER:-wechat_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+
+  server:
+    image: wechat-appointment-server:production-20260910-website-tencent-v4
+    build:
+      context: ./server
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - mysql
+      - redis
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./uploads:/app/uploads
+    command: sh -c "npx prisma migrate deploy && node dist/src/main.js"
+
+volumes:
+  mysql_data:
+  redis_data:

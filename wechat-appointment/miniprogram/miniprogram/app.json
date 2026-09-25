@@ -1,0 +1,67 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/doctors/doctors",
+    "pages/booking/booking",
+    "pages/packages/packages",
+    "pages/profile/profile",
+    "pages/official-follow/official-follow",
+    "pages/doctor-detail/doctor-detail",
+    "pages/booking-doctors/booking-doctors",
+    "pages/booking-form/booking-form",
+    "pages/enterprise-success/enterprise-success",
+    "pages/package-detail/package-detail",
+    "pages/package-apply/package-apply",
+    "pages/records/records",
+    "pages/agreement/agreement",
+    "pages/landing/landing",
+    "pages/success/success",
+    "pages/appointments/appointments"
+  ],
+  "window": {
+    "navigationBarTitleText": "重庆种博士口腔",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f3ef"
+  },
+  "style": "v2",
+  "tabBar": {
+    "color": "#78859A",
+    "selectedColor": "#3478F6",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页",
+        "iconPath": "assets/tabbar/home-default.png",
+        "selectedIconPath": "assets/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/doctors/doctors",
+        "text": "医生介绍",
+        "iconPath": "assets/tabbar/doctor-default.png",
+        "selectedIconPath": "assets/tabbar/doctor-active.png"
+      },
+      {
+        "pagePath": "pages/booking/booking",
+        "text": "预约挂号",
+        "iconPath": "assets/tabbar/booking-default.png",
+        "selectedIconPath": "assets/tabbar/booking-active.png"
+      },
+      {
+        "pagePath": "pages/packages/packages",
+        "text": "推荐套餐",
+        "iconPath": "assets/tabbar/package-default.png",
+        "selectedIconPath": "assets/tabbar/package-active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "个人中心",
+        "iconPath": "assets/tabbar/profile-default.png",
+        "selectedIconPath": "assets/tabbar/profile-active.png"
+      }
+    ]
+  },
+  "sitemapLocation": "sitemap.json"
+}

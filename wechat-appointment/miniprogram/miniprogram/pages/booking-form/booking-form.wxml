@@ -1,0 +1,13 @@
+<view class="enterprise-page form-page">
+  <view class="enterprise-card doctor-summary"><image src="{{doctor.avatar}}" mode="aspectFill" /><view><view>{{doctor.name}} <text>{{doctor.title}}</text></view><text class="enterprise-muted">{{doctor.displayText || doctor.title}}</text></view></view>
+  <view class="enterprise-card">
+    <view class="enterprise-form-row"><text class="enterprise-form-label">预约项目</text><picker range="{{projects}}" range-key="name" value="{{projectIndex}}" bindchange="onProject"><view class="enterprise-input picker-value">{{projects[projectIndex].name || '暂无项目'}}</view></picker></view>
+    <view class="enterprise-form-row"><text class="enterprise-form-label">预约日期与时段 *</text><picker range="{{scheduleLabels}}" value="{{scheduleIndex}}" bindchange="onSchedule"><view class="enterprise-input picker-value">{{scheduleLabels[scheduleIndex] || '暂无可预约出诊'}}</view></picker></view>
+    <view class="enterprise-form-row"><text class="enterprise-form-label">姓名（选填）</text><input class="enterprise-input" value="{{form.name}}" placeholder="不填则使用个人资料" bindinput="onName" /></view>
+    <view class="enterprise-form-row"><text class="enterprise-form-label">性别（选填）</text><picker range="{{genders}}" value="{{genderIndex}}" bindchange="onGender"><view class="enterprise-input picker-value">{{genders[genderIndex]}}</view></picker></view>
+    <view class="enterprise-form-row"><text class="enterprise-form-label">联系电话 *</text><view wx:if="{{hasPhone}}" class="phone-ready">已绑定 {{phoneMasked}}</view><view wx:else><button class="phone-button" open-type="getPhoneNumber" bindgetphonenumber="getPhone">微信授权手机号</button><view class="manual-row"><input class="enterprise-input" type="number" maxlength="11" placeholder="或手工输入手机号" bindinput="onManualPhone" /><button bindtap="saveManualPhone">保存</button></view></view></view>
+    <view class="enterprise-form-row"><text class="enterprise-form-label">症状描述 *</text><textarea class="enterprise-textarea" value="{{form.symptomDescription}}" placeholder="请描述目前症状和就诊需求" bindinput="onSymptom" /></view>
+    <view class="privacy" bindtap="togglePrivacy"><text class="checkbox {{privacyAccepted?'checked':''}}">{{privacyAccepted?'✓':''}}</text><text>我已阅读并同意《隐私协议》和《用户协议》</text></view>
+    <button class="enterprise-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">提交预约</button>
+  </view>
+</view>

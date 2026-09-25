@@ -1,0 +1,26 @@
+<view class="profile-page">
+  <view class="profile-hero">
+    <view class="hospital-line">{{profile.hospitalName || '口腔医疗服务'}} · 专业诊疗服务</view>
+    <view class="user-card">
+      <view class="avatar">{{avatarText}}</view>
+      <view class="user-info">
+        <view class="user-name">{{profile.name || '微信用户'}}</view>
+        <view class="user-phone">{{profile.phoneMasked || '尚未绑定手机号'}}</view>
+      </view>
+    </view>
+  </view>
+  <view class="profile-body">
+    <view class="record-grid enterprise-card">
+      <view bindtap="openLegacy"><text class="record-icon">挂</text><text>挂号记录</text></view>
+      <view bindtap="openDoctorRecords"><text class="record-icon">约</text><text>预约记录</text></view>
+      <view bindtap="openPackageRecords"><text class="record-icon">套</text><text>购买记录</text></view>
+      <view bindtap="openConsultRecords"><text class="record-icon">询</text><text>问诊记录</text></view>
+    </view>
+    <view class="menu-card enterprise-card">
+      <view class="menu-row"><text class="menu-label">在线咨询</text><text class="menu-arrow">›</text><button class="menu-contact-hit" open-type="contact" show-message-card aria-label="在线咨询"></button></view>
+      <view class="menu-row" data-type="privacy" bindtap="openAgreement"><text class="menu-label">隐私协议</text><text class="menu-arrow">›</text></view>
+      <view class="menu-row" data-type="user" bindtap="openAgreement"><text class="menu-label">用户协议</text><text class="menu-arrow">›</text></view>
+      <view class="menu-row"><text class="menu-label">联系客服</text><text class="menu-arrow">›</text><button class="menu-contact-hit" open-type="contact" show-message-card aria-label="联系客服"></button></view>
+    </view>
+  </view>
+</view>

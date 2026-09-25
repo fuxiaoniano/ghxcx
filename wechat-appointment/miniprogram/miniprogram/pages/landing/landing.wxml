@@ -1,0 +1,120 @@
+<view class="page">
+  <rich-text
+    wx:if="{{config.display.brandSection && config.brandHtml}}"
+    class="rich-section"
+    nodes="{{config.brandHtml}}"
+  />
+
+  <rich-text
+    wx:if="{{config.display.bannerSection && config.activityHtml}}"
+    class="rich-section"
+    nodes="{{config.activityHtml}}"
+  />
+
+  <image
+    wx:if="{{config.display.formTopImages && heroImageUrl}}"
+    class="hero-image"
+    src="{{heroImageUrl}}"
+    mode="widthFix"
+    show-menu-by-longpress="true"
+    binderror="onHeroImageError"
+  />
+
+  <view class="form-card">
+    <view class="field">
+      <text class="label required">{{config.text.nameLabel}}</text>
+      <input class="input" placeholder="{{config.text.namePlaceholder}}" value="{{form.name}}" bindinput="onNameInput" />
+    </view>
+
+    <view class="field">
+      <text class="label required">{{config.text.phoneLabel}}</text>
+      <view wx:if="{{hasPhone}}" class="control phone-authorized">
+        <text>{{config.text.phoneAuthorizedPrefix}}{{phoneMasked}}</text>
+      </view>
+      <view wx:elif="{{manualPhoneMode}}" class="manual-phone-wrap">
+        <input
+          class="input manual-phone-input"
+          type="number"
+          maxlength="11"
+          placeholder="请输入11位手机号"
+          value="{{manualPhone}}"
+          bindinput="onManualPhoneInput"
+        />
+        <button
+          class="manual-phone-button"
+          loading="{{manualPhoneSaving}}"
+          disabled="{{manualPhoneSaving}}"
+          bindtap="saveManualPhone"
+        >确认</button>
+      </view>
+      <button wx:else class="phone-auth-input" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
+        {{config.text.phoneAuthorizeButtonText}}
+      </button>
+    </view>
+
+    <view class="field">
+      <text class="label required">{{config.text.ageLabel}}</text>
+      <picker class="picker" mode="selector" range="{{config.formOptions.ageRanges}}" value="{{ageIndex}}" bindchange="onAgeChange">
+        <view class="picker-value">{{config.formOptions.ageRanges[ageIndex]}}</view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <text class="label required">{{config.text.missingTeethLabel}}</text>
+      <picker class="picker" mode="selector" range="{{config.formOptions.missingTeethTypes}}" value="{{missingIndex}}" bindchange="onMissingChange">
+        <view class="picker-value">{{config.formOptions.missingTeethTypes[missingIndex]}}</view>
+      </picker>
+    </view>
+
+    <view class="field">
+      <text class="label">{{config.text.clinicLabel}}</text>
+      <picker class="picker" mode="selector" range="{{clinicNames}}" value="{{clinicIndex}}" bindchange="onClinicChange">
+        <view class="picker-value muted">{{clinicNames[clinicIndex] || config.text.clinicPlaceholder}}</view>
+      </picker>
+    </view>
+
+    <view class="field textarea-field">
+      <text class="label">{{config.text.remarkLabel}}</text>
+      <textarea class="textarea" placeholder="{{config.text.remarkPlaceholder}}" value="{{form.remark}}" bindinput="onRemarkInput" />
+    </view>
+
+    <label class="privacy">
+      <checkbox checked="{{form.privacyAccepted}}" bindtap="togglePrivacy" color="#0b63ce" />
+      <text>{{config.text.privacyCheckboxText}}</text>
+    </label>
+    <view wx:if="{{config.display.privacyAgreement}}" class="privacy-text">{{config.privacyAgreement}}</view>
+
+    <button class="primary-button submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">
+      <text class="submit-text">{{config.text.submitButtonText}}</text>
+    </button>
+    <view wx:if="{{config.display.noticeText}}" class="notice">{{config.text.noticeText}}</view>
+  </view>
+
+  <view wx:if="{{config.display.footerSection}}" class="footer">
+    <view wx:if="{{config.display.institutionName}}">{{config.institutionName}}</view>
+    <view wx:if="{{config.display.filingNo}}">{{config.filingNo}}</view>
+    <view wx:if="{{config.display.footerText}}">{{config.footerText}}</view>
+    <view
+      wx:if="{{config.display.customerServicePhone && config.customerServicePhone}}"
+      class="customer-phone"
+      bindtap="callCustomerService"
+      bindlongpress="copyCustomerServicePhone"
+    >
+      {{config.text.customerServiceLabel}}：<text class="customer-phone-number">{{config.customerServicePhone}}</text>
+    </view>
+    <button wx:if="{{config.display.myAppointmentsButton}}" class="link-button" bindtap="goMyAppointments">
+      {{config.text.myAppointmentsButtonText}}
+    </button>
+  </view>
+
+  <view wx:if="{{showAuthModal}}" class="modal-mask">
+    <view class="modal">
+      <view class="modal-title">{{config.text.authModalTitle}}</view>
+      <view class="modal-desc">{{config.text.authModalDescription}}</view>
+      <button class="primary-button" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
+        {{config.text.authModalButtonText}}
+      </button>
+      <button class="modal-cancel" bindtap="closeAuthModal">{{config.text.authModalCancelText}}</button>
+    </view>
+  </view>
+</view>

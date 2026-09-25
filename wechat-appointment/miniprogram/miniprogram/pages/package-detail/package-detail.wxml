@@ -1,0 +1,12 @@
+<view class="enterprise-page package-detail-page" wx:if="{{packageItem.id}}">
+  <image class="package-cover" src="{{packageItem.cover}}" mode="aspectFill" />
+  <view class="enterprise-card package-summary">
+    <view class="prices"><strong>¥{{packageItem.salePrice}}</strong><del>原价 ¥{{packageItem.originalPrice}}</del><text>{{packageItem.salesCount}} 人已申请</text></view>
+    <view class="title">{{packageItem.title}}</view>
+    <view class="trust-row"><view><text class="trust-icon">授</text><text>医院授权</text></view><view><text class="trust-icon">7</text><text>七天退换</text></view><view><text class="trust-icon">服</text><text>售后服务</text></view></view>
+    <view class="notice">本套餐仅用于提交咨询申请，实际诊疗方案和费用以到院评估为准。</view>
+  </view>
+  <view class="enterprise-card"><view class="enterprise-section-title">套餐介绍</view><view class="description">{{packageItem.description}}</view></view>
+  <view class="enterprise-card" wx:if="{{packageItem.images.length}}"><view class="enterprise-section-title">套餐详情</view><image class="detail-image" wx:for="{{packageItem.images}}" wx:key="id" src="{{item.imageUrl}}" mode="widthFix" /></view>
+  <view class="bottom-bar"><view class="bottom-price"><strong>¥{{packageItem.salePrice}}</strong><del>¥{{packageItem.originalPrice}}</del></view><button class="consult" open-type="contact" show-message-card>咨询</button><button class="apply" bindtap="apply">提交申请</button></view>
+</view>

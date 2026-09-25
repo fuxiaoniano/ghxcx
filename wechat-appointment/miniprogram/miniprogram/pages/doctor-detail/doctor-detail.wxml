@@ -1,0 +1,28 @@
+<view class="enterprise-page detail-page" wx:if="{{doctor.id}}">
+  <view class="doctor-hero enterprise-card">
+    <image src="{{doctor.avatar}}" mode="aspectFill" />
+    <view><view class="name">{{doctor.name}}</view><view class="title">{{doctor.title}}</view><view class="display-text">{{doctor.displayText || doctor.title}}</view></view>
+  </view>
+  <view class="enterprise-card"><view class="enterprise-section-title">擅长领域</view><view class="body-text">{{doctor.specialty}}</view></view>
+  <view class="enterprise-card">
+    <view class="enterprise-section-title">医生简介</view><view class="body-text">{{doctor.description}}</view>
+    <swiper wx:if="{{doctor.images.length}}" class="doctor-images" indicator-dots><swiper-item wx:for="{{doctor.images}}" wx:key="*this"><image src="{{item}}" mode="aspectFill" /></swiper-item></swiper>
+  </view>
+  <view class="enterprise-card schedule-card">
+    <view class="enterprise-section-title">出诊信息</view>
+    <view class="clinic-name">{{doctor.clinic.name || doctor.hospital || '出诊院区'}}</view>
+    <view wx:if="{{doctor.clinic.address}}" class="clinic-address">● 地址：{{doctor.clinic.address}}</view>
+    <view wx:if="{{!scheduleDays.length}}" class="enterprise-muted schedule-empty">暂无可预约出诊</view>
+    <scroll-view wx:else class="schedule-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="schedule-grid">
+        <view class="schedule-day-card" wx:for="{{scheduleDays}}" wx:key="date">
+          <view class="day-head"><strong>{{item.dateLabel}}</strong><text>{{item.isToday?'今天':item.weekday}}</text></view>
+          <view class="schedule-slot"><text>上午</text><view class="schedule-button {{item.morningAvailable?'':'disabled'}}" data-id="{{item.morningId}}" data-available="{{item.morningAvailable}}" bindtap="bookSchedule" aria-role="button" aria-disabled="{{!item.morningAvailable}}"><text>{{item.morningAvailable?'预约':'已满'}}</text></view></view>
+          <view class="schedule-slot"><text>下午</text><view class="schedule-button {{item.afternoonAvailable?'':'disabled'}}" data-id="{{item.afternoonId}}" data-available="{{item.afternoonAvailable}}" bindtap="bookSchedule" aria-role="button" aria-disabled="{{!item.afternoonAvailable}}"><text>{{item.afternoonAvailable?'预约':'已满'}}</text></view></view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+  <view class="enterprise-card consult-card"><view><view class="consult-title">在线咨询 一对一解答</view><view class="enterprise-muted">请问有什么可以帮助您的吗？</view></view><button open-type="contact" show-message-card>免费咨询</button></view>
+  <view class="bottom-actions"><button class="enterprise-button enterprise-button--outline" open-type="contact" show-message-card>免费咨询</button><button class="enterprise-button" bindtap="book">预约挂号</button></view>
+</view>

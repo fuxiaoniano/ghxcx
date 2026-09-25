@@ -1,0 +1,46 @@
+import { EnterpriseCategory, EnterpriseDoctor, getEnterpriseCategories, getEnterpriseDoctors } from '../../api/enterprise';
+
+Page({
+  data: {
+    categories: [] as EnterpriseCategory[],
+    doctors: [] as EnterpriseDoctor[],
+    departmentId: '',
+    loading: true
+  },
+  onLoad() {
+    wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] });
+    this.load();
+  },
+  onPullDownRefresh() {
+    this.load().finally(() => wx.stopPullDownRefresh());
+  },
+  async load() {
+    try {
+      const [categories, doctors] = await Promise.all([
+        getEnterpriseCategories(),
+        getEnterpriseDoctors(this.data.departmentId)
+      ]);
+      this.setData({ categories, doctors });
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '加载失败', icon: 'none' });
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+  selectDepartment(event: WechatMiniprogram.TouchEvent) {
+    this.setData({ departmentId: event.currentTarget.dataset.id || '' });
+    this.load();
+  },
+  openDetail(event: WechatMiniprogram.TouchEvent) {
+    wx.navigateTo({ url: `/pages/doctor-detail/doctor-detail?id=${event.currentTarget.dataset.id}&categoryId=${this.data.departmentId}` });
+  },
+  book(event: WechatMiniprogram.TouchEvent) {
+    wx.navigateTo({ url: `/pages/booking-form/booking-form?doctorId=${event.currentTarget.dataset.id}&categoryId=${this.data.departmentId}` });
+  },
+  onShareAppMessage() {
+    return { title: '医生团队', path: '/pages/doctors/doctors?source=share' };
+  },
+  onShareTimeline() {
+    return { title: '医生团队' };
+  }
+});

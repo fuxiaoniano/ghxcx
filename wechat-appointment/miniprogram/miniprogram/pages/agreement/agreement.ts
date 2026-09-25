@@ -1,0 +1,1 @@
+Page({data:{type:'privacy',title:'隐私协议'},onLoad(options:Record<string,string|undefined>){const type=options.type==='user'?'user':'privacy';const title=type==='user'?'用户协议':'隐私协议';this.setData({type,title});wx.setNavigationBarTitle({title});}});

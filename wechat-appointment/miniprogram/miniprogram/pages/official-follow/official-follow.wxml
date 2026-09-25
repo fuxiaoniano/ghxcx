@@ -1,0 +1,13 @@
+<view class="follow-page enterprise-page">
+  <view class="follow-hero">
+    <view class="follow-icon">+</view>
+    <view class="follow-title">关注{{officialAccountName}}</view>
+    <view class="follow-copy">关注后可接收公众号预约服务通知；在线咨询与客服无需关注公众号。</view>
+  </view>
+  <view class="enterprise-card follow-panel">
+    <view class="enterprise-section-title">点击下方公众号卡片进入关注页面</view>
+    <official-account bindload="onOfficialAccountLoad" binderror="onOfficialAccountError"></official-account>
+    <view wx:if="{{componentError}}" class="follow-error">当前入口暂不支持展示关注组件，请从微信扫一扫进入小程序后重试，或在微信中搜索“{{officialAccountName}}”。</view>
+  </view>
+  <view class="enterprise-muted follow-tip">完成关注后返回个人中心，页面会自动刷新关注状态。</view>
+</view>
