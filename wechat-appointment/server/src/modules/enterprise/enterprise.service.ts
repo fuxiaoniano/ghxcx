@@ -283,7 +283,7 @@ export class EnterpriseService {
   async enterpriseHomeConfig() {
     const row = await this.prisma.systemConfig.findUnique({ where: { key: 'enterpriseHome' } });
     return {
-      hospitalName: '重庆种博士口腔',
+      hospitalName: '傅小念口腔',
       slogan: '专业口腔诊疗服务',
       logo: '',
       customerServicePath: '',
@@ -382,7 +382,7 @@ export class EnterpriseService {
   async deleteProject(id: string, audit: AuditContext) { const count = await this.prisma.appointment.count({ where: { dentalProjectId: id } }); if (count) return this.updateProject(id, { status: ContentStatus.DISABLED }, audit); return this.deleteSimple('dentalProject', 'dental_projects', id, audit); }
 
   async createDoctor(data: DoctorDto, audit: AuditContext) {
-    const departmentIds = this.doctorDepartmentIds(data);
+    const departmentIds = await this.doctorDepartmentIds(data);
     const { departmentIds: _departmentIds, ...doctorData } = this.clean(data);
     const row = await this.prisma.doctor.create({
       data: {
@@ -400,7 +400,7 @@ export class EnterpriseService {
   async updateDoctor(id: string, data: DoctorDto, audit: AuditContext) {
     const before = await this.prisma.doctor.findUnique({ where: { id }, include: { departments: true } });
     if (!before) throw new BusinessException(404410, '管理内容不存在');
-    const departmentIds = this.doctorDepartmentIds(data);
+    const departmentIds = await this.doctorDepartmentIds(data);
     const { departmentIds: _departmentIds, ...doctorData } = this.clean(data);
     const row = await this.prisma.$transaction(async (transaction) => {
       await transaction.doctorDepartment.deleteMany({ where: { doctorId: id } });
@@ -523,9 +523,13 @@ export class EnterpriseService {
     ]);
   }
 
-  private doctorDepartmentIds(data: DoctorDto) {
+  private async doctorDepartmentIds(data: DoctorDto) {
     const ids = [...new Set([...(data.departmentIds || []), data.departmentId].filter(Boolean))];
     if (!ids.length) throw new BusinessException(400406, '请至少选择一个科室');
+    const existing = await this.prisma.dentalCategory.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    if (existing.length !== ids.length) {
+      throw new BusinessException(400406, '所选科室已失效，请重新选择后保存');
+    }
     return ids;
   }
 

@@ -243,8 +243,8 @@ const defaultOfficialAutoReply: OfficialAutoReplyConfig = {
   subscribeMiniProgramType: 'LINK',
   subscribeMiniProgramAppId: '',
   subscribeMiniProgramPagePath: 'pages/home/home?source=oa_subscribe',
-  subscribeMiniProgramLinkText: '点击进入种博士口腔小程序',
-  subscribeMiniProgramCardTitle: '种博士口腔预约挂号',
+  subscribeMiniProgramLinkText: '点击进入傅小念口腔服务',
+  subscribeMiniProgramCardTitle: '傅小念口腔预约挂号',
   subscribeMiniProgramCoverUrl: '',
   messageReplyEnabled: true,
   messageReply:

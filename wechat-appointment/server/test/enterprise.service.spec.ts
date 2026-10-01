@@ -305,7 +305,7 @@ describe('EnterpriseService', () => {
     expect(result).toEqual(expect.objectContaining({
       phoneMasked: '138****8000',
       subscribedOfficialAccount: true,
-      hospitalName: '重庆种博士口腔'
+      hospitalName: '傅小念口腔'
     }));
     expect(result).not.toHaveProperty('phoneEncrypted');
   });

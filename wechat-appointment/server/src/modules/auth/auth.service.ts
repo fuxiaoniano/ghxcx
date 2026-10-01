@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 
@@ -12,7 +12,11 @@ export interface AdminTokenPayload {
   username: string;
   nickname?: string;
   role: string;
+  roleName?: string;
   permissions: string[];
+  dataScope?: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL';
+  dataScopeMemberIds?: string[];
+  teamId?: string | null;
 }
 
 @Injectable()
@@ -24,15 +28,22 @@ export class AuthService {
 
   signMini(payload: MiniTokenPayload): string {
     return this.jwt.sign(payload, {
-      secret: this.config.get<string>('JWT_SECRET') || 'dev-mini-secret',
+      secret: this.jwtSecret('JWT_SECRET', 'dev-mini-secret'),
       expiresIn: this.config.get<string>('JWT_EXPIRES_IN') || '7d'
     });
   }
 
   signAdmin(payload: AdminTokenPayload): string {
     return this.jwt.sign(payload, {
-      secret: this.config.get<string>('ADMIN_JWT_SECRET') || 'dev-admin-secret',
+      secret: this.jwtSecret('ADMIN_JWT_SECRET', 'dev-admin-secret'),
       expiresIn: this.config.get<string>('ADMIN_JWT_EXPIRES_IN') || '8h'
     });
+  }
+
+  private jwtSecret(key: string, developmentFallback: string): string {
+    const value = this.config.get<string>(key);
+    if (value) return value;
+    if (this.config.get<string>('NODE_ENV') !== 'production') return developmentFallback;
+    throw new InternalServerErrorException(`${key} is not configured`);
   }
 }

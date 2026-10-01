@@ -4,7 +4,7 @@
       <div class="identity-panel">
         <div class="identity-brand">
           <span class="identity-mark">种</span>
-          <div><strong>运营管理后台</strong><span>预约管理中心</span></div>
+          <div><strong>傅小念的运营管理后台</strong><span>预约管理中心</span></div>
         </div>
         <div class="identity-message">
           <span class="identity-label">运营工作台</span>
@@ -15,7 +15,7 @@
       </div>
 
       <div class="login-panel">
-        <div class="mobile-brand"><span class="identity-mark">管</span><strong>运营管理后台</strong></div>
+        <div class="mobile-brand"><span class="identity-mark">管</span><strong>傅小念的运营管理后台</strong></div>
         <div class="form-heading">
           <span>ADMIN CONSOLE</span>
           <h2>微信扫码登录</h2>

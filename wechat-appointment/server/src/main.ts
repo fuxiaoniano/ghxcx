@@ -40,14 +40,16 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('微信公众号阅读者挂号服务系统 API')
-    .setDescription('小程序、公众号、管理后台统一接口文档')
-    .setVersion('1.0.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  if (config.get<string>('NODE_ENV') !== 'production' || config.get<string>('SWAGGER_ENABLED') === 'true') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('微信公众号阅读者挂号服务系统 API')
+      .setDescription('小程序、公众号、管理后台统一接口文档')
+      .setVersion('1.0.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   const port = Number(config.get('PORT') || 3000);
   await app.listen(port);

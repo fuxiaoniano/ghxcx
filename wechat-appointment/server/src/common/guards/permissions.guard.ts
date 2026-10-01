@@ -29,10 +29,32 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
     const owned = new Set(user.permissions || []);
-    // 新预约权限与线上旧权限双向兼容，避免升级后已有管理员突然失权。
+    // 仅允许“新细分权限 -> 旧聚合权限”的兼容方向。
+    // 旧聚合权限可以继续访问原页面，但单个新细分权限不能反向获得整组旧权限。
     const aliases: Record<string, string[]> = {
-      MANAGE_APPOINTMENTS: ['APPOINTMENT_MANAGE'],
-      APPOINTMENT_MANAGE: ['MANAGE_APPOINTMENTS']
+      APPOINTMENT_MANAGE: ['MANAGE_APPOINTMENTS'],
+      BUSINESS_LEADS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      BUSINESS_APPOINTMENTS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      BUSINESS_USERS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      BUSINESS_NOTIFICATIONS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      CONTENT_HOME: ['HOME_MANAGE'],
+      CONTENT_DEPARTMENTS: ['DOCTOR_MANAGE'],
+      CONTENT_DOCTORS: ['DOCTOR_MANAGE'],
+      CONTENT_PACKAGES: ['PACKAGE_MANAGE'],
+      CONTENT_MEDIA: ['HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE'],
+      CONTENT_LINKS: ['HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE'],
+      WEBSITE_SETTINGS: ['WEBSITE_MANAGE'],
+      WEBSITE_CATEGORIES: ['WEBSITE_MANAGE'],
+      WEBSITE_ARTICLES: ['WEBSITE_MANAGE'],
+      WECHAT_MENU: ['WECHAT_MANAGE'],
+      WECHAT_AUTO_REPLY: ['WECHAT_MANAGE'],
+      SYSTEM_MEMBERS: ['MANAGE_ADMINS'],
+      SYSTEM_ROLES: ['MANAGE_ADMINS'],
+      SYSTEM_OFFICIAL_BINDING: ['SYSTEM_MANAGE'],
+      SYSTEM_CONFIGS: ['SYSTEM_MANAGE'],
+      SYSTEM_FOLLOWUP: ['SYSTEM_MANAGE'],
+      SYSTEM_WEBSITE_ANALYTICS: ['SYSTEM_MANAGE'],
+      SYSTEM_AUDIT: ['SYSTEM_MANAGE']
     };
     const hasPermission = (permission: string) =>
       owned.has(permission) || (aliases[permission] || []).some((alias) => owned.has(alias));

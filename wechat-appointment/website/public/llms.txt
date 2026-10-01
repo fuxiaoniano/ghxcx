@@ -1,0 +1,13 @@
+# 傅小念口腔资讯
+
+> 面向公众的中文口腔健康科普网站，用清晰、可靠的方式解释日常护理、牙周健康、儿童口腔、牙齿矫正和种植修复知识。
+
+## 内容入口
+- [网站首页](https://wechat.fuxiaonian.net/website/)
+- [全部资讯](https://wechat.fuxiaonian.net/website/articles)
+- [免责声明](https://wechat.fuxiaonian.net/website/disclaimer)
+
+## 引用说明
+- 文章作者、摘要和发布日期以文章页面显示为准。
+- 内容仅用于健康科普，不能替代医生面诊、诊断或个体化治疗建议。
+- 引用时请保留文章标题和页面链接。

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AdminInviteStatus,
@@ -9,12 +9,15 @@ import {
   ClinicStatus,
   ContentStatus,
   FollowupForwardStatus,
+  ConsultationStatusCategory,
   NotificationChannel,
   NotificationStatus,
   Prisma
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import Redis from 'ioredis';
 import { createHash, randomBytes } from 'crypto';
 import { renameSync } from 'fs';
@@ -35,7 +38,11 @@ import {
 } from '../configs/configs.service';
 import { WechatOfficialAccountService } from '../wechat-official-account/wechat-official-account.service';
 import { FollowupForwarderService } from '../followup-forwarder/followup-forwarder.service';
-import { AdminLoginDto, CreateLandingPageDto } from './dto';
+import { ADMIN_PERMISSIONS, AdminLoginDto, CreateLandingPageDto } from './dto';
+import { DataScopeService } from '../../common/data-scope/data-scope.service';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 @Injectable()
 export class AdminService {
@@ -49,7 +56,8 @@ export class AdminService {
     private readonly configsService: ConfigsService,
     private readonly officialAccount: WechatOfficialAccountService,
     private readonly config: ConfigService,
-    @Inject('REDIS') private readonly redis: Redis
+    @Inject('REDIS') private readonly redis: Redis,
+    @Optional() private readonly dataScopes?: DataScopeService
   ) {}
 
   async login(dto: AdminLoginDto, ip?: string, userAgent?: string | string[]) {
@@ -58,7 +66,7 @@ export class AdminService {
     if (fails >= 5) {
       throw new BusinessException(401501, '登录失败次数过多，请 15 分钟后再试', 401);
     }
-    const admin = await this.prisma.adminUser.findUnique({ where: { username: dto.username } });
+    const admin = await this.prisma.adminUser.findUnique({ where: { username: dto.username }, include: { customRole: true } });
     if (!admin || admin.status !== AdminStatus.ACTIVE) {
       await this.markLoginFailed(failKey);
       throw new BusinessException(401502, '账号或密码错误', 401);
@@ -73,7 +81,7 @@ export class AdminService {
       where: { id: admin.id },
       data: { lastLoginAt: new Date() }
     });
-    const permissions = this.parsePermissions(admin.permissionsJson);
+    const permissions = this.parsePermissions(admin.customRole?.permissionsJson ?? admin.permissionsJson);
     await this.audit.create({
       adminUserId: admin.id,
       action: 'ADMIN_LOGIN',
@@ -88,6 +96,7 @@ export class AdminService {
       username: admin.username,
       nickname: admin.nickname || admin.username,
       role: admin.role,
+      roleName: admin.customRole?.name,
       permissions
     });
     return {
@@ -97,7 +106,11 @@ export class AdminService {
         username: admin.username,
         nickname: admin.nickname || admin.username,
         role: admin.role,
-        permissions
+        roleName: admin.customRole?.name,
+        permissions,
+        dataScope: admin.role === AdminRole.SUPER_ADMIN ? 'ALL' : (admin.customRole?.dataScope ?? admin.dataScope),
+        dataScopeMemberIds: this.parseStringArray(admin.customRole?.dataScopeMemberIds ?? admin.dataScopeMemberIds),
+        teamId: admin.teamId
       }
     };
   }
@@ -171,11 +184,11 @@ export class AdminService {
     if (session.status !== 'CONFIRMED' || !session.adminUserId) {
       return { status: session.status, message: session.message };
     }
-    const admin = await this.prisma.adminUser.findUnique({ where: { id: session.adminUserId } });
+    const admin = await this.prisma.adminUser.findUnique({ where: { id: session.adminUserId }, include: { customRole: true } });
     if (!admin || admin.status !== AdminStatus.ACTIVE) {
       return { status: 'ERROR', message: '后台账号不存在或已停用' };
     }
-    const permissions = this.parsePermissions(admin.permissionsJson);
+    const permissions = this.parsePermissions(admin.customRole?.permissionsJson ?? admin.permissionsJson);
     await this.prisma.adminUser.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
     await this.audit.create({
       adminUserId: admin.id,
@@ -194,21 +207,31 @@ export class AdminService {
         username: admin.username,
         nickname: admin.nickname || admin.username,
         role: admin.role,
-        permissions
+        roleName: admin.customRole?.name,
+        permissions,
+        dataScope: admin.role === AdminRole.SUPER_ADMIN ? 'ALL' : (admin.customRole?.dataScope ?? admin.dataScope),
+        dataScopeMemberIds: this.parseStringArray(admin.customRole?.dataScopeMemberIds ?? admin.dataScopeMemberIds),
+        teamId: admin.teamId
       }),
       user: {
         id: admin.id,
         username: admin.username,
         nickname: admin.nickname || admin.username,
         role: admin.role,
-        permissions
+        roleName: admin.customRole?.name,
+        permissions,
+        dataScope: admin.role === AdminRole.SUPER_ADMIN ? 'ALL' : (admin.customRole?.dataScope ?? admin.dataScope),
+        dataScopeMemberIds: this.parseStringArray(admin.customRole?.dataScopeMemberIds ?? admin.dataScopeMemberIds),
+        teamId: admin.teamId
       }
     };
   }
 
-  async dashboard() {
+  async dashboard(user: AdminCurrentUser) {
     const todayStart = dayjs().startOf('day').toDate();
     const sevenDaysAgo = dayjs().subtract(6, 'day').startOf('day').toDate();
+    const appointmentScope = await this.scopedAppointmentWhere({}, user);
+    const notificationScope: Prisma.NotificationLogWhereInput = { appointment: appointmentScope };
     const [
       todayCount,
       totalCount,
@@ -219,19 +242,20 @@ export class AdminService {
       recentAppointments,
       trendRows
     ] = await Promise.all([
-      this.prisma.appointment.count({ where: { createdAt: { gte: todayStart } } }),
-      this.prisma.appointment.count(),
-      this.prisma.appointment.count({ where: { status: AppointmentStatus.PENDING_CONTACT } }),
-      this.prisma.appointment.count({ where: { status: AppointmentStatus.CONFIRMED } }),
-      this.prisma.notificationLog.count(),
-      this.prisma.notificationLog.count({ where: { status: NotificationStatus.SUCCESS } }),
+      this.prisma.appointment.count({ where: { AND: [appointmentScope, { createdAt: { gte: todayStart } }] } }),
+      this.prisma.appointment.count({ where: appointmentScope }),
+      this.prisma.appointment.count({ where: { AND: [appointmentScope, { status: AppointmentStatus.PENDING_CONTACT }] } }),
+      this.prisma.appointment.count({ where: { AND: [appointmentScope, { status: AppointmentStatus.CONFIRMED }] } }),
+      this.prisma.notificationLog.count({ where: notificationScope }),
+      this.prisma.notificationLog.count({ where: { AND: [notificationScope, { status: NotificationStatus.SUCCESS }] } }),
       this.prisma.appointment.findMany({
+        where: appointmentScope,
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: { clinic: true }
       }),
       this.prisma.appointment.findMany({
-        where: { createdAt: { gte: sevenDaysAgo } },
+        where: { AND: [appointmentScope, { createdAt: { gte: sevenDaysAgo } }] },
         select: { createdAt: true }
       })
     ]);
@@ -253,10 +277,12 @@ export class AdminService {
     };
   }
 
-  async users(query: Record<string, string>) {
+  async users(query: Record<string, string>, admin: AdminCurrentUser) {
     const page = this.page(query.page);
     const pageSize = this.pageSize(query.pageSize);
     const where: Prisma.UserWhereInput = {};
+    const appointmentScope = await this.scopedAppointmentWhere({}, admin);
+    if (Object.keys(appointmentScope).length) where.appointments = { some: appointmentScope };
     if (query.keyword) {
       const trimmed = query.keyword.trim();
       where.OR = [
@@ -301,17 +327,19 @@ export class AdminService {
     };
   }
 
-  async userDetail(id: string) {
+  async userDetail(id: string, admin: AdminCurrentUser) {
+    const appointmentScope = await this.scopedAppointmentWhere({}, admin);
     const user = await this.prisma.user.findUnique({
       where: { id },
       include: {
         identities: true,
-        appointments: { orderBy: { createdAt: 'desc' }, include: { clinic: true } }
+        appointments: { where: appointmentScope, orderBy: { createdAt: 'desc' }, include: { clinic: true } }
       }
     });
     if (!user) {
       throw new BusinessException(404501, '用户不存在');
     }
+    if (Object.keys(appointmentScope).length && user.appointments.length === 0) throw new BusinessException(403011, '无权访问该用户数据', 403);
     return {
       id: user.id,
       name: user.name,
@@ -343,6 +371,11 @@ export class AdminService {
     if (!row.phoneEncrypted || !row.phoneMasked) {
       throw new BusinessException(400501, '该用户尚未授权手机号');
     }
+    const appointmentScope = await this.scopedAppointmentWhere({}, user);
+    if (Object.keys(appointmentScope).length) {
+      const visible = await this.prisma.appointment.count({ where: { AND: [appointmentScope, { userId: id }] } });
+      if (!visible) throw new BusinessException(403011, '无权访问该用户数据', 403);
+    }
     const phone = this.crypto.decryptPhone(row.phoneEncrypted);
     await this.audit.create({
       adminUserId: user.adminUserId,
@@ -356,10 +389,10 @@ export class AdminService {
     return { phone };
   }
 
-  async appointments(query: Record<string, string>) {
+  async appointments(query: Record<string, string>, user: AdminCurrentUser) {
     const page = this.page(query.page);
     const pageSize = this.pageSize(query.pageSize);
-    const where = this.appointmentWhere(query);
+    const where = await this.scopedAppointmentWhere(query, user);
     const [total, rows] = await Promise.all([
       this.prisma.appointment.count({ where }),
       this.prisma.appointment.findMany({
@@ -378,7 +411,7 @@ export class AdminService {
     };
   }
 
-  async appointmentDetail(id: string) {
+  async appointmentDetail(id: string, user: AdminCurrentUser) {
     const row = await this.prisma.appointment.findUnique({
       where: { id },
       include: {
@@ -394,6 +427,7 @@ export class AdminService {
     if (!row) {
       throw new BusinessException(404502, '挂号记录不存在');
     }
+    await this.assertAppointmentScope(row, user);
     return {
       ...this.appointmentListItem(row),
       remark: row.remark,
@@ -413,6 +447,7 @@ export class AdminService {
     if (!row) {
       throw new BusinessException(404502, '挂号记录不存在');
     }
+    await this.assertAppointmentScope(row, user);
     const phone = this.crypto.decryptPhone(row.phoneEncrypted);
     await this.audit.create({
       adminUserId: user.adminUserId,
@@ -437,6 +472,7 @@ export class AdminService {
     if (!before) {
       throw new BusinessException(404502, '挂号记录不存在');
     }
+    await this.assertAppointmentScope(before, user);
     const now = new Date();
     const updated = await this.prisma.appointment.update({
       where: { id },
@@ -472,6 +508,7 @@ export class AdminService {
     if (!before) {
       throw new BusinessException(404502, '挂号记录不存在');
     }
+    await this.assertAppointmentScope(before, user);
     const updated = await this.prisma.appointment.update({
       where: { id },
       data: { adminRemark },
@@ -501,6 +538,7 @@ export class AdminService {
     if (!before) {
       throw new BusinessException(404502, '挂号记录不存在');
     }
+    await this.assertAppointmentScope(before, user);
     const updated = await this.prisma.appointment.update({
       where: { id },
       data: { assignedToAdminId: adminUserId || null },
@@ -524,6 +562,7 @@ export class AdminService {
     if (!row) {
       throw new BusinessException(404502, '挂号记录不存在');
     }
+    await this.assertAppointmentScope(row, user);
     const result = await this.notifications.sendAppointmentSuccess(id);
     await this.audit.create({
       adminUserId: user.adminUserId,
@@ -542,6 +581,7 @@ export class AdminService {
     if (!row) {
       throw new BusinessException(404502, '挂号记录不存在');
     }
+    await this.assertAppointmentScope(row, user);
     const result = await this.followupForwarder.forwardAppointment(id, { force: true });
     await this.audit.create({
       adminUserId: user.adminUserId,
@@ -555,10 +595,12 @@ export class AdminService {
     return result;
   }
 
-  async notificationLogs(query: Record<string, string>) {
+  async notificationLogs(query: Record<string, string>, user: AdminCurrentUser) {
     const page = this.page(query.page);
     const pageSize = this.pageSize(query.pageSize);
     const where: Prisma.NotificationLogWhereInput = {};
+    const appointmentScope = await this.scopedAppointmentWhere({}, user);
+    if (Object.keys(appointmentScope).length) where.appointment = appointmentScope;
     if (query.channel && Object.values(NotificationChannel).includes(query.channel as NotificationChannel)) {
       where.channel = query.channel as NotificationChannel;
     }
@@ -584,6 +626,9 @@ export class AdminService {
   }
 
   async retryNotification(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const notification = await this.prisma.notificationLog.findUnique({ where: { id }, include: { appointment: true } });
+    if (!notification) throw new BusinessException(404503, '通知记录不存在', 404);
+    if (notification.appointment) await this.assertAppointmentScope(notification.appointment, user);
     const result = await this.notifications.retryNotification(id);
     await this.audit.create({
       adminUserId: user.adminUserId,
@@ -618,7 +663,12 @@ export class AdminService {
   }
 
   configs() {
-    return this.configsService.getAll();
+    // 通用配置接口仅保留旧落地页兼容项；公众号密钥、回访 Token、工资规则等
+    // 必须通过各自的专用权限接口读取，不能原样暴露整张 system_configs。
+    return this.prisma.systemConfig.findMany({
+      where: { key: 'landingPage' },
+      orderBy: { key: 'asc' }
+    });
   }
 
   landingPages() {
@@ -719,6 +769,11 @@ export class AdminService {
     userAgent?: string | string[]
   ) {
     this.requireConfigPermission(user);
+    const allowedKeys = new Set(['landingPage']);
+    const invalidKeys = configs.map((item) => item.key).filter((key) => !allowedKeys.has(key));
+    if (invalidKeys.length) {
+      throw new BusinessException(403509, '该配置必须通过对应的专用设置页面修改', 403);
+    }
     const before = await this.prisma.systemConfig.findMany({
       where: { key: { in: configs.map((item) => item.key) } }
     });
@@ -881,9 +936,9 @@ export class AdminService {
     const subscribeMiniProgramPagePath = text(value.subscribeMiniProgramPagePath, 1024) ||
       'pages/home/home?source=oa_subscribe';
     const subscribeMiniProgramLinkText = text(value.subscribeMiniProgramLinkText, 100) ||
-      '点击进入种博士口腔小程序';
+      '点击进入傅小念口腔服务';
     const subscribeMiniProgramCardTitle = text(value.subscribeMiniProgramCardTitle, 100) ||
-      '种博士口腔预约挂号';
+      '傅小念口腔预约挂号';
     const subscribeMiniProgramCoverUrl = text(value.subscribeMiniProgramCoverUrl, 1000);
     if (subscribeMiniProgramEnabled && !/^wx[a-zA-Z0-9]{16}$/.test(subscribeMiniProgramAppId)) {
       throw new BusinessException(400551, '小程序 AppID 格式不正确');
@@ -940,10 +995,106 @@ export class AdminService {
     };
   }
 
+  officialAccountBinding() { return this.officialAccount.bindingStatus(); }
+
+  async updateOfficialAccountBinding(dto: { enabled: boolean; appId: string; appSecret?: string; token?: string; encodingAesKey?: string }, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const before = await this.officialAccount.bindingStatus();
+    const result = await this.officialAccount.updateBinding(dto);
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'UPDATE_OFFICIAL_ACCOUNT_BINDING', resourceType: 'official_account_binding', resourceId: 'officialAccountBinding', beforeJson: before as Prisma.InputJsonValue, afterJson: result as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
+    return result;
+  }
+
+  async adminRoles() {
+    const rows = await this.prisma.adminRoleDefinition.findMany({
+      include: { _count: { select: { users: true } } },
+      orderBy: [{ createdAt: 'asc' }, { name: 'asc' }],
+    });
+    return rows.map((row) => this.adminRoleItem(row));
+  }
+
+  async createAdminRole(dto: { name: string; description?: string; permissions: string[]; dataScope?: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL'; dataScopeMemberIds?: string[] }, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const name = dto.name.trim();
+    const exists = await this.prisma.adminRoleDefinition.findUnique({ where: { name } });
+    if (exists) throw new BusinessException(400516, '角色名称已存在，请更换名称');
+    const dataScope = dto.dataScope || 'SELF';
+    this.assertCanGrantDataScope(user, dataScope);
+    this.assertCanGrantPermissions(user, dto.permissions);
+    const dataScopeMemberIds = await this.validateDataScopeMemberIds(dto.dataScopeMemberIds || []);
+    const created = await this.prisma.adminRoleDefinition.create({
+      data: {
+        name,
+        description: dto.description?.trim() || null,
+        permissionsJson: this.normalizePermissions(dto.permissions),
+        dataScope,
+        dataScopeMemberIds,
+      },
+      include: { _count: { select: { users: true } } },
+    });
+    const item = this.adminRoleItem(created);
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'CREATE_ADMIN_ROLE', resourceType: 'admin_role_definitions', resourceId: created.id, afterJson: item as unknown as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
+    return item;
+  }
+
+  async updateAdminRole(id: string, dto: { name?: string; description?: string; permissions?: string[]; dataScope?: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL'; dataScopeMemberIds?: string[] }, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const before = await this.prisma.adminRoleDefinition.findUnique({ where: { id }, include: { _count: { select: { users: true } } } });
+    if (!before) throw new BusinessException(404516, '角色不存在', 404);
+    const name = dto.name?.trim();
+    if (name && name !== before.name) {
+      const exists = await this.prisma.adminRoleDefinition.findFirst({ where: { name, id: { not: id } } });
+      if (exists) throw new BusinessException(400516, '角色名称已存在，请更换名称');
+    }
+    const permissions = dto.permissions === undefined ? this.parsePermissions(before.permissionsJson) : this.normalizePermissions(dto.permissions);
+    this.assertCanGrantPermissions(user, permissions);
+    const dataScope = dto.dataScope ?? before.dataScope;
+    this.assertCanGrantDataScope(user, dataScope);
+    const dataScopeMemberIds = dto.dataScopeMemberIds === undefined
+      ? this.parseStringArray(before.dataScopeMemberIds)
+      : await this.validateDataScopeMemberIds(dto.dataScopeMemberIds);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const role = await tx.adminRoleDefinition.update({
+        where: { id },
+        data: {
+          ...(name ? { name } : {}),
+          ...(dto.description !== undefined ? { description: dto.description.trim() || null } : {}),
+          ...(dto.permissions !== undefined ? { permissionsJson: permissions } : {}),
+          ...(dto.dataScope !== undefined ? { dataScope } : {}),
+          ...(dto.dataScopeMemberIds !== undefined ? { dataScopeMemberIds } : {}),
+        },
+        include: { _count: { select: { users: true } } },
+      });
+      if (dto.permissions !== undefined || dto.dataScope !== undefined || dto.dataScopeMemberIds !== undefined) {
+        await tx.adminUser.updateMany({
+          where: { customRoleId: id },
+          data: {
+            ...(dto.permissions !== undefined ? { permissionsJson: permissions } : {}),
+            ...(dto.dataScope !== undefined ? { dataScope } : {}),
+            ...(dto.dataScopeMemberIds !== undefined ? { dataScopeMemberIds } : {})
+          }
+        });
+      }
+      return role;
+    });
+    const item = this.adminRoleItem(updated);
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'UPDATE_ADMIN_ROLE', resourceType: 'admin_role_definitions', resourceId: id, beforeJson: this.adminRoleItem(before) as unknown as Prisma.InputJsonValue, afterJson: item as unknown as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
+    return item;
+  }
+
+  async deleteAdminRole(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const before = await this.prisma.adminRoleDefinition.findUnique({ where: { id }, include: { _count: { select: { users: true } } } });
+    if (!before) throw new BusinessException(404516, '角色不存在', 404);
+    this.assertCanGrantPermissions(user, this.parsePermissions(before.permissionsJson));
+    await this.prisma.$transaction(async (tx) => {
+      await tx.adminUser.updateMany({ where: { customRoleId: id }, data: { customRoleId: null } });
+      await tx.adminRoleDefinition.delete({ where: { id } });
+    });
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'DELETE_ADMIN_ROLE', resourceType: 'admin_role_definitions', resourceId: id, beforeJson: this.adminRoleItem(before) as unknown as Prisma.InputJsonValue, afterJson: { deleted: true, affectedMembers: before._count.users }, ip, userAgent: this.ua(userAgent) });
+    return { id, deleted: true, affectedMembers: before._count.users };
+  }
+
   async adminUsers(query: Record<string, string>) {
     const page = this.page(query.page);
     const pageSize = this.pageSize(query.pageSize);
-    const where: Prisma.AdminUserWhereInput = {};
+    const where: Prisma.AdminUserWhereInput = { deletedAt: null };
     if (query.keyword) {
       const keyword = query.keyword.trim();
       where.OR = [{ nickname: { contains: keyword } }, { username: { contains: keyword } }];
@@ -954,6 +1105,7 @@ export class AdminService {
         where,
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: { customRole: true, team: true },
         orderBy: { createdAt: 'desc' }
       })
     ]);
@@ -963,6 +1115,56 @@ export class AdminService {
       pageSize,
       list: rows.map((row) => this.adminUserItem(row))
     };
+  }
+
+  async createAdminUser(
+    dto: { username: string; password: string; role: AdminRole; customRoleId?: string; permissions: string[]; notifyEnabled?: boolean; dataScope?: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL'; dataScopeMemberIds?: string[]; teamId?: string; consultationReceivable?: boolean },
+    user: AdminCurrentUser,
+    ip?: string,
+    userAgent?: string | string[]
+  ) {
+    this.assertCanManageAdminTarget(user, dto.role);
+    const customRole = dto.customRoleId ? await this.prisma.adminRoleDefinition.findUnique({ where: { id: dto.customRoleId } }) : null;
+    if (dto.customRoleId && !customRole) throw new BusinessException(404516, '所选角色不存在', 404);
+    if (dto.role === AdminRole.SUPER_ADMIN && customRole) throw new BusinessException(400517, '超级管理员不能同时绑定自定义角色');
+    const dataScope = dto.role === AdminRole.SUPER_ADMIN ? 'ALL' : (customRole?.dataScope ?? dto.dataScope ?? 'SELF');
+    this.assertCanGrantDataScope(user, dataScope);
+    this.assertCanGrantPermissions(user, customRole ? this.parsePermissions(customRole.permissionsJson) : dto.permissions);
+    const dataScopeMemberIds = customRole
+      ? this.parseStringArray(customRole.dataScopeMemberIds)
+      : await this.validateDataScopeMemberIds(dto.dataScopeMemberIds || []);
+    if (dto.teamId) await this.assertTeamExists(dto.teamId);
+    const username = dto.username.trim();
+    const sameUsername = await this.prisma.adminUser.findUnique({ where: { username } });
+    if (sameUsername) throw new BusinessException(400506, '登录账号已存在，请更换账号');
+    const created = await this.prisma.adminUser.create({
+      data: {
+        username,
+        nickname: username,
+        passwordHash: await bcrypt.hash(dto.password, 10),
+        role: dto.role,
+        customRoleId: customRole?.id || null,
+        permissionsJson: customRole ? this.normalizePermissions(this.parsePermissions(customRole.permissionsJson)) : this.normalizePermissions(dto.permissions),
+        dataScope,
+        dataScopeMemberIds,
+        teamId: dto.teamId || null,
+        consultationReceivable: dto.consultationReceivable === true,
+        status: AdminStatus.ACTIVE,
+        notifyEnabled: dto.notifyEnabled !== false
+      },
+      include: { customRole: true, team: true },
+    });
+    const item = this.adminUserItem(created);
+    await this.audit.create({
+      adminUserId: user.adminUserId,
+      action: 'CREATE_ADMIN_USER',
+      resourceType: 'admin_users',
+      resourceId: created.id,
+      afterJson: item as unknown as Prisma.InputJsonValue,
+      ip,
+      userAgent: this.ua(userAgent)
+    });
+    return item;
   }
 
   async adminWechatInvitations() {
@@ -984,6 +1186,7 @@ export class AdminService {
     userAgent?: string | string[]
   ) {
     this.assertCanManageAdminTarget(user, dto.role);
+    this.assertCanGrantPermissions(user, dto.permissions);
     const nickname = dto.nickname.trim();
     const existing = await this.prisma.adminUser.findFirst({ where: { nickname } });
     if (existing) {
@@ -1139,6 +1342,9 @@ export class AdminService {
             passwordHash: null,
             role: invite.role,
             permissionsJson: invite.permissionsJson as Prisma.InputJsonValue,
+            // 历史账号由迁移保持 ALL；绑定邀请产生的是新账号，必须采用最小数据范围。
+            dataScope: 'SELF',
+            dataScopeMemberIds: [],
             status: AdminStatus.ACTIVE,
             oaOpenId: identity.oaOpenId,
             unionId: identity.unionId,
@@ -1171,22 +1377,46 @@ export class AdminService {
   async updateAdminUser(
     id: string,
     dto: {
-      nickname?: string;
+      username?: string;
       password?: string;
       role?: AdminRole;
+      customRoleId?: string | null;
       permissions?: string[];
       status?: AdminStatus;
       notifyEnabled?: boolean;
+      dataScope?: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL';
+      dataScopeMemberIds?: string[];
+      teamId?: string | null;
+      consultationReceivable?: boolean;
     },
     user: AdminCurrentUser,
     ip?: string,
     userAgent?: string | string[]
   ) {
-    const before = await this.prisma.adminUser.findUnique({ where: { id } });
+    const before = await this.prisma.adminUser.findUnique({ where: { id }, include: { customRole: true, team: true } });
     if (!before) {
       throw new BusinessException(404506, '管理员账号不存在');
     }
     const targetRole = dto.role || before.role;
+    const customRole = dto.customRoleId !== undefined
+      ? (dto.customRoleId ? await this.prisma.adminRoleDefinition.findUnique({ where: { id: dto.customRoleId } }) : null)
+      : before.customRole;
+    if (dto.customRoleId && !customRole) throw new BusinessException(404516, '所选角色不存在', 404);
+    if (targetRole === AdminRole.SUPER_ADMIN && customRole) throw new BusinessException(400517, '超级管理员不能同时绑定自定义角色');
+    const effectiveScope = targetRole === AdminRole.SUPER_ADMIN ? 'ALL' : (customRole?.dataScope ?? dto.dataScope ?? before.dataScope);
+    this.assertCanGrantDataScope(user, effectiveScope);
+    if (dto.customRoleId !== undefined || dto.permissions !== undefined) {
+      this.assertCanGrantPermissions(
+        user,
+        customRole ? this.parsePermissions(customRole.permissionsJson) : (dto.permissions ?? this.parsePermissions(before.permissionsJson))
+      );
+    }
+    const effectiveScopeMemberIds = customRole
+      ? this.parseStringArray(customRole.dataScopeMemberIds)
+      : (dto.dataScopeMemberIds === undefined
+        ? this.parseStringArray(before.dataScopeMemberIds)
+        : await this.validateDataScopeMemberIds(dto.dataScopeMemberIds));
+    if (dto.teamId) await this.assertTeamExists(dto.teamId);
     this.assertCanManageAdminTarget(user, targetRole);
     if (id === user.adminUserId && dto.status === AdminStatus.DISABLED) {
       throw new BusinessException(400507, '不能停用当前登录账号');
@@ -1195,8 +1425,12 @@ export class AdminService {
       throw new BusinessException(400513, '不能降低当前超级管理员自己的角色');
     }
     const data: Prisma.AdminUserUpdateInput = {};
-    if (dto.nickname) {
-      data.nickname = dto.nickname.trim();
+    if (dto.username) {
+      const username = dto.username.trim();
+      const sameUsername = await this.prisma.adminUser.findFirst({ where: { username, id: { not: id } } });
+      if (sameUsername) throw new BusinessException(400506, '登录账号已存在，请更换账号');
+      data.username = username;
+      data.nickname = username;
     }
     if (dto.password) {
       data.passwordHash = await bcrypt.hash(dto.password, 10);
@@ -1204,16 +1438,34 @@ export class AdminService {
     if (dto.role) {
       data.role = dto.role;
     }
-    if (dto.permissions) {
+    if (dto.customRoleId !== undefined) {
+      data.customRole = dto.customRoleId ? { connect: { id: dto.customRoleId } } : { disconnect: true };
+    }
+    if (customRole) {
+      data.permissionsJson = this.normalizePermissions(this.parsePermissions(customRole.permissionsJson));
+      data.dataScope = customRole.dataScope;
+      data.dataScopeMemberIds = this.parseStringArray(customRole.dataScopeMemberIds);
+    } else if (dto.permissions) {
       data.permissionsJson = this.normalizePermissions(dto.permissions);
     }
+    if (!customRole) {
+      if (targetRole === AdminRole.SUPER_ADMIN) {
+        data.dataScope = 'ALL';
+        data.dataScopeMemberIds = [];
+      } else {
+        if (dto.dataScope !== undefined) data.dataScope = effectiveScope;
+        if (dto.dataScopeMemberIds !== undefined) data.dataScopeMemberIds = effectiveScopeMemberIds;
+      }
+    }
+    if (dto.teamId !== undefined) data.team = dto.teamId ? { connect: { id: dto.teamId } } : { disconnect: true };
+    if (dto.consultationReceivable !== undefined) data.consultationReceivable = dto.consultationReceivable;
     if (dto.status) {
       data.status = dto.status;
     }
     if (dto.notifyEnabled !== undefined) {
       data.notifyEnabled = dto.notifyEnabled;
     }
-    const updated = await this.prisma.adminUser.update({ where: { id }, data });
+    const updated = await this.prisma.adminUser.update({ where: { id }, data, include: { customRole: true, team: true } });
     await this.audit.create({
       adminUserId: user.adminUserId,
       action: 'UPDATE_ADMIN_USER',
@@ -1225,6 +1477,156 @@ export class AdminService {
       userAgent: this.ua(userAgent)
     });
     return this.adminUserItem(updated);
+  }
+
+  async adminUserHandoverSummary(id: string) {
+    const target = await this.prisma.adminUser.findFirst({ where: { id, deletedAt: null } });
+    if (!target) throw new BusinessException(404506, '管理员账号不存在');
+    const now = new Date();
+    const businessNow = dayjs().tz('Asia/Shanghai');
+    const dayStart = businessNow.startOf('day').toDate();
+    const dayEnd = businessNow.endOf('day').toDate();
+    const activeStatusFilter = { category: { notIn: [ConsultationStatusCategory.COMPLETED, ConsultationStatusCategory.INVALID] } };
+    const [consultations, todayCallbacks, overdueCallbacks, appointments, promotionAccounts, tencentLeads] = await Promise.all([
+      this.prisma.consultationForm.count({ where: { ownerAdminId: id } }),
+      this.prisma.consultationForm.count({ where: { ownerAdminId: id, nextFollowUpAt: { gte: dayStart, lte: dayEnd }, status: activeStatusFilter } }),
+      this.prisma.consultationForm.count({ where: { ownerAdminId: id, nextFollowUpAt: { lt: now }, status: activeStatusFilter } }),
+      this.prisma.appointment.count({ where: { assignedToAdminId: id } }),
+      this.prisma.promotionAccount.count({ where: { ownerAdminId: id } }),
+      this.prisma.tencentAdLead.count({ where: { assignedToAdminId: id } })
+    ]);
+    return {
+      adminUserId: id,
+      consultations,
+      todayCallbacks,
+      overdueCallbacks,
+      appointments,
+      promotionAccounts,
+      tencentLeads,
+      total: consultations + appointments + promotionAccounts + tencentLeads
+    };
+  }
+
+  async deleteAdminUser(id: string, successorAdminId: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const target = await this.prisma.adminUser.findUnique({ where: { id }, include: { customRole: true } });
+    if (!target || target.deletedAt) throw new BusinessException(404506, '管理员账号不存在');
+    this.assertCanManageAdminTarget(user, target.role);
+    if (id === user.adminUserId) throw new BusinessException(400514, '不能删除当前登录账号');
+    if (!successorAdminId) throw new BusinessException(400518, '删除成员前必须选择新归属成员');
+    if (successorAdminId === id) throw new BusinessException(400519, '新归属成员不能是待删除成员本人');
+    const successor = await this.prisma.adminUser.findFirst({
+      where: { id: successorAdminId, status: AdminStatus.ACTIVE, deletedAt: null },
+      include: { customRole: true }
+    });
+    if (!successor) throw new BusinessException(400520, '新归属成员不存在或已停用');
+    if (target.role === AdminRole.SUPER_ADMIN) {
+      const count = await this.prisma.adminUser.count({ where: { role: AdminRole.SUPER_ADMIN, status: AdminStatus.ACTIVE, deletedAt: null } });
+      if (count <= 1) throw new BusinessException(400515, '至少需要保留一名启用的超级管理员');
+    }
+    const summary = await this.adminUserHandoverSummary(id);
+    const successorPermissions = this.parsePermissions(successor.customRole?.permissionsJson ?? successor.permissionsJson);
+    if (summary.consultations > 0 && successor.role !== AdminRole.SUPER_ADMIN && !successorPermissions.includes('CONSULTATION_VIEW')) {
+      throw new BusinessException(400521, '新归属成员缺少网咨数据查看权限，不能接收网咨表单');
+    }
+    const deletedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.consultationForm.updateMany({ where: { ownerAdminId: id }, data: { ownerAdminId: successorAdminId, lastOperatedByAdminId: user.adminUserId } });
+      await tx.appointment.updateMany({ where: { assignedToAdminId: id }, data: { assignedToAdminId: successorAdminId } });
+      await tx.promotionAccount.updateMany({ where: { ownerAdminId: id }, data: { ownerAdminId: successorAdminId } });
+      await tx.tencentAdLead.updateMany({ where: { assignedToAdminId: id }, data: { assignedToAdminId: successorAdminId } });
+      await tx.adminTeam.updateMany({ where: { leaderAdminId: id }, data: { leaderAdminId: null } });
+      await tx.adminWechatInvite.updateMany({ where: { adminUserId: id, status: AdminInviteStatus.PENDING }, data: { status: AdminInviteStatus.CANCELLED } });
+      await tx.adminUser.update({
+        where: { id },
+        data: {
+          username: `deleted_${id}`.slice(0, 64),
+          passwordHash: null,
+          status: AdminStatus.DISABLED,
+          oaOpenId: null,
+          unionId: null,
+          subscribedOfficialAccount: false,
+          notifyEnabled: false,
+          consultationReceivable: false,
+          teamId: null,
+          deletedAt
+        }
+      });
+      await tx.auditLog.create({
+        data: {
+          adminUserId: user.adminUserId,
+          action: 'DELETE_ADMIN_USER_WITH_HANDOVER',
+          resourceType: 'admin_users',
+          resourceId: id,
+          beforeJson: this.adminUserItem(target) as unknown as Prisma.InputJsonValue,
+          afterJson: { deleted: true, successorAdminId, summary } as unknown as Prisma.InputJsonValue,
+          ip,
+          userAgent: this.ua(userAgent)
+        }
+      });
+    });
+    return { id, deleted: true, successorAdminId, summary };
+  }
+
+  async adminTeams() {
+    const rows = await this.prisma.adminTeam.findMany({
+      include: {
+        leader: { select: { id: true, username: true, nickname: true } },
+        _count: { select: { members: true, children: true } }
+      },
+      orderBy: [{ createdAt: 'asc' }, { name: 'asc' }]
+    });
+    return rows;
+  }
+
+  async createAdminTeam(
+    dto: { name: string; parentId?: string | null; leaderAdminId?: string | null; status?: AdminStatus },
+    user: AdminCurrentUser,
+    ip?: string,
+    userAgent?: string | string[]
+  ) {
+    if (dto.parentId) await this.assertTeamExists(dto.parentId);
+    if (dto.leaderAdminId) await this.assertActiveAdmin(dto.leaderAdminId);
+    const created = await this.prisma.adminTeam.create({ data: {
+      name: dto.name.trim(), parentId: dto.parentId || null, leaderAdminId: dto.leaderAdminId || null,
+      status: dto.status || AdminStatus.ACTIVE
+    } });
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'CREATE_ADMIN_TEAM', resourceType: 'admin_teams', resourceId: created.id, afterJson: created as unknown as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
+    return created;
+  }
+
+  async updateAdminTeam(
+    id: string,
+    dto: { name?: string; parentId?: string | null; leaderAdminId?: string | null; status?: AdminStatus },
+    user: AdminCurrentUser,
+    ip?: string,
+    userAgent?: string | string[]
+  ) {
+    const before = await this.prisma.adminTeam.findUnique({ where: { id } });
+    if (!before) throw new BusinessException(404522, '团队不存在', 404);
+    if (dto.parentId === id) throw new BusinessException(400522, '团队不能设置自己为上级团队');
+    if (dto.parentId) {
+      await this.assertTeamExists(dto.parentId);
+      const descendants = await this.teamDescendantIds(id);
+      if (descendants.includes(dto.parentId)) throw new BusinessException(400523, '不能将下级团队设置为上级团队');
+    }
+    if (dto.leaderAdminId) await this.assertActiveAdmin(dto.leaderAdminId);
+    const updated = await this.prisma.adminTeam.update({ where: { id }, data: {
+      ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+      ...(dto.parentId !== undefined ? { parentId: dto.parentId || null } : {}),
+      ...(dto.leaderAdminId !== undefined ? { leaderAdminId: dto.leaderAdminId || null } : {}),
+      ...(dto.status !== undefined ? { status: dto.status } : {})
+    } });
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'UPDATE_ADMIN_TEAM', resourceType: 'admin_teams', resourceId: id, beforeJson: before as unknown as Prisma.InputJsonValue, afterJson: updated as unknown as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
+    return updated;
+  }
+
+  async deleteAdminTeam(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const before = await this.prisma.adminTeam.findUnique({ where: { id }, include: { _count: { select: { members: true, children: true } } } });
+    if (!before) throw new BusinessException(404522, '团队不存在', 404);
+    if (before._count.members || before._count.children) throw new BusinessException(400524, '团队仍有成员或下级团队，只能先转移后删除');
+    await this.prisma.adminTeam.delete({ where: { id } });
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'DELETE_ADMIN_TEAM', resourceType: 'admin_teams', resourceId: id, beforeJson: before as unknown as Prisma.InputJsonValue, afterJson: { deleted: true }, ip, userAgent: this.ua(userAgent) });
+    return { id, deleted: true };
   }
 
   async clinics() {
@@ -1347,25 +1749,26 @@ export class AdminService {
     userAgent?: string | string[]
   ) {
     const includeFullPhone = query.fullPhone === 'true';
-    if (includeFullPhone && user.role !== AdminRole.SUPER_ADMIN) {
-      throw new BusinessException(403505, '只有 SUPER_ADMIN 可以导出完整手机号', 403);
+    if (includeFullPhone && user.role !== AdminRole.SUPER_ADMIN && !user.permissions.includes('EXPORT_FULL_PHONE')) {
+      throw new BusinessException(403505, '当前账号无导出完整手机号权限', 403);
     }
     const rows = await this.prisma.appointment.findMany({
-      where: this.appointmentWhere(query),
+      where: await this.scopedAppointmentWhere(query, user),
       include: { clinic: true, doctor: true, dentalCategory: true, dentalProject: true, package: true },
       orderBy: { createdAt: 'desc' },
-      take: 5000
+      take: 5001
     });
-    if (includeFullPhone) {
-      await this.audit.create({
-        adminUserId: user.adminUserId,
-        action: 'EXPORT_FULL_PHONE',
-        resourceType: 'appointments',
-        afterJson: { count: rows.length },
-        ip,
-        userAgent: this.ua(userAgent)
-      });
+    if (rows.length > 5000) {
+      throw new BusinessException(400521, '单次最多导出 5000 条，请缩小筛选范围');
     }
+    await this.audit.create({
+      adminUserId: user.adminUserId,
+      action: includeFullPhone ? 'EXPORT_FULL_PHONE' : 'EXPORT_APPOINTMENTS',
+      resourceType: 'appointments',
+      afterJson: { count: rows.length, fullPhone: includeFullPhone },
+      ip,
+      userAgent: this.ua(userAgent)
+    });
     const header = [
       '挂号编号',
       '业务类型',
@@ -1452,6 +1855,17 @@ export class AdminService {
     return where;
   }
 
+  private async scopedAppointmentWhere(query: Record<string, string>, user: AdminCurrentUser): Promise<Prisma.AppointmentWhereInput> {
+    const base = this.appointmentWhere(query);
+    if (!this.dataScopes) return base;
+    const scope = await this.dataScopes.ownershipWhere(user, 'assignedToAdminId', 'createdByAdminId');
+    return Object.keys(scope).length ? { AND: [base, scope as Prisma.AppointmentWhereInput] } : base;
+  }
+
+  private async assertAppointmentScope(row: { assignedToAdminId?: string | null; createdByAdminId?: string | null }, user: AdminCurrentUser) {
+    if (this.dataScopes) await this.dataScopes.assertOwned(user, row, 'assignedToAdminId', 'createdByAdminId', '无权访问该业务数据');
+  }
+
   private appointmentListItem(row: {
     id: string;
     appointmentNo: string;
@@ -1528,11 +1942,37 @@ export class AdminService {
     return labels[type];
   }
 
+  private adminRoleItem(row: {
+    id: string;
+    name: string;
+    description: string | null;
+    permissionsJson: Prisma.JsonValue;
+    dataScope: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL';
+    dataScopeMemberIds: Prisma.JsonValue | null;
+    createdAt: Date;
+    updatedAt: Date;
+    _count?: { users: number };
+  }) {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description || '',
+      permissions: this.parsePermissions(row.permissionsJson),
+      dataScope: row.dataScope,
+      dataScopeMemberIds: this.parseStringArray(row.dataScopeMemberIds),
+      memberCount: row._count?.users || 0,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
   private adminUserItem(row: {
     id: string;
     username: string;
     nickname: string;
     role: AdminRole;
+    customRoleId?: string | null;
+    customRole?: { id: string; name: string; permissionsJson: Prisma.JsonValue } | null;
     permissionsJson: Prisma.JsonValue;
     status: AdminStatus;
     oaOpenId?: string | null;
@@ -1543,13 +1983,27 @@ export class AdminService {
     lastLoginAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    dataScope?: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL';
+    dataScopeMemberIds?: Prisma.JsonValue | null;
+    teamId?: string | null;
+    team?: { id: string; name: string } | null;
+    consultationReceivable?: boolean;
+    deletedAt?: Date | null;
   }) {
     return {
       id: row.id,
       username: row.username,
       nickname: row.nickname || row.username,
       role: row.role,
-      permissions: this.parsePermissions(row.permissionsJson),
+      roleName: row.customRole?.name || '',
+      customRoleId: row.customRoleId || null,
+      customRole: row.customRole ? { id: row.customRole.id, name: row.customRole.name } : null,
+      permissions: this.parsePermissions(row.customRole?.permissionsJson ?? row.permissionsJson),
+      dataScope: row.role === AdminRole.SUPER_ADMIN ? 'ALL' : (row.dataScope || 'ALL'),
+      dataScopeMemberIds: this.parseStringArray(row.dataScopeMemberIds),
+      teamId: row.teamId || null,
+      team: row.team || null,
+      consultationReceivable: Boolean(row.consultationReceivable),
       status: row.status,
       wechatBound: Boolean(row.oaOpenId),
       oaOpenIdMasked: row.oaOpenId ? `${row.oaOpenId.slice(0, 8)}...${row.oaOpenId.slice(-6)}` : '',
@@ -1637,7 +2091,8 @@ export class AdminService {
   }
 
   private normalizePermissions(permissions: string[]) {
-    return Array.from(new Set(permissions || []));
+    const allowed = new Set<string>(ADMIN_PERMISSIONS);
+    return Array.from(new Set((permissions || []).filter((permission) => allowed.has(permission))));
   }
 
   private saveAppointmentNotifyConfig(config: AppointmentNotifyConfig) {
@@ -1675,7 +2130,11 @@ export class AdminService {
   }
 
   private requireConfigPermission(user: AdminCurrentUser) {
-    if (user.role !== AdminRole.SUPER_ADMIN && !user.permissions.includes('MANAGE_CONFIGS')) {
+    if (
+      user.role !== AdminRole.SUPER_ADMIN &&
+      !user.permissions.includes('SYSTEM_MANAGE') &&
+      !user.permissions.includes('SYSTEM_CONFIGS')
+    ) {
       throw new BusinessException(403504, '当前账号无修改系统配置权限', 403);
     }
   }
@@ -1687,9 +2146,82 @@ export class AdminService {
     if (targetRole === AdminRole.SUPER_ADMIN) {
       throw new BusinessException(403506, '只有 SUPER_ADMIN 可以创建或修改超级管理员', 403);
     }
-    if (!user.permissions.includes('MANAGE_ADMINS')) {
+    // PermissionsGuard 对旧聚合权限到新细分权限做单向兼容；服务层保持同一语义，
+    // 否则会出现路由已放行、业务方法再次拒绝的问题。
+    if (!user.permissions.includes('MANAGE_ADMINS') && !user.permissions.includes('SYSTEM_MEMBERS')) {
       throw new BusinessException(403507, '当前账号无子账号管理权限', 403);
     }
+  }
+
+  private assertCanGrantDataScope(user: AdminCurrentUser, scope: string) {
+    if (scope === 'ALL' && user.role !== AdminRole.SUPER_ADMIN) {
+      throw new BusinessException(403508, '只有超级管理员可以授予全部数据范围', 403);
+    }
+  }
+
+  private assertCanGrantPermissions(user: AdminCurrentUser, permissions: string[]) {
+    if (user.role === AdminRole.SUPER_ADMIN) return;
+    const owned = new Set(user.permissions || []);
+    const aliases: Record<string, string[]> = {
+      APPOINTMENT_MANAGE: ['MANAGE_APPOINTMENTS'],
+      BUSINESS_LEADS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      BUSINESS_APPOINTMENTS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      BUSINESS_USERS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      BUSINESS_NOTIFICATIONS: ['MANAGE_APPOINTMENTS', 'APPOINTMENT_MANAGE'],
+      CONTENT_HOME: ['HOME_MANAGE'], CONTENT_DEPARTMENTS: ['DOCTOR_MANAGE'], CONTENT_DOCTORS: ['DOCTOR_MANAGE'],
+      CONTENT_PACKAGES: ['PACKAGE_MANAGE'], CONTENT_MEDIA: ['HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE'],
+      CONTENT_LINKS: ['HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE'],
+      WEBSITE_SETTINGS: ['WEBSITE_MANAGE'], WEBSITE_CATEGORIES: ['WEBSITE_MANAGE'], WEBSITE_ARTICLES: ['WEBSITE_MANAGE'],
+      WECHAT_MENU: ['WECHAT_MANAGE'], WECHAT_AUTO_REPLY: ['WECHAT_MANAGE'],
+      SYSTEM_MEMBERS: ['MANAGE_ADMINS'], SYSTEM_ROLES: ['MANAGE_ADMINS'], SYSTEM_OFFICIAL_BINDING: ['SYSTEM_MANAGE'],
+      SYSTEM_CONFIGS: ['SYSTEM_MANAGE'], SYSTEM_FOLLOWUP: ['SYSTEM_MANAGE'],
+      SYSTEM_WEBSITE_ANALYTICS: ['SYSTEM_MANAGE'], SYSTEM_AUDIT: ['SYSTEM_MANAGE']
+    };
+    const unauthorized = this.normalizePermissions(permissions).filter((permission) =>
+      !owned.has(permission) && !(aliases[permission] || []).some((alias) => owned.has(alias))
+    );
+    if (unauthorized.length) {
+      throw new BusinessException(403510, `不能授予当前账号不具备的权限：${unauthorized.join(', ')}`, 403);
+    }
+  }
+
+  private parseStringArray(value: Prisma.JsonValue | null | undefined): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  }
+
+  private async validateDataScopeMemberIds(memberIds: string[]) {
+    if (this.dataScopes) return this.dataScopes.validateAssignedMembers(memberIds);
+    return [...new Set(memberIds.filter(Boolean))];
+  }
+
+  private async assertTeamExists(id: string) {
+    const team = await this.prisma.adminTeam.findUnique({ where: { id } });
+    if (!team) throw new BusinessException(404522, '团队不存在', 404);
+    return team;
+  }
+
+  private async assertActiveAdmin(id: string) {
+    const admin = await this.prisma.adminUser.findFirst({ where: { id, status: AdminStatus.ACTIVE, deletedAt: null } });
+    if (!admin) throw new BusinessException(404506, '成员不存在或已停用', 404);
+    return admin;
+  }
+
+  private async teamDescendantIds(id: string) {
+    const teams = await this.prisma.adminTeam.findMany({ select: { id: true, parentId: true } });
+    const result = new Set<string>();
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const team of teams) {
+        if (team.parentId === id || (team.parentId && result.has(team.parentId))) {
+          if (!result.has(team.id)) {
+            result.add(team.id);
+            changed = true;
+          }
+        }
+      }
+    }
+    return [...result];
   }
 
   private statusText(status: AppointmentStatus) {

@@ -9,6 +9,15 @@ export interface PageResult<T> {
   list: T[];
 }
 
+export interface WebsiteAnalyticsSummary {
+  today: number;
+  week: number;
+  month: number;
+  year: number;
+  total: number;
+  statDate: string;
+}
+
 export interface AppointmentItem {
   id: string;
   appointmentNo: string;
@@ -89,6 +98,9 @@ export interface AdminUserItem {
   username: string;
   nickname: string;
   role: string;
+  roleName?: string;
+  customRoleId?: string | null;
+  customRole?: { id: string; name: string } | null;
   permissions: string[];
   status: string;
   wechatBound: boolean;
@@ -99,6 +111,54 @@ export interface AdminUserItem {
   lastLoginAt?: string;
   createdAt: string;
   updatedAt: string;
+  dataScope: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL';
+  dataScopeMemberIds: string[];
+  teamId?: string | null;
+  team?: { id: string; name: string } | null;
+  consultationReceivable: boolean;
+}
+
+export interface AdminRoleDefinitionItem {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+  dataScope: 'SELF' | 'ASSIGNED_MEMBERS' | 'TEAM' | 'ALL';
+  dataScopeMemberIds: string[];
+}
+
+export interface AdminTeamItem {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  leaderAdminId?: string | null;
+  status: 'ACTIVE' | 'DISABLED';
+  leader?: { id: string; username: string; nickname: string } | null;
+  _count?: { members: number; children: number };
+}
+
+export interface ConsultationMetadata {
+  projects: Array<{ id: string; name: string }>;
+  promotionAccounts: Array<{ id: string; name: string; project: string; channel: string }>;
+  statuses: ConsultationStatusItem[];
+  tags: ConsultationTagItem[];
+  fields: ConsultationFieldItem[];
+  members: Array<{ id: string; username: string; nickname: string; teamId?: string | null }>;
+  preference?: Array<{ code: string; visible: boolean; order: number; width: number }> | null;
+}
+
+export interface ConsultationStatusItem { id: string; name: string; code: string; color: string; sort: number; enabled: boolean; category: 'IN_PROGRESS' | 'COMPLETED' | 'INVALID'; }
+export interface ConsultationTagItem { id: string; name: string; color: string; sort: number; enabled: boolean; }
+export interface ConsultationFieldItem { id: string; name: string; code: string; source: 'FIXED' | 'CUSTOM'; type: string; required: boolean; enabled: boolean; showInForm: boolean; showInDetail: boolean; showInList: boolean; filterable: boolean; exportable: boolean; importable: boolean; listTitle?: string; listOrder: number; listWidth: number; options: string[]; }
+export interface ConsultationFormItem {
+  id: string; name: string; phone: string; phoneMasked: string; projectId: string; channelSource: string; promotionAccountId?: string | null; accountName?: string; lastFollowUpContent?: string; statusId: string;
+  ownerAdminId: string; createdByAdminId: string; recordedAt: string; lastFollowUpAt?: string; nextFollowUpAt?: string; invalidReason?: string;
+  customData?: Record<string, any>; overdue: boolean; project: { id: string; name: string }; status: ConsultationStatusItem;
+  owner: { id: string; username: string; nickname: string }; createdBy: { id: string; username: string; nickname: string };
+  tags: ConsultationTagItem[]; followUps?: Array<any>; createdAt: string; updatedAt: string;
 }
 
 export interface AdminWechatInviteItem {
@@ -358,12 +418,24 @@ export interface PromotionDailyMetricItem {
   account: PromotionAccountItem;
 }
 
+export interface PromotionFilterData {
+  rows: PromotionDailyMetricItem[];
+  fields: PromotionMetricFieldItem[];
+  accounts: PromotionAccountItem[];
+}
+
 export interface PromotionDataSyncConfigItem {
   id: string;
   provider: 'TENCENT_ADS' | 'OCEANENGINE';
   enabled: boolean;
   reportUrl: string;
   hasAccessToken: boolean;
+  clientId?: string;
+  hasClientSecret?: boolean;
+  hasRefreshToken?: boolean;
+  authorizedAccountId?: string | null;
+  accessTokenExpiresAt?: string | null;
+  refreshTokenExpiresAt?: string | null;
   lastSyncedAt?: string | null;
   lastSyncMessage?: string | null;
 }
@@ -403,11 +475,64 @@ export interface PromotionSummaryItem extends Omit<PromotionDailyMetricItem, 'id
   previous?: Omit<PromotionSummaryItem, 'previous'> | null;
 }
 
-export interface PromotionDailyReportTotals { conversions: number; spend: number; conversionCost: number | null; invalid: number; invalidRate: number | null; }
+export interface PromotionDailyReportTotals { conversions: number; averageDailyConversions: number | null; recordedDays: number; spend: number; conversionCost: number | null; invalid: number; invalidRate: number | null; }
 export interface PromotionDailyReportAccount extends PromotionDailyReportTotals { accountId: string; accountName: string; accountNo?: string | null; }
 export interface PromotionDailyReportChannel { channel: string; accounts: PromotionDailyReportAccount[]; totals: PromotionDailyReportTotals; problem: string; adjustment: string; isManual: boolean; }
 export interface PromotionDailyReportProject { project: string; channels: PromotionDailyReportChannel[]; totals: PromotionDailyReportTotals; }
 export interface PromotionDailyReport { statDate: string; dateFrom?: string; dateTo?: string; projects: PromotionDailyReportProject[]; }
+
+export interface PromotionSalaryMetrics {
+  project?: '重庆' | '绵阳';
+  leads: number;
+  validLeads: number;
+  spend: number;
+  validRate: number | null;
+  averageCost: number | null;
+  recordedDays: number;
+  averageDailyLeads: number;
+}
+
+export interface PromotionSalaryCriterion {
+  key: string;
+  project: '重庆' | '绵阳';
+  label: string;
+  current: number | null;
+  target: number;
+  achieved: boolean;
+  gap: number;
+  unit: 'count' | 'rate' | 'money';
+  recommendation: string;
+}
+
+export interface PromotionSalaryRegionRule { minDailyLeads: number; minValidRate: number; maxAverageCost: number; }
+export interface PromotionSalaryConfigTier { salary: number; chongqing: PromotionSalaryRegionRule; mianyang: PromotionSalaryRegionRule; }
+export interface PromotionSalaryConfig { baseSalary: number; recentDays: number; tiers: PromotionSalaryConfigTier[]; }
+export interface PromotionSalaryTier {
+  salary: number;
+  chongqing: PromotionSalaryRegionRule;
+  mianyang: PromotionSalaryRegionRule;
+  achieved: boolean;
+  recentAchieved: boolean;
+}
+
+export interface PromotionSalaryReport {
+  month: string;
+  dateFrom: string;
+  dateTo: string;
+  dataThrough: string | null;
+  elapsedDays: number;
+  remainingDays: number;
+  totalDays: number;
+  currentSalary: number;
+  forecastSalary: number;
+  regions: PromotionSalaryMetrics[];
+  overall: PromotionSalaryMetrics;
+  recent: { dateFrom: string | null; dateTo: string | null; days: number; regions: PromotionSalaryMetrics[]; overall: PromotionSalaryMetrics };
+  tiers: PromotionSalaryTier[];
+  nextTier: (PromotionSalaryTier & { criteria: PromotionSalaryCriterion[] }) | null;
+  recommendations: string[];
+  config: PromotionSalaryConfig;
+}
 
 export interface DoctorScheduleItem {
   id: string;
@@ -583,16 +708,52 @@ export function getAdminUsers(params: Record<string, unknown>) {
   return http.get<unknown, PageResult<AdminUserItem>>('/api/admin/admin-users', { params });
 }
 
+export const getAdminRoles = () => http.get<unknown, AdminRoleDefinitionItem[]>('/api/admin/admin-roles');
+export const createAdminRole = (data: { name: string; description?: string; permissions: string[]; dataScope?: string; dataScopeMemberIds?: string[] }) => http.post<unknown, AdminRoleDefinitionItem>('/api/admin/admin-roles', data);
+export const updateAdminRole = (id: string, data: { name?: string; description?: string; permissions?: string[]; dataScope?: string; dataScopeMemberIds?: string[] }) => http.patch<unknown, AdminRoleDefinitionItem>(`/api/admin/admin-roles/${id}`, data);
+export const deleteAdminRole = (id: string) => http.delete<unknown, { id: string; deleted: boolean; affectedMembers: number }>(`/api/admin/admin-roles/${id}`);
+
+export const getWebsiteAnalytics = () => http.get<unknown, WebsiteAnalyticsSummary>('/api/admin/website/analytics');
+
+export function createAdminUser(data: {
+  username: string;
+  password: string;
+  role: string;
+  customRoleId?: string;
+  permissions: string[];
+  notifyEnabled: boolean;
+  dataScope?: string;
+  dataScopeMemberIds?: string[];
+  teamId?: string;
+  consultationReceivable?: boolean;
+}) {
+  return http.post<unknown, AdminUserItem>('/api/admin/admin-users', data);
+}
+
 export function updateAdminUser(id: string, data: {
   password?: string;
-  nickname?: string;
+  username?: string;
   role?: string;
+  customRoleId?: string | null;
   permissions?: string[];
   status?: string;
   notifyEnabled?: boolean;
+  dataScope?: string;
+  dataScopeMemberIds?: string[];
+  teamId?: string | null;
+  consultationReceivable?: boolean;
 }) {
   return http.patch<unknown, AdminUserItem>(`/api/admin/admin-users/${id}`, data);
 }
+export function getAdminUserHandoverSummary(id: string) { return http.get<unknown, { consultations: number; todayCallbacks: number; overdueCallbacks: number; appointments: number; promotionAccounts: number; tencentLeads: number; total: number }>(`/api/admin/admin-users/${id}/handover-summary`); }
+export function deleteAdminUser(id: string, successorAdminId: string) { return http.delete<unknown, { id: string; deleted: boolean }>(`/api/admin/admin-users/${id}`, { data: { successorAdminId } }); }
+export const getAdminTeams = () => http.get<unknown, AdminTeamItem[]>('/api/admin/admin-teams');
+export const createAdminTeam = (data: Partial<AdminTeamItem>) => http.post<unknown, AdminTeamItem>('/api/admin/admin-teams', data);
+export const updateAdminTeam = (id: string, data: Partial<AdminTeamItem>) => http.patch<unknown, AdminTeamItem>(`/api/admin/admin-teams/${id}`, data);
+export const deleteAdminTeam = (id: string) => http.delete(`/api/admin/admin-teams/${id}`);
+export interface OfficialAccountBinding { enabled: boolean; appId: string; hasAppSecret: boolean; hasToken: boolean; hasEncodingAesKey: boolean; callbackUrl: string; }
+export const getOfficialAccountBinding = () => http.get<unknown, OfficialAccountBinding>('/api/admin/official-account/binding');
+export const updateOfficialAccountBinding = (data: { enabled: boolean; appId: string; appSecret?: string; token?: string; encodingAesKey?: string }) => http.patch<unknown, OfficialAccountBinding>('/api/admin/official-account/binding', data);
 
 export function getAdminWechatInvitations() {
   return http.get<unknown, AdminWechatInviteItem[]>('/api/admin/admin-users/invitations');
@@ -681,18 +842,22 @@ export const createPromotionAccount = (data: Omit<PromotionAccountItem, 'id'>) =
 export const updatePromotionAccount = (id: string, data: Omit<PromotionAccountItem, 'id'>) => http.patch<unknown, PromotionAccountItem>(`${operationsBase}/accounts/${id}`, data);
 export const deletePromotionAccount = (id: string) => http.delete<unknown, { id: string; deleted: boolean }>(`${operationsBase}/accounts/${id}`);
 export const getPromotionDailyMetrics = (params: Record<string, string>) => http.get<unknown, PromotionDailyMetricItem[]>(`${operationsBase}/daily`, { params: operationParams(params) });
+export const getPromotionDashboard = (params: Record<string, string>) => http.get<unknown, PromotionFilterData>(`${operationsBase}/dashboard`, { params: operationParams(params) });
+export const getPromotionFilterData = (params: Record<string, string>) => http.get<unknown, PromotionFilterData>(`${operationsBase}/filter-data`, { params: operationParams(params) });
 export const createPromotionDailyMetric = (data: PromotionDailyMetricPayload) => http.post<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily`, data);
 export const updatePromotionDailyMetric = (id: string, data: PromotionDailyMetricPayload) => http.patch<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily/${id}`, data);
 export const deletePromotionDailyMetric = (id: string) => http.delete<unknown, { id: string; deleted: boolean }>(`${operationsBase}/daily/${id}`);
 export const archivePromotionDailyMetric = (id: string, isArchived: boolean) => http.patch<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily/${id}/archive`, { isArchived });
 export const getPromotionSyncConfigs = () => http.get<unknown, PromotionDataSyncConfigItem[]>(`${operationsBase}/sync-configs`);
-export const updatePromotionSyncConfig = (data: { provider: 'TENCENT_ADS' | 'OCEANENGINE'; enabled: boolean; reportUrl: string; accessToken?: string }) => http.put<unknown, PromotionDataSyncConfigItem>(`${operationsBase}/sync-configs`, data);
-export const syncPromotionDailyMetrics = (data: { statDate: string; provider?: 'TENCENT_ADS' | 'OCEANENGINE'; accountIds?: string[] }) => http.post<unknown, Array<{ provider: string; synced: number; skippedArchived: number; skipped: number; errors: string[] }>>(`${operationsBase}/daily/sync`, data);
+export const updatePromotionSyncConfig = (data: { provider: 'TENCENT_ADS' | 'OCEANENGINE'; enabled: boolean; reportUrl: string; accessToken?: string; clientId?: string; clientSecret?: string; refreshToken?: string }) => http.put<unknown, PromotionDataSyncConfigItem>(`${operationsBase}/sync-configs`, data);
+export const syncPromotionDailyMetrics = (data: { statDate: string; provider?: 'TENCENT_ADS' | 'OCEANENGINE'; accountIds?: string[] }) => http.post<unknown, Array<{ provider: string; synced: number; noData: number; skippedArchived: number; skipped: number; errors: string[] }>>(`${operationsBase}/daily/sync`, data);
 export const getPromotionWeekly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/weekly`, { params: operationParams(params) });
 export const getPromotionMonthly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/monthly`, { params: operationParams(params) });
 export const getPromotionDailyReport = (date: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/daily-report`, { params: { date } });
 export const getPromotionWeeklyReport = (date: string, dateTo?: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/weekly-report`, { params: { date, dateTo } });
 export const getPromotionMonthlyReport = (date: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/monthly-report`, { params: { date } });
+export const getPromotionSalary = (month: string) => http.get<unknown, PromotionSalaryReport>(`${operationsBase}/salary`, { params: { month } });
+export const updatePromotionSalaryConfig = (data: PromotionSalaryConfig) => http.put<unknown, PromotionSalaryConfig>(`${operationsBase}/salary/config`, data);
 export const updatePromotionDailyReportNote = (data: { statDate: string; periodType?: 'day' | 'week' | 'month'; project: string; channel: string; problem: string; adjustment: string }) => http.patch<unknown, unknown>(`${operationsBase}/daily-report/note`, data);
 
 export async function exportAppointments(params: Record<string, unknown>) {
@@ -786,31 +951,69 @@ export const deletePackageAdmin = (id: string) => http.delete(`${enterpriseAdmin
 export const replacePackageImages = (id: string, images: Array<{ id?: string; imageUrl: string; sort: number }>) => http.patch<unknown, Array<{ id: string; imageUrl: string; sort: number }>>(`${enterpriseAdminBase}/packages/${id}/images`, { images });
 
 export interface WebsiteSettings {
-  brandName: string; eyebrow: string; heroTitle: string; heroDescription: string;
-  appointmentUrl: string; appointmentText: string; phone: string; serviceHours: string;
-  address: string; footerDescription: string; icpNumber: string; wechatName: string;
-}
-export interface WebsitePageItem {
-  id: string; slug: string; title: string; menuTitle: string; summary?: string; coverUrl?: string;
-  contentHtml: string; seoTitle?: string; seoDescription?: string; showInNav: boolean; sort: number;
-  status: 'ACTIVE' | 'DISABLED'; publishedAt?: string; updatedAt: string;
+  brandName: string; siteTagline: string; heroTitle: string; heroDescription: string;
+  topics: string; footerDescription: string; icpNumber: string; defaultAuthor: string;
 }
 export interface WebsiteArticleItem {
-  id: string; slug: string; title: string; author?: string; digest?: string; coverUrl?: string;
+  id: string; slug: string; title: string; categoryId: string; category?: { id: string; name: string; slug: string }; author?: string; digest?: string; coverUrl?: string;
   seoTitle?: string; seoKeywords?: string; seoDescription?: string;
   contentHtml?: string; originalUrl?: string; sourceType: 'MANUAL' | 'WECHAT';
-  status: 'ACTIVE' | 'DISABLED'; publishedAt?: string; lastSyncedAt?: string;
+  status: 'ACTIVE' | 'DISABLED'; viewCount: number; publishedAt?: string; lastSyncedAt?: string;
 }
-export type WebsiteArticlePayload = Pick<WebsiteArticleItem, 'title' | 'author' | 'digest' | 'seoTitle' | 'seoKeywords' | 'seoDescription' | 'coverUrl' | 'contentHtml' | 'originalUrl' | 'publishedAt' | 'status'>;
+export interface WebsiteArticleCategoryItem {
+  id: string; name: string; slug: string; description?: string; sort: number;
+  status: 'ACTIVE' | 'DISABLED'; _count?: { articles: number };
+}
+export type WebsiteArticlePayload = Pick<WebsiteArticleItem, 'title' | 'categoryId' | 'author' | 'digest' | 'seoTitle' | 'seoKeywords' | 'seoDescription' | 'coverUrl' | 'contentHtml' | 'originalUrl' | 'publishedAt' | 'status'>;
 const websiteAdminBase = '/api/admin/website';
 export const getWebsiteSettings = () => http.get<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`);
 export const updateWebsiteSettings = (settings: WebsiteSettings) => http.patch<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`, { settings });
-export const getWebsitePages = () => http.get<unknown, WebsitePageItem[]>(`${websiteAdminBase}/pages`);
-export const createWebsitePage = (data: Omit<WebsitePageItem, 'id' | 'updatedAt'>) => http.post<unknown, WebsitePageItem>(`${websiteAdminBase}/pages`, data);
-export const updateWebsitePage = (id: string, data: Partial<WebsitePageItem>) => http.patch<unknown, WebsitePageItem>(`${websiteAdminBase}/pages/${id}`, data);
-export const deleteWebsitePage = (id: string) => http.delete(`${websiteAdminBase}/pages/${id}`);
-export const getWebsiteArticles = () => http.get<unknown, { total: number; list: WebsiteArticleItem[] }>(`${websiteAdminBase}/articles`, { params: { page: 1, pageSize: 50 } });
+export const getWebsiteArticleCategories = () => http.get<unknown, WebsiteArticleCategoryItem[]>(`${websiteAdminBase}/categories`);
+export const createWebsiteArticleCategory = (data: Omit<WebsiteArticleCategoryItem, 'id' | '_count'>) => http.post<unknown, WebsiteArticleCategoryItem>(`${websiteAdminBase}/categories`, data);
+export const updateWebsiteArticleCategory = (id: string, data: Partial<WebsiteArticleCategoryItem>) => http.patch<unknown, WebsiteArticleCategoryItem>(`${websiteAdminBase}/categories/${id}`, data);
+export const deleteWebsiteArticleCategory = (id: string) => http.delete(`${websiteAdminBase}/categories/${id}`);
+export const getWebsiteArticles = (status?: 'ACTIVE' | 'DISABLED') => http.get<unknown, { total: number; list: WebsiteArticleItem[] }>(`${websiteAdminBase}/articles`, { params: { page: 1, pageSize: 50, status } });
 export const getWebsiteArticle = (id: string) => http.get<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`);
 export const createWebsiteArticle = (data: WebsiteArticlePayload) => http.post<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles`, data);
 export const updateWebsiteArticle = (id: string, data: Partial<WebsiteArticlePayload>) => http.patch<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`, data);
 export const deleteWebsiteArticle = (id: string) => http.delete(`${websiteAdminBase}/articles/${id}`);
+
+const consultationBase = '/api/admin/consultations';
+export const getConsultationMetadata = () => http.get<unknown, ConsultationMetadata>(`${consultationBase}/metadata`);
+export const getConsultations = (params: Record<string, unknown>) => http.get<unknown, PageResult<ConsultationFormItem>>(consultationBase, { params });
+export const getConsultation = (id: string) => http.get<unknown, ConsultationFormItem>(`${consultationBase}/${id}`);
+export const createConsultation = (data: Record<string, unknown>) => http.post<unknown, ConsultationFormItem>(consultationBase, data);
+export const updateConsultation = (id: string, data: Record<string, unknown>) => http.patch<unknown, ConsultationFormItem>(`${consultationBase}/${id}`, data);
+export const addConsultationFollowUp = (id: string, data: Record<string, unknown>) => http.post<unknown, ConsultationFormItem>(`${consultationBase}/${id}/follow-ups`, data);
+export const assignConsultation = (id: string, data: { ownerAdminId: string; reason?: string }) => http.patch(`${consultationBase}/${id}/assign`, data);
+export const bulkAssignConsultations = (data: { ids: string[]; ownerAdminId: string; reason?: string }) => http.post(`${consultationBase}/bulk-assign`, data);
+export const previewBulkAssignConsultations = (data: { ids: string[]; ownerAdminId: string; reason?: string }) => http.post(`${consultationBase}/bulk-assign/preview`, data);
+export const bulkAddConsultationTags = (data: { ids: string[]; tagIds: string[] }) => http.post(`${consultationBase}/bulk-tags/add`, data);
+export const bulkRemoveConsultationTags = (data: { ids: string[]; tagIds: string[] }) => http.post(`${consultationBase}/bulk-tags/remove`, data);
+export const getConsultationCallbacks = () => http.get<unknown, { counts: { today: number; overdue: number; completed: number }; today: ConsultationFormItem[]; overdue: ConsultationFormItem[] }>(`${consultationBase}/callbacks/today`);
+export const saveConsultationListPreference = (columns: Array<{ code: string; visible: boolean; order: number; width: number }>) => http.put(`${consultationBase}/list-preference`, { columns });
+export const getConsultationFields = () => http.get<unknown, ConsultationFieldItem[]>(`${consultationBase}/settings/fields`);
+export const createConsultationField = (data: Record<string, unknown>) => http.post<unknown, ConsultationFieldItem>(`${consultationBase}/settings/fields`, data);
+export const updateConsultationField = (id: string, data: Record<string, unknown>) => http.patch<unknown, ConsultationFieldItem>(`${consultationBase}/settings/fields/${id}`, data);
+export const deleteConsultationField = (id: string) => http.delete(`${consultationBase}/settings/fields/${id}`);
+export const getConsultationStatuses = () => http.get<unknown, ConsultationStatusItem[]>(`${consultationBase}/settings/statuses`);
+export const createConsultationStatus = (data: Record<string, unknown>) => http.post<unknown, ConsultationStatusItem>(`${consultationBase}/settings/statuses`, data);
+export const updateConsultationStatus = (id: string, data: Record<string, unknown>) => http.patch<unknown, ConsultationStatusItem>(`${consultationBase}/settings/statuses/${id}`, data);
+export const deleteConsultationStatus = (id: string) => http.delete(`${consultationBase}/settings/statuses/${id}`);
+export const getConsultationTags = () => http.get<unknown, ConsultationTagItem[]>(`${consultationBase}/settings/tags`);
+export const createConsultationTag = (data: Record<string, unknown>) => http.post<unknown, ConsultationTagItem>(`${consultationBase}/settings/tags`, data);
+export const updateConsultationTag = (id: string, data: Record<string, unknown>) => http.patch<unknown, ConsultationTagItem>(`${consultationBase}/settings/tags/${id}`, data);
+export const deleteConsultationTag = (id: string) => http.delete(`${consultationBase}/settings/tags/${id}`);
+export function validateConsultationImport(file: File) { const data = new FormData(); data.append('file', file); return http.post<unknown, any>(`${consultationBase}/import/validate`, data, { headers: { 'Content-Type': 'multipart/form-data' } }); }
+export const commitConsultationImport = (batchId: string, duplicateMode: 'SKIP' | 'CREATE' | 'FOLLOW_UP') => http.post(`${consultationBase}/import/${batchId}/commit`, { duplicateMode });
+
+async function downloadAdminFile(path: string, filename: string, params?: Record<string, unknown>) {
+  const query = new URLSearchParams(); Object.entries(params || {}).forEach(([key, value]) => { if (value !== undefined && value !== '' && value !== null) query.set(key, Array.isArray(value) ? value.join(',') : String(value)); });
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || ''; const token = localStorage.getItem('admin_token') || '';
+  const response = await fetch(`${baseUrl}${path}${query.size ? `?${query}` : ''}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) { const body = await response.json().catch(() => null); const message = body?.message || '下载失败'; ElMessage.error(message); throw new Error(message); }
+  const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+}
+export const downloadConsultationTemplate = () => downloadAdminFile(`${consultationBase}/import/template`, '网咨数据导入模板.xlsx');
+export const downloadConsultationImportErrors = (batchId: string) => downloadAdminFile(`${consultationBase}/import/${batchId}/errors`, '网咨导入错误明细.xlsx');
+export const exportConsultations = (params: Record<string, unknown>) => downloadAdminFile(`${consultationBase}/export/file`, `网咨数据-${new Date().toISOString().slice(0, 10)}.xlsx`, params);

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ContentStatus, Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
 import { AdminCurrentUser } from '../../common/decorators/current-user.decorator';
@@ -6,17 +6,54 @@ import { BusinessException } from '../../common/utils/business-exception';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CryptoService } from '../crypto/crypto.service';
-import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, PromotionMetricFieldDto, SyncPromotionDailyMetricsDto } from './dto';
+import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, PromotionMetricFieldDto, PromotionSalaryConfigDto, SyncPromotionDailyMetricsDto } from './dto';
 import { PromotionDataSyncService } from './promotion-data-sync.service';
+import { DataScopeService } from '../../common/data-scope/data-scope.service';
 
 type SummaryUnit = 'week' | 'month';
+type SyncExtraConfig = {
+  clientId?: string;
+  clientSecretCipher?: string;
+  refreshTokenCipher?: string;
+  authorizedAccountId?: string;
+  accessTokenExpiresAt?: string;
+  refreshTokenExpiresAt?: string;
+};
+
+type SalaryProject = '重庆' | '绵阳';
+type SalaryRegionRule = { minDailyLeads: number; minValidRate: number; maxAverageCost: number };
+type SalaryTierConfig = { salary: number; chongqing: SalaryRegionRule; mianyang: SalaryRegionRule };
+type SalaryConfig = { baseSalary: number; recentDays: number; tiers: SalaryTierConfig[] };
+
+const DEFAULT_PROMOTION_SALARY_CONFIG: SalaryConfig = {
+  baseSalary: 6000,
+  recentDays: 7,
+  tiers: [
+    { salary: 8000, chongqing: { minDailyLeads: 1.67, minValidRate: 0.5, maxAverageCost: 200 }, mianyang: { minDailyLeads: 1, minValidRate: 0.5, maxAverageCost: 200 } },
+    { salary: 12000, chongqing: { minDailyLeads: 3.33, minValidRate: 0.5, maxAverageCost: 200 }, mianyang: { minDailyLeads: 1, minValidRate: 0.5, maxAverageCost: 200 } },
+    { salary: 15000, chongqing: { minDailyLeads: 3.33, minValidRate: 0.5, maxAverageCost: 200 }, mianyang: { minDailyLeads: 1.67, minValidRate: 0.5, maxAverageCost: 200 } },
+  ],
+};
+
+function normalizeAccessToken(input?: string) {
+  let value = input?.trim() || '';
+  if (!value) return '';
+  try {
+    const parsed = JSON.parse(value);
+    value = String(parsed?.access_token || parsed?.data?.access_token || value).trim();
+  } catch {
+    const match = value.match(/(?:^|[?&])access_token=([^&\s]+)/i);
+    if (match) value = decodeURIComponent(match[1]);
+  }
+  return value.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+}
 
 @Injectable()
 export class OperationsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditLogsService, private readonly crypto: CryptoService, private readonly syncService: PromotionDataSyncService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditLogsService, private readonly crypto: CryptoService, private readonly syncService: PromotionDataSyncService, @Optional() private readonly dataScopes?: DataScopeService) {}
 
-  accounts() {
-    return this.prisma.promotionAccount.findMany({ orderBy: [{ status: 'asc' }, { platform: 'asc' }, { name: 'asc' }] });
+  async accounts(user?: AdminCurrentUser) {
+    return this.prisma.promotionAccount.findMany({ where: await this.accountScope(user), orderBy: [{ status: 'asc' }, { platform: 'asc' }, { name: 'asc' }] });
   }
 
   async fields() {
@@ -51,25 +88,123 @@ export class OperationsService {
     return { id, deleted: true };
   }
 
-  async dailyReport(date: string) {
-    return this.periodReport(date, date, date, 'day');
+  async dailyReport(date: string, user?: AdminCurrentUser) {
+    return this.periodReport(date, date, date, 'day', user);
   }
 
-  async weeklyReport(date: string, dateTo?: string) {
-    if (dateTo) return this.periodReport(date, dateTo, date, 'week');
+  async weeklyReport(date: string, dateTo?: string, user?: AdminCurrentUser) {
+    if (dateTo) return this.periodReport(date, dateTo, date, 'week', user);
     const start = this.monday(date);
-    return this.periodReport(start, dayjs(start).add(6, 'day').format('YYYY-MM-DD'), start, 'week');
+    return this.periodReport(start, dayjs(start).add(6, 'day').format('YYYY-MM-DD'), start, 'week', user);
   }
 
-  async monthlyReport(date: string) {
+  async monthlyReport(date: string, user?: AdminCurrentUser) {
     const start = dayjs(date).startOf('month').format('YYYY-MM-DD');
-    return this.periodReport(start, dayjs(date).endOf('month').format('YYYY-MM-DD'), start, 'month');
+    return this.periodReport(start, dayjs(date).endOf('month').format('YYYY-MM-DD'), start, 'month', user);
   }
 
-  private async periodReport(dateFrom: string, dateTo: string, noteDate: string, periodType: 'day' | 'week' | 'month') {
+  async salary(month: string, user?: AdminCurrentUser) {
+    const monthStart = dayjs(`${month}-01`).startOf('month');
+    const monthEnd = monthStart.endOf('month');
+    const dateFrom = monthStart.format('YYYY-MM-DD');
+    const dateTo = monthEnd.format('YYYY-MM-DD');
+    const [rows, config] = await Promise.all([
+      this.prisma.promotionDailyMetric.findMany({ where: { statDate: { gte: monthStart.toDate(), lte: monthEnd.toDate() }, account: await this.accountScope(user) }, include: { account: true }, orderBy: { statDate: 'asc' } }),
+      this.salaryConfig(),
+    ]);
+    const now = dayjs();
+    const totalDays = monthEnd.date();
+    const isCurrentMonth = monthStart.format('YYYY-MM') === now.format('YYYY-MM');
+    const isPastMonth = monthStart.isBefore(now.startOf('month'));
+    const latestDay = rows.length ? dayjs(rows[rows.length - 1].statDate).date() : 0;
+    const elapsedDays = isPastMonth ? totalDays : isCurrentMonth ? Math.max(latestDay, Math.max(0, Math.min(totalDays, now.date() - 1))) : 0;
+    const remainingDays = Math.max(0, totalDays - elapsedDays);
+    const aggregate = (source: typeof rows, averageDays: number) => {
+      const buckets = new Map<SalaryProject, { project: SalaryProject; leads: number; validLeads: number; spend: number; dates: Set<string> }>([
+        ['重庆', { project: '重庆', leads: 0, validLeads: 0, spend: 0, dates: new Set<string>() }],
+        ['绵阳', { project: '绵阳', leads: 0, validLeads: 0, spend: 0, dates: new Set<string>() }],
+      ]);
+      for (const row of source) {
+        const project: SalaryProject | null = row.account.project.includes('绵阳') ? '绵阳' : row.account.project.includes('重庆') ? '重庆' : null;
+        if (!project) continue;
+        const bucket = buckets.get(project)!;
+        bucket.leads += row.leads; bucket.validLeads += row.validLeads; bucket.spend += Number(row.spend); bucket.dates.add(dayjs(row.statDate).format('YYYY-MM-DD'));
+      }
+      const summarize = (item: { project?: SalaryProject; leads: number; validLeads: number; spend: number; dates: Set<string> }) => ({
+        ...(item.project ? { project: item.project } : {}), leads: item.leads, validLeads: item.validLeads, spend: this.money(item.spend),
+        validRate: item.leads ? Number((item.validLeads / item.leads).toFixed(6)) : null,
+        averageCost: item.leads ? this.money(item.spend / item.leads) : null, recordedDays: item.dates.size,
+        averageDailyLeads: averageDays ? this.money(item.leads / averageDays) : 0,
+      });
+      const regions = Array.from(buckets.values()).map(summarize);
+      const combined = Array.from(buckets.values()).reduce((result, item) => {
+        result.leads += item.leads; result.validLeads += item.validLeads; result.spend += item.spend; item.dates.forEach((date) => result.dates.add(date)); return result;
+      }, { leads: 0, validLeads: 0, spend: 0, dates: new Set<string>() });
+      return { regions, overall: summarize(combined) };
+    };
+    const monthMetrics = aggregate(rows, elapsedDays);
+    const observedEnd = elapsedDays ? monthStart.add(elapsedDays - 1, 'day') : monthStart.subtract(1, 'day');
+    const recentDays = Math.min(config.recentDays, elapsedDays);
+    const recentStart = recentDays ? observedEnd.subtract(recentDays - 1, 'day') : observedEnd;
+    const recentRows = recentDays ? rows.filter((row) => { const value = dayjs(row.statDate); return !value.isBefore(recentStart, 'day') && !value.isAfter(observedEnd, 'day'); }) : [];
+    const recentMetrics = aggregate(recentRows, recentDays);
+    const qualifies = (tier: SalaryTierConfig, metrics: ReturnType<typeof aggregate>) => (['重庆', '绵阳'] as SalaryProject[]).every((project) => {
+      const current = metrics.regions.find((item) => item.project === project)!;
+      const rule = project === '重庆' ? tier.chongqing : tier.mianyang;
+      return current.averageDailyLeads >= rule.minDailyLeads && current.validRate !== null && current.validRate >= rule.minValidRate && current.averageCost !== null && current.averageCost < rule.maxAverageCost;
+    });
+    const tiers = config.tiers.map((tier) => ({ ...tier, achieved: qualifies(tier, monthMetrics), recentAchieved: qualifies(tier, recentMetrics) }));
+    const currentSalary = [...tiers].reverse().find((tier) => tier.achieved)?.salary || config.baseSalary;
+    const forecastSalary = [...tiers].reverse().find((tier) => tier.recentAchieved)?.salary || config.baseSalary;
+    const next = tiers.find((tier) => tier.salary > forecastSalary) || null;
+    const recommendations: string[] = [];
+    let nextTier = null;
+    if (next) {
+      const criteria = (['重庆', '绵阳'] as SalaryProject[]).flatMap((project) => {
+        const metrics = recentMetrics.regions.find((item) => item.project === project)!; const rule = project === '重庆' ? next.chongqing : next.mianyang;
+        const leadGap = Math.max(0, rule.minDailyLeads - metrics.averageDailyLeads);
+        const leadText = leadGap ? `${project}最近日均表单量还需提升 ${leadGap.toFixed(2)}，建议增加高转化计划预算并优化素材` : `${project}日均表单量已达标`;
+        const rateGap = Math.max(0, rule.minValidRate - (metrics.validRate || 0));
+        const rateText = rateGap ? `${project}有效率需从 ${((metrics.validRate || 0) * 100).toFixed(2)}% 提升至 ${(rule.minValidRate * 100).toFixed(2)}%` : `${project}有效率已达标`;
+        const costAchieved = metrics.averageCost !== null && metrics.averageCost < rule.maxAverageCost;
+        const costGap = metrics.averageCost === null ? rule.maxAverageCost : Math.max(0, metrics.averageCost - rule.maxAverageCost);
+        const costText = costAchieved ? `${project}表单成本已达标` : metrics.averageCost === null ? `${project}暂无表单，需先产生投放数据` : `${project}表单成本需从 ${metrics.averageCost.toFixed(2)} 元降至 ${rule.maxAverageCost.toFixed(2)} 元以下`;
+        [leadText, rateText, costText].forEach((text, index) => { if ([leadGap > 0, rateGap > 0, !costAchieved][index]) recommendations.push(text); });
+        return [
+          { key: `${project}-dailyLeads`, project, label: '日均表单量', current: metrics.averageDailyLeads, target: rule.minDailyLeads, achieved: leadGap === 0, gap: leadGap, unit: 'count' as const, recommendation: leadText },
+          { key: `${project}-validRate`, project, label: '有效率', current: metrics.validRate, target: rule.minValidRate, achieved: rateGap === 0, gap: rateGap, unit: 'rate' as const, recommendation: rateText },
+          { key: `${project}-averageCost`, project, label: '表单成本', current: metrics.averageCost, target: rule.maxAverageCost, achieved: costAchieved, gap: costGap, unit: 'money' as const, recommendation: costText },
+        ];
+      });
+      nextTier = { ...next, criteria };
+    } else {
+      recommendations.push('最近数据已达到最高工资档位，请继续保持重庆、绵阳各项指标');
+    }
+    return {
+      month, dateFrom, dateTo, dataThrough: rows.length ? dayjs(rows[rows.length - 1].statDate).format('YYYY-MM-DD') : null,
+      elapsedDays, remainingDays, totalDays, currentSalary: currentSalary || config.baseSalary, forecastSalary,
+      regions: monthMetrics.regions, overall: monthMetrics.overall,
+      recent: { dateFrom: recentDays ? recentStart.format('YYYY-MM-DD') : null, dateTo: recentDays ? observedEnd.format('YYYY-MM-DD') : null, days: recentDays, regions: recentMetrics.regions, overall: recentMetrics.overall },
+      tiers, nextTier, recommendations, config,
+    };
+  }
+
+  async updateSalaryConfig(dto: PromotionSalaryConfigDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const config = this.normalizeSalaryConfig(dto);
+    const before = await this.prisma.systemConfig.findUnique({ where: { key: 'promotionSalaryRules' } });
+    const saved = await this.prisma.systemConfig.upsert({
+      where: { key: 'promotionSalaryRules' },
+      create: { key: 'promotionSalaryRules', valueJson: config as unknown as Prisma.InputJsonValue, description: '推广数据工资测算规则' },
+      update: { valueJson: config as unknown as Prisma.InputJsonValue, description: '推广数据工资测算规则' },
+    });
+    await this.log('UPDATE_PROMOTION_SALARY_CONFIG', 'system_configs', saved.id, before, saved, user, ip, userAgent);
+    return config;
+  }
+
+  private async periodReport(dateFrom: string, dateTo: string, noteDate: string, periodType: 'day' | 'week' | 'month', user?: AdminCurrentUser) {
     const noteStatDate = this.date(noteDate);
     const [metrics, notes] = await Promise.all([
-      this.prisma.promotionDailyMetric.findMany({ where: { statDate: { gte: this.date(dateFrom), lte: this.date(dateTo) } }, include: { account: true }, orderBy: [{ account: { platform: 'asc' } }, { account: { name: 'asc' } }] }),
+      this.prisma.promotionDailyMetric.findMany({ where: { statDate: { gte: this.date(dateFrom), lte: this.date(dateTo) }, account: await this.accountScope(user) }, include: { account: true }, orderBy: [{ account: { platform: 'asc' } }, { account: { name: 'asc' } }] }),
       this.prisma.promotionDailyReportNote.findMany({ where: { statDate: noteStatDate, periodType } }),
     ]);
     const noteMap = new Map(notes.map((note) => [`${note.project}:${note.channel}`, note]));
@@ -86,16 +221,18 @@ export class OperationsService {
       projects: Array.from(projects.entries()).sort(([left], [right]) => this.reportProjectOrder(left) - this.reportProjectOrder(right) || left.localeCompare(right, 'zh-CN')).map(([project, channels]) => {
         const channelItems = Array.from(channels.entries()).sort(([left], [right]) => this.reportChannelOrder(left) - this.reportChannelOrder(right) || left.localeCompare(right, 'zh-CN')).map(([channel, sourceAccounts]) => {
           const accounts = this.mergeReportAccounts(sourceAccounts);
-          const totals = this.reportTotals(accounts);
+          const totals = this.reportTotals(sourceAccounts);
           const note = noteMap.get(`${project}:${channel}`);
           return { channel, accounts, totals, problem: note?.problem || this.autoProblem(totals), adjustment: note?.adjustment || this.autoAdjustment(totals), isManual: Boolean(note) };
         });
-        return { project, channels: channelItems, totals: this.reportTotals(channelItems.flatMap((item) => item.accounts)) };
+        return { project, channels: channelItems, totals: this.reportTotals(Array.from(channels.values()).flat()) };
       }),
     };
   }
 
   async updateDailyReportNote(dto: PromotionDailyReportNoteDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const visibleAccount = await this.prisma.promotionAccount.count({ where: { AND: [await this.accountScope(user), { project: dto.project.trim(), platform: dto.channel.trim() }] } });
+    if (!visibleAccount) throw new BusinessException(403706, '无权修改该项目和渠道的报表说明', 403);
     const statDate = this.date(dto.statDate); const periodType = dto.periodType || 'day'; const key = { statDate_periodType_project_channel: { statDate, periodType, project: dto.project.trim(), channel: dto.channel.trim() } };
     const before = await this.prisma.promotionDailyReportNote.findUnique({ where: key });
     const note = await this.prisma.promotionDailyReportNote.upsert({ where: key, create: { statDate, periodType, project: dto.project.trim(), channel: dto.channel.trim(), problem: dto.problem.trim(), adjustment: dto.adjustment.trim() }, update: { problem: dto.problem.trim(), adjustment: dto.adjustment.trim() } });
@@ -104,27 +241,28 @@ export class OperationsService {
   }
 
   async createAccount(dto: PromotionAccountDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
-    const account = await this.prisma.promotionAccount.create({ data: this.accountData(dto) });
+    const account = await this.prisma.promotionAccount.create({ data: { ...this.accountData(dto), ownerAdminId: user.adminUserId, createdByAdminId: user.adminUserId } });
     await this.log('CREATE_PROMOTION_ACCOUNT', 'promotion_accounts', account.id, undefined, account, user, ip, userAgent);
     return account;
   }
 
   async updateAccount(id: string, dto: PromotionAccountDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
-    const before = await this.accountOrThrow(id);
+    const before = await this.accountOrThrow(id, user);
     const account = await this.prisma.promotionAccount.update({ where: { id }, data: this.accountData(dto) });
     await this.log('UPDATE_PROMOTION_ACCOUNT', 'promotion_accounts', id, before, account, user, ip, userAgent);
     return account;
   }
 
   async deleteAccount(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
-    const before = await this.accountOrThrow(id);
+    if (user.role !== 'SUPER_ADMIN') throw new BusinessException(403705, '仅超级管理员可删除推广账户，普通成员仅可查看或编辑', 403);
+    const before = await this.accountOrThrow(id, user);
     await this.prisma.promotionAccount.delete({ where: { id } });
     await this.log('DELETE_PROMOTION_ACCOUNT', 'promotion_accounts', id, before, undefined, user, ip, userAgent);
     return { id, deleted: true };
   }
 
-  async daily(query: DateRangeQueryDto) {
-    const where = this.dateWhere(query);
+  async daily(query: DateRangeQueryDto, user?: AdminCurrentUser) {
+    const where = await this.dateWhere(query, user);
     const rows = await this.prisma.promotionDailyMetric.findMany({
       where,
       include: { account: true },
@@ -133,8 +271,14 @@ export class OperationsService {
     return rows.map((row) => this.metricItem(row));
   }
 
+  async filterData(query: DateRangeQueryDto, user?: AdminCurrentUser) {
+    // 筛选项不能依赖所选日期内是否已有日统计，否则默认昨天无数据时项目、渠道和账户都会变成空。
+    const [rows, fields, accounts] = await Promise.all([this.daily(query, user), this.fields(), this.accounts(user)]);
+    return { rows, fields, accounts };
+  }
+
   async createDaily(dto: PromotionDailyMetricDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
-    await this.accountOrThrow(dto.accountId);
+    await this.accountOrThrow(dto.accountId, user);
     const existing = await this.prisma.promotionDailyMetric.findUnique({ where: { accountId_statDate: { accountId: dto.accountId, statDate: this.date(dto.statDate) } } });
     if (existing) throw new BusinessException(409701, '该账户当天已有数据，请编辑现有记录', 409);
     const metric = await this.prisma.promotionDailyMetric.create({ data: this.metricData(dto), include: { account: true } });
@@ -145,8 +289,10 @@ export class OperationsService {
 
   async updateDaily(id: string, dto: PromotionDailyMetricDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
     const before = await this.prisma.promotionDailyMetric.findUnique({ where: { id }, include: { account: true } });
-    if (!before) throw new BusinessException(404701, '运营日数据不存在', 404);
-    await this.accountOrThrow(dto.accountId);
+    if (!before) throw new BusinessException(404701, '运营日统计不存在', 404);
+    await this.assertAccountScope(before.account, user);
+    this.assertArchivedDailyWritable(before, user);
+    await this.accountOrThrow(dto.accountId, user);
     const sameDay = await this.prisma.promotionDailyMetric.findUnique({ where: { accountId_statDate: { accountId: dto.accountId, statDate: this.date(dto.statDate) } } });
     if (sameDay && sameDay.id !== id) throw new BusinessException(409701, '该账户当天已有数据，请编辑现有记录', 409);
     const metric = await this.prisma.promotionDailyMetric.update({ where: { id }, data: { ...this.metricData(dto), syncSource: 'MANUAL' }, include: { account: true } });
@@ -156,8 +302,11 @@ export class OperationsService {
   }
 
   async deleteDaily(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    if (user.role !== 'SUPER_ADMIN') throw new BusinessException(403705, '仅超级管理员可删除日统计，普通成员仅可查看或编辑', 403);
     const before = await this.prisma.promotionDailyMetric.findUnique({ where: { id }, include: { account: true } });
-    if (!before) throw new BusinessException(404701, '运营日数据不存在', 404);
+    if (!before) throw new BusinessException(404701, '运营日统计不存在', 404);
+    await this.assertAccountScope(before.account, user);
+    this.assertArchivedDailyWritable(before, user);
     await this.prisma.promotionDailyMetric.delete({ where: { id } });
     await this.log('DELETE_PROMOTION_DAILY_METRIC', 'promotion_daily_metrics', id, this.metricItem(before), undefined, user, ip, userAgent);
     return { id, deleted: true };
@@ -165,7 +314,9 @@ export class OperationsService {
 
   async archiveDaily(id: string, dto: ArchivePromotionDailyMetricDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
     const before = await this.prisma.promotionDailyMetric.findUnique({ where: { id }, include: { account: true } });
-    if (!before) throw new BusinessException(404701, '运营日数据不存在', 404);
+    if (!before) throw new BusinessException(404701, '运营日统计不存在', 404);
+    await this.assertAccountScope(before.account, user);
+    this.assertArchivedDailyWritable(before, user);
     const metric = await this.prisma.promotionDailyMetric.update({ where: { id }, data: { isArchived: Boolean(dto.isArchived) }, include: { account: true } });
     const item = this.metricItem(metric);
     await this.log(dto.isArchived ? 'ARCHIVE_PROMOTION_DAILY_METRIC' : 'UNARCHIVE_PROMOTION_DAILY_METRIC', 'promotion_daily_metrics', id, this.metricItem(before), item, user, ip, userAgent);
@@ -174,35 +325,68 @@ export class OperationsService {
 
   async syncConfigs() {
     const defaults = [
-      { provider: 'TENCENT_ADS', reportUrl: 'https://api.e.qq.com/v1.3/report/advertiser_daily' },
+      { provider: 'TENCENT_ADS', reportUrl: 'https://api.e.qq.com/v3.0/daily_reports/get' },
       { provider: 'OCEANENGINE', reportUrl: 'https://ad.oceanengine.com/open_api/2/report/custom/get/' }
     ];
+    await this.prisma.promotionDataSyncConfig.updateMany({
+      where: { provider: 'TENCENT_ADS', reportUrl: { in: ['https://api.e.qq.com/v1.3/report/advertiser_daily', 'https://api.e.qq.com/v1.3/daily_reports/get'] } },
+      data: { reportUrl: 'https://api.e.qq.com/v3.0/daily_reports/get' },
+    });
     await Promise.all(defaults.map((item) => this.prisma.promotionDataSyncConfig.upsert({ where: { provider: item.provider }, update: {}, create: item })));
     const rows = await this.prisma.promotionDataSyncConfig.findMany({ orderBy: { provider: 'asc' } });
-    return rows.map((row) => ({ ...row, accessTokenCipher: undefined, hasAccessToken: Boolean(row.accessTokenCipher) }));
+    return rows.map((row) => {
+      const extra = (row.extraConfig || {}) as SyncExtraConfig;
+      return {
+        ...row,
+        accessTokenCipher: undefined,
+        extraConfig: undefined,
+        hasAccessToken: Boolean(row.accessTokenCipher),
+        clientId: extra.clientId || '',
+        hasClientSecret: Boolean(extra.clientSecretCipher),
+        hasRefreshToken: Boolean(extra.refreshTokenCipher),
+        authorizedAccountId: extra.authorizedAccountId || null,
+        accessTokenExpiresAt: extra.accessTokenExpiresAt || null,
+        refreshTokenExpiresAt: extra.refreshTokenExpiresAt || null,
+      };
+    });
   }
 
   async updateSyncConfig(dto: PromotionDataSyncConfigDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
     const before = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: dto.provider } });
+    const accessToken = normalizeAccessToken(dto.accessToken);
+    const previousExtra = (before?.extraConfig || {}) as SyncExtraConfig;
+    const extraConfig: SyncExtraConfig = {
+      ...previousExtra,
+      ...(dto.clientId?.trim() ? { clientId: dto.clientId.trim() } : {}),
+      ...(dto.clientSecret?.trim() ? { clientSecretCipher: this.crypto.encryptText(dto.clientSecret.trim()) } : {}),
+      ...(dto.refreshToken?.trim() ? { refreshTokenCipher: this.crypto.encryptText(dto.refreshToken.trim()) } : {}),
+    };
     const config = await this.prisma.promotionDataSyncConfig.upsert({
       where: { provider: dto.provider },
-      create: { provider: dto.provider, enabled: dto.enabled, reportUrl: dto.reportUrl.trim(), ...(dto.accessToken?.trim() ? { accessTokenCipher: this.crypto.encryptText(dto.accessToken.trim()) } : {}) },
-      update: { enabled: dto.enabled, reportUrl: dto.reportUrl.trim(), ...(dto.accessToken?.trim() ? { accessTokenCipher: this.crypto.encryptText(dto.accessToken.trim()) } : {}) }
+      create: { provider: dto.provider, enabled: dto.enabled, reportUrl: dto.reportUrl.trim(), extraConfig: extraConfig as Prisma.InputJsonValue, ...(accessToken ? { accessTokenCipher: this.crypto.encryptText(accessToken) } : {}) },
+      update: { enabled: dto.enabled, reportUrl: dto.reportUrl.trim(), extraConfig: extraConfig as Prisma.InputJsonValue, ...(accessToken ? { accessTokenCipher: this.crypto.encryptText(accessToken) } : {}) }
     });
-    await this.log('UPDATE_PROMOTION_SYNC_CONFIG', 'promotion_data_sync_configs', config.id, before ? { ...before, accessTokenCipher: undefined } : undefined, { ...config, accessTokenCipher: undefined }, user, ip, userAgent);
-    return { ...config, accessTokenCipher: undefined, hasAccessToken: Boolean(config.accessTokenCipher) };
+    const safeBefore = before ? { ...before, accessTokenCipher: undefined, extraConfig: undefined } : undefined;
+    const safeConfig = { ...config, accessTokenCipher: undefined, extraConfig: undefined };
+    await this.log('UPDATE_PROMOTION_SYNC_CONFIG', 'promotion_data_sync_configs', config.id, safeBefore, safeConfig, user, ip, userAgent);
+    return { ...safeConfig, hasAccessToken: Boolean(config.accessTokenCipher), clientId: extraConfig.clientId || '', hasClientSecret: Boolean(extraConfig.clientSecretCipher), hasRefreshToken: Boolean(extraConfig.refreshTokenCipher) };
   }
 
   async syncDaily(dto: SyncPromotionDailyMetricsDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
-    const result = await this.syncService.sync(dto.statDate, dto.provider, dto.accountIds);
+    const accessible = await this.prisma.promotionAccount.findMany({ where: await this.accountScope(user), select: { id: true } });
+    const accessibleIds = new Set(accessible.map((item) => item.id));
+    const requestedIds = dto.accountIds?.length ? [...new Set(dto.accountIds)] : [...accessibleIds];
+    if (requestedIds.some((id) => !accessibleIds.has(id))) throw new BusinessException(403706, '同步请求中包含超出当前数据范围的推广账户', 403);
+    const result = await this.syncService.sync(dto.statDate, dto.provider, requestedIds);
     await this.log('SYNC_PROMOTION_DAILY_METRICS', 'promotion_daily_metrics', dto.statDate, undefined, result, user, ip, userAgent);
     return result;
   }
 
-  async summary(query: DateRangeQueryDto, unit: SummaryUnit) {
+  async summary(query: DateRangeQueryDto, unit: SummaryUnit, user?: AdminCurrentUser) {
+    if (unit === 'week' && query.dateFrom && query.dateTo) return this.customRangeSummary(query, user);
     // 先按账户取完整历史，再用日期范围决定展示哪些自然周/月；这样不会把一个自然周期截成半周或半月。
     const rows = await this.prisma.promotionDailyMetric.findMany({
-      where: query.accountId ? { accountId: query.accountId } : {}, include: { account: true }, orderBy: { statDate: 'asc' }
+      where: { ...(query.accountId ? { accountId: query.accountId } : {}), account: await this.accountScope(user) }, include: { account: true }, orderBy: { statDate: 'asc' }
     });
     const selectedKeys = new Set(rows
       .filter((row) => this.inDateRange(dayjs(row.statDate).format('YYYY-MM-DD'), query))
@@ -228,6 +412,42 @@ export class OperationsService {
       });
   }
 
+  private async customRangeSummary(query: DateRangeQueryDto, user?: AdminCurrentUser) {
+    const dateFrom = query.dateFrom!;
+    const dateTo = query.dateTo!;
+    const dayCount = Math.max(1, dayjs(dateTo).diff(dayjs(dateFrom), 'day') + 1);
+    const previousFrom = dayjs(dateFrom).subtract(dayCount, 'day').format('YYYY-MM-DD');
+    const previousTo = dayjs(dateFrom).subtract(1, 'day').format('YYYY-MM-DD');
+    const rows = await this.prisma.promotionDailyMetric.findMany({
+      where: {
+        ...(query.accountId ? { accountId: query.accountId } : {}),
+        account: await this.accountScope(user),
+        statDate: { gte: this.date(previousFrom), lte: this.date(dateTo) },
+      },
+      include: { account: true },
+      orderBy: { statDate: 'asc' },
+    });
+    const currentGroups = new Map<string, ReturnType<OperationsService['newRangeSummary']>>();
+    const previousGroups = new Map<string, ReturnType<OperationsService['newRangeSummary']>>();
+    for (const row of rows) {
+      const date = dayjs(row.statDate).format('YYYY-MM-DD');
+      const target = date >= dateFrom ? currentGroups : previousGroups;
+      const rangeStart = date >= dateFrom ? dateFrom : previousFrom;
+      const rangeEnd = date >= dateFrom ? dateTo : previousTo;
+      const group = target.get(row.accountId) || this.newRangeSummary(rangeStart, rangeEnd, row.account);
+      this.addToSummary(group, row);
+      target.set(row.accountId, group);
+    }
+    return Array.from(currentGroups.values())
+      .sort((a, b) => a.account.name.localeCompare(b.account.name, 'zh-CN'))
+      .map((row) => {
+        const current = this.normalizedSummary(row);
+        const previous = previousGroups.get(row.account.id);
+        const previousNormalized = previous ? this.normalizedSummary(previous) : null;
+        return { ...current, calculated: this.calculated(current), previous: previousNormalized ? { ...previousNormalized, calculated: this.calculated(previousNormalized) } : null };
+      });
+  }
+
   private accountData(dto: PromotionAccountDto) {
     return { name: dto.name.trim(), project: dto.project, platform: dto.platform.trim(), accountNo: dto.accountNo?.trim() || null, status: dto.status || ContentStatus.ACTIVE, remark: dto.remark?.trim() || null };
   }
@@ -243,8 +463,9 @@ export class OperationsService {
     return { accountId: dto.accountId, statDate: this.date(dto.statDate), spend: dto.spend, impressions: dto.impressions, clicks: dto.clicks, leads: dto.leads, validLeads: dto.validLeads, appointments: dto.appointments, transactions: dto.transactions, revenue: dto.revenue, customMetrics: (dto.customMetrics && Object.keys(dto.customMetrics).length ? dto.customMetrics : Prisma.JsonNull), remark: dto.remark?.trim() || null };
   }
 
-  private dateWhere(query: DateRangeQueryDto): Prisma.PromotionDailyMetricWhereInput {
+  private async dateWhere(query: DateRangeQueryDto, user?: AdminCurrentUser): Promise<Prisma.PromotionDailyMetricWhereInput> {
     const where: Prisma.PromotionDailyMetricWhereInput = {};
+    where.account = await this.accountScope(user);
     if (query.accountId) where.accountId = query.accountId;
     if (query.dateFrom || query.dateTo) {
       where.statDate = {};
@@ -272,39 +493,51 @@ export class OperationsService {
 
   private reportMetric(metric: any) {
     const conversions = metric.leads; const invalid = Math.max(0, metric.leads - metric.validLeads); const spend = Number(metric.spend);
-    return { accountId: metric.accountId, accountName: metric.account.name, accountNo: metric.account.accountNo, conversions, spend, conversionCost: conversions ? spend / conversions : null, invalid, invalidRate: conversions ? invalid / conversions : null };
+    return { accountId: metric.accountId, accountName: metric.account.name, accountNo: metric.account.accountNo, statDate: dayjs(metric.statDate).format('YYYY-MM-DD'), conversions, spend, conversionCost: conversions ? spend / conversions : null, invalid, invalidRate: conversions ? invalid / conversions : null };
   }
 
-  private mergeReportAccounts(items: Array<{ accountId: string; accountName: string; accountNo: string | null; conversions: number; spend: number; invalid: number }>) {
-    const merged = new Map<string, { accountId: string; accountName: string; accountNo: string | null; conversions: number; spend: number; invalid: number }>();
+  private mergeReportAccounts(items: Array<{ accountId: string; accountName: string; accountNo: string | null; statDate: string; conversions: number; spend: number; invalid: number }>) {
+    const merged = new Map<string, { accountId: string; accountName: string; accountNo: string | null; conversions: number; spend: number; invalid: number; recordedDates: Set<string> }>();
     for (const item of items) {
       const key = item.accountNo?.trim() ? `no:${item.accountNo.trim()}` : `account:${item.accountId}`;
-      const current = merged.get(key) || { ...item, conversions: 0, spend: 0, invalid: 0 };
+      const current = merged.get(key) || { accountId: item.accountId, accountName: item.accountName, accountNo: item.accountNo, conversions: 0, spend: 0, invalid: 0, recordedDates: new Set<string>() };
       current.conversions += item.conversions;
       current.spend += item.spend;
       current.invalid += item.invalid;
+      current.recordedDates.add(item.statDate);
       merged.set(key, current);
     }
-    return Array.from(merged.values()).map((item) => ({ ...item, spend: this.money(item.spend), conversionCost: item.conversions ? this.money(item.spend / item.conversions) : null, invalidRate: item.conversions ? item.invalid / item.conversions : null }));
+    return Array.from(merged.values()).map(({ recordedDates, ...item }) => {
+      const recordedDays = recordedDates.size;
+      return { ...item, spend: this.money(item.spend), conversionCost: item.conversions ? this.money(item.spend / item.conversions) : null, invalidRate: item.conversions ? item.invalid / item.conversions : null, recordedDays, averageDailyConversions: recordedDays ? this.money(item.conversions / recordedDays) : null };
+    });
   }
 
-  private reportTotals(items: Array<{ conversions: number; spend: number; invalid: number }>) {
+  private reportTotals(items: Array<{ statDate: string; conversions: number; spend: number; invalid: number }>) {
     const totals = items.reduce((result, item) => ({ conversions: result.conversions + item.conversions, spend: result.spend + item.spend, invalid: result.invalid + item.invalid }), { conversions: 0, spend: 0, invalid: 0 });
     const spend = this.money(totals.spend);
-    return { ...totals, spend, conversionCost: totals.conversions ? this.money(spend / totals.conversions) : null, invalidRate: totals.conversions ? totals.invalid / totals.conversions : null };
+    const recordedDays = new Set(items.map((item) => item.statDate)).size;
+    return { ...totals, spend, conversionCost: totals.conversions ? this.money(spend / totals.conversions) : null, invalidRate: totals.conversions ? totals.invalid / totals.conversions : null, recordedDays, averageDailyConversions: recordedDays ? this.money(totals.conversions / recordedDays) : null };
   }
 
-  private autoProblem(totals: { conversions: number; invalidRate: number | null }) {
+  private autoProblem(totals: { conversions: number; invalidRate: number | null; conversionCost: number | null }) {
     if (!totals.conversions) return '当日暂无转化，需检查账户投放状态';
-    if ((totals.invalidRate || 0) >= 0.6) return '有效率偏低，无效线索占比较高';
-    if ((totals.invalidRate || 0) >= 0.4) return '无效线索占比较高，需持续优化';
-    return '账户数据表现稳定，继续观察转化质量';
+    const validRate = 1 - (totals.invalidRate || 0);
+    const costTooHigh = (totals.conversionCost || 0) > 210;
+    if (validRate > 0.5 && !costTooHigh) return '账户正常';
+    if (validRate > 0.5 && costTooHigh) return '表单成本过高';
+    if (costTooHigh) return '有效率偏低且表单成本过高';
+    return '有效率偏低';
   }
 
-  private autoAdjustment(totals: { conversions: number; invalidRate: number | null }) {
+  private autoAdjustment(totals: { conversions: number; invalidRate: number | null; conversionCost: number | null }) {
     if (!totals.conversions) return '检查预算、计划状态、素材及落地页后再调整投放';
-    if ((totals.invalidRate || 0) >= 0.4) return '优化定向与素材，必要时更换广告策略后持续观察';
-    return '保持当前投放策略，持续观察并优化高质量转化';
+    const validRate = 1 - (totals.invalidRate || 0);
+    const costTooHigh = (totals.conversionCost || 0) > 210;
+    if (validRate > 0.5 && !costTooHigh) return '保持当前投放策略，持续观察账户表现';
+    if (validRate > 0.5 && costTooHigh) return '有效率正常，优化出价、定向和素材，降低表单成本';
+    if (costTooHigh) return '优先优化线索质量，并调整出价、定向和素材以降低表单成本';
+    return '优化定向、素材和落地页，提高有效表单占比';
   }
 
   private addToSummary(target: ReturnType<OperationsService['newSummary']>, row: { spend: Prisma.Decimal | number; impressions: number; clicks: number; leads: number; validLeads: number; appointments: number; transactions: number; revenue: Prisma.Decimal | number }) {
@@ -315,6 +548,39 @@ export class OperationsService {
     return { ...row, spend: this.money(row.spend), revenue: this.money(row.revenue) };
   }
 
+  private async salaryConfig(): Promise<SalaryConfig> {
+    const row = await this.prisma.systemConfig.findUnique({ where: { key: 'promotionSalaryRules' } });
+    return this.normalizeSalaryConfig(row?.valueJson);
+  }
+
+  private normalizeSalaryConfig(value: unknown): SalaryConfig {
+    const source = value && typeof value === 'object' ? value as Record<string, any> : {};
+    const fallback = JSON.parse(JSON.stringify(DEFAULT_PROMOTION_SALARY_CONFIG)) as SalaryConfig;
+    const finite = (input: unknown, defaultValue: number) => Number.isFinite(Number(input)) ? Number(input) : defaultValue;
+    const normalizeRegion = (input: unknown, defaultValue: SalaryRegionRule): SalaryRegionRule => {
+      const region = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+      return {
+        minDailyLeads: Math.max(0, finite(region.minDailyLeads, defaultValue.minDailyLeads)),
+        minValidRate: Math.min(1, Math.max(0, finite(region.minValidRate, defaultValue.minValidRate))),
+        maxAverageCost: Math.max(0, finite(region.maxAverageCost, defaultValue.maxAverageCost)),
+      };
+    };
+    const sourceTiers = Array.isArray(source.tiers) && source.tiers.length ? source.tiers : fallback.tiers;
+    const tiers = sourceTiers.map((item: any, index: number) => {
+      const defaultTier = fallback.tiers[Math.min(index, fallback.tiers.length - 1)];
+      return {
+        salary: Math.max(0, Math.round(finite(item?.salary, defaultTier.salary))),
+        chongqing: normalizeRegion(item?.chongqing, defaultTier.chongqing),
+        mianyang: normalizeRegion(item?.mianyang, defaultTier.mianyang),
+      };
+    }).sort((left: SalaryTierConfig, right: SalaryTierConfig) => left.salary - right.salary);
+    return {
+      baseSalary: Math.max(0, Math.round(finite(source.baseSalary, fallback.baseSalary))),
+      recentDays: Math.min(31, Math.max(1, Math.round(finite(source.recentDays, fallback.recentDays)))),
+      tiers,
+    };
+  }
+
   private money(value: number) { return Math.round((value + Number.EPSILON) * 100) / 100; }
 
   private date(value: string) { return dayjs(value).startOf('day').toDate(); }
@@ -322,6 +588,9 @@ export class OperationsService {
   private newSummary(periodStart: string, unit: SummaryUnit, account: { id: string; name: string; platform: string; accountNo: string | null }) {
     const end = unit === 'week' ? dayjs(periodStart).add(6, 'day').format('YYYY-MM-DD') : dayjs(periodStart).endOf('month').format('YYYY-MM-DD');
     return { periodStart, periodEnd: end, periodLabel: unit === 'week' ? `${periodStart} 至 ${end}` : dayjs(periodStart).format('YYYY年MM月'), account, days: 0, spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0 };
+  }
+  private newRangeSummary(periodStart: string, periodEnd: string, account: { id: string; name: string; platform: string; accountNo: string | null }) {
+    return { periodStart, periodEnd, periodLabel: `${periodStart} 至 ${periodEnd}`, account, days: 0, spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0 };
   }
   private metricItem(row: any) {
     const item = { ...row, statDate: dayjs(row.statDate).format('YYYY-MM-DD'), spend: Number(row.spend), revenue: Number(row.revenue), customMetrics: row.customMetrics || {} };
@@ -342,7 +611,19 @@ export class OperationsService {
       roi: divide(row.revenue, row.spend)
     };
   }
-  private async accountOrThrow(id: string) { const account = await this.prisma.promotionAccount.findUnique({ where: { id } }); if (!account) throw new BusinessException(404700, '推广账户不存在', 404); return account; }
+  private async accountScope(user?: AdminCurrentUser): Promise<Prisma.PromotionAccountWhereInput> {
+    if (!user || !this.dataScopes) return {};
+    return await this.dataScopes.ownershipWhere(user, 'ownerAdminId', 'createdByAdminId') as Prisma.PromotionAccountWhereInput;
+  }
+  private async assertAccountScope(account: { ownerAdminId?: string | null; createdByAdminId?: string | null }, user: AdminCurrentUser) {
+    if (this.dataScopes) await this.dataScopes.assertOwned(user, account, 'ownerAdminId', 'createdByAdminId', '无权访问该推广账户数据');
+  }
+  private async accountOrThrow(id: string, user?: AdminCurrentUser) { const account = await this.prisma.promotionAccount.findUnique({ where: { id } }); if (!account) throw new BusinessException(404700, '推广账户不存在', 404); if (user) await this.assertAccountScope(account, user); return account; }
+  private assertArchivedDailyWritable(metric: { isArchived?: boolean }, user: AdminCurrentUser) {
+    if (metric.isArchived && user.role !== 'SUPER_ADMIN') {
+      throw new BusinessException(403704, '已归档日统计仅超级管理员可修改，当前账号仅可查看', 403);
+    }
+  }
   private async fieldOrThrow(id: string) { await this.ensureDefaultFields(); const field = await this.prisma.promotionMetricField.findUnique({ where: { id } }); if (!field) throw new BusinessException(404702, '推广数据字段不存在', 404); return field; }
   private log(action: string, resourceType: string, resourceId: string, before: unknown, after: unknown, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) { return this.audit.create({ adminUserId: user.adminUserId, action, resourceType, resourceId, beforeJson: before as Prisma.InputJsonValue, afterJson: after as Prisma.InputJsonValue, ip, userAgent: Array.isArray(userAgent) ? userAgent.join(',') : userAgent }); }
 }

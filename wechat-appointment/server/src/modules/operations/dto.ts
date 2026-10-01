@@ -1,6 +1,6 @@
 import { ContentStatus } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 
 export class PromotionAccountDto {
   @IsString() @MaxLength(120) name!: string;
@@ -34,6 +34,29 @@ export class DateRangeQueryDto {
   @IsOptional() @IsString() @MaxLength(32) accountId?: string;
 }
 
+export class PromotionSalaryQueryDto {
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+  month!: string;
+}
+
+export class PromotionSalaryRegionRuleDto {
+  @Type(() => Number) @IsNumber() @Min(0) minDailyLeads!: number;
+  @Type(() => Number) @IsNumber() @Min(0) @Max(1) minValidRate!: number;
+  @Type(() => Number) @IsNumber() @Min(0) maxAverageCost!: number;
+}
+
+export class PromotionSalaryTierDto {
+  @Type(() => Number) @IsInt() @Min(0) salary!: number;
+  @ValidateNested() @Type(() => PromotionSalaryRegionRuleDto) chongqing!: PromotionSalaryRegionRuleDto;
+  @ValidateNested() @Type(() => PromotionSalaryRegionRuleDto) mianyang!: PromotionSalaryRegionRuleDto;
+}
+
+export class PromotionSalaryConfigDto {
+  @Type(() => Number) @IsInt() @Min(0) baseSalary!: number;
+  @Type(() => Number) @IsInt() @Min(1) @Max(31) recentDays!: number;
+  @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => PromotionSalaryTierDto) tiers!: PromotionSalaryTierDto[];
+}
+
 export class PromotionMetricFieldDto {
   @IsString() @MaxLength(80) label!: string;
   @IsOptional() @IsIn(['NUMBER', 'TEXT']) dataType?: 'NUMBER' | 'TEXT';
@@ -55,6 +78,9 @@ export class PromotionDataSyncConfigDto {
   enabled!: boolean;
   @IsString() @MaxLength(500) reportUrl!: string;
   @IsOptional() @IsString() @MaxLength(4000) accessToken?: string;
+  @IsOptional() @IsString() @MaxLength(64) clientId?: string;
+  @IsOptional() @IsString() @MaxLength(4000) clientSecret?: string;
+  @IsOptional() @IsString() @MaxLength(4000) refreshToken?: string;
 }
 
 export class SyncPromotionDailyMetricsDto {
@@ -64,5 +90,6 @@ export class SyncPromotionDailyMetricsDto {
 }
 
 export class ArchivePromotionDailyMetricDto {
+  @IsBoolean()
   isArchived!: boolean;
 }

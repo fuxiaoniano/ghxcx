@@ -16,21 +16,25 @@ export class TencentAdsLeadsAdminController {
   constructor(private readonly leads: TencentAdsLeadsService) {}
 
   @Get('/receiver-config')
+  @Permissions('BUSINESS_LEADS')
   receiverConfig() {
     return this.leads.receiverConfig();
   }
 
   @Get()
-  list(@Query() query: Record<string, string>) {
-    return this.leads.list(query);
+  @Permissions('BUSINESS_LEADS')
+  list(@Query() query: Record<string, string>, @CurrentUser() user: AdminCurrentUser) {
+    return this.leads.list(query, user);
   }
 
   @Get('/:id')
-  detail(@Param('id') id: string) {
-    return this.leads.detail(id);
+  @Permissions('BUSINESS_LEADS')
+  detail(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) {
+    return this.leads.detail(id, user);
   }
 
   @Post('/:id/reveal-phone')
+  @Permissions('BUSINESS_LEADS')
   revealPhone(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -40,7 +44,7 @@ export class TencentAdsLeadsAdminController {
   }
 
   @Patch('/:id')
-  @Permissions('MANAGE_APPOINTMENTS')
+  @Permissions('BUSINESS_LEADS')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateTencentAdLeadDto,

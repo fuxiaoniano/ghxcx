@@ -20,11 +20,14 @@ import { EnterpriseModule } from './modules/enterprise/enterprise.module';
 import { WebsiteModule } from './modules/website/website.module';
 import { TencentAdsLeadsModule } from './modules/tencent-ads-leads/tencent-ads-leads.module';
 import { OperationsModule } from './modules/operations/operations.module';
+import { DataScopeModule } from './common/data-scope/data-scope.module';
+import { ConsultationModule } from './modules/consultation/consultation.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    DataScopeModule,
     RedisModule,
     CryptoModule,
     AuthModule,
@@ -40,7 +43,8 @@ import { OperationsModule } from './modules/operations/operations.module';
     EnterpriseModule,
     WebsiteModule,
     TencentAdsLeadsModule,
-    OperationsModule
+    OperationsModule,
+    ConsultationModule
   ],
   controllers: [PublicPageController],
   providers: [

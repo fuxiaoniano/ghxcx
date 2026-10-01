@@ -58,6 +58,35 @@ enum AdminInviteStatus {
   EXPIRED
 }
 
+enum AdminDataScope {
+  SELF
+  ASSIGNED_MEMBERS
+  TEAM
+  ALL
+}
+
+enum ConsultationFieldType {
+  TEXT
+  TEXTAREA
+  SINGLE
+  MULTI
+  DATE
+  DATETIME
+  NUMBER
+}
+
+enum ConsultationStatusCategory {
+  IN_PROGRESS
+  COMPLETED
+  INVALID
+}
+
+enum ConsultationImportStatus {
+  VALIDATED
+  COMMITTED
+  FAILED
+}
+
 enum ClinicStatus {
   ACTIVE
   DISABLED
@@ -152,6 +181,7 @@ model Appointment {
   remark                      String?               @db.Text
   adminRemark                 String?               @db.Text
   assignedToAdminId           String?               @db.VarChar(32)
+  createdByAdminId            String?               @db.VarChar(32)
   followupForwardStatus       FollowupForwardStatus @default(PENDING)
   followupForwardedAt         DateTime?
   followupForwardLastTriedAt  DateTime?
@@ -171,7 +201,8 @@ model Appointment {
   dentalProject               DentalProject?        @relation(fields: [dentalProjectId], references: [id], onDelete: SetNull)
   package                     Package?              @relation(fields: [packageId], references: [id], onDelete: SetNull)
   landingPage                 LandingPage?          @relation(fields: [landingPageId], references: [id], onDelete: SetNull)
-  assignedTo                  AdminUser?            @relation(fields: [assignedToAdminId], references: [id], onDelete: SetNull)
+  assignedTo                  AdminUser?            @relation("AppointmentAssignedTo", fields: [assignedToAdminId], references: [id], onDelete: SetNull)
+  createdByAdmin              AdminUser?            @relation("AppointmentCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   notifications               NotificationLog[]
 
   @@index([userId])
@@ -187,6 +218,8 @@ model Appointment {
   @@index([landingPageId])
   @@index([appointmentDate])
   @@index([createdAt])
+  @@index([assignedToAdminId])
+  @@index([createdByAdminId])
   @@map("appointments")
 }
 
@@ -240,9 +273,13 @@ model TencentAdLead {
   status            TencentAdLeadStatus @default(NEW)
   ineffectiveReason String?             @db.VarChar(100)
   adminRemark       String?             @db.Text
+  assignedToAdminId String?             @db.VarChar(32)
+  createdByAdminId  String?             @db.VarChar(32)
   rawPayload        Json
   receivedAt        DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
+  assignedTo        AdminUser?          @relation("TencentLeadAssignedTo", fields: [assignedToAdminId], references: [id], onDelete: SetNull)
+  createdByAdmin    AdminUser?          @relation("TencentLeadCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
   @@index([phoneHash])
   @@index([status])
@@ -250,6 +287,8 @@ model TencentAdLead {
   @@index([campaignId])
   @@index([leadActionAt])
   @@index([receivedAt])
+  @@index([assignedToAdminId])
+  @@index([createdByAdminId])
   @@map("tencent_ad_leads")
 }
 
@@ -279,27 +318,85 @@ model NotificationLog {
 }
 
 model AdminUser {
-  id                        String        @id @default(cuid()) @db.VarChar(32)
-  username                  String        @unique @db.VarChar(64)
-  nickname                  String        @default("") @db.VarChar(64)
-  passwordHash              String?       @db.VarChar(255)
-  role                      AdminRole     @default(STAFF)
-  permissionsJson           Json
-  status                    AdminStatus   @default(ACTIVE)
-  oaOpenId                  String?       @unique @db.VarChar(128)
-  unionId                   String?       @db.VarChar(128)
-  subscribedOfficialAccount Boolean       @default(false)
-  notifyEnabled             Boolean       @default(true)
-  wechatBoundAt             DateTime?
-  lastLoginAt               DateTime?
-  createdAt                 DateTime      @default(now())
-  updatedAt                 DateTime      @updatedAt
-  assigned                  Appointment[]
-  auditLogs                 AuditLog[]
+  id                         String                      @id @default(cuid()) @db.VarChar(32)
+  username                   String                      @unique @db.VarChar(64)
+  nickname                   String                      @default("") @db.VarChar(64)
+  passwordHash               String?                     @db.VarChar(255)
+  role                       AdminRole                   @default(STAFF)
+  customRoleId               String?                     @db.VarChar(32)
+  permissionsJson            Json
+  dataScope                  AdminDataScope              @default(ALL)
+  dataScopeMemberIds         Json?
+  teamId                     String?                     @db.VarChar(32)
+  consultationReceivable     Boolean                     @default(false)
+  status                     AdminStatus                 @default(ACTIVE)
+  oaOpenId                   String?                     @unique @db.VarChar(128)
+  unionId                    String?                     @db.VarChar(128)
+  subscribedOfficialAccount  Boolean                     @default(false)
+  notifyEnabled              Boolean                     @default(true)
+  wechatBoundAt              DateTime?
+  lastLoginAt                DateTime?
+  deletedAt                  DateTime?
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  assigned                   Appointment[]               @relation("AppointmentAssignedTo")
+  createdAppointments        Appointment[]               @relation("AppointmentCreatedBy")
+  auditLogs                  AuditLog[]
+  customRole                 AdminRoleDefinition?        @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  team                       AdminTeam?                  @relation("AdminTeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  ledTeams                   AdminTeam[]                 @relation("AdminTeamLeader")
+  assignedTencentLeads       TencentAdLead[]             @relation("TencentLeadAssignedTo")
+  createdTencentLeads        TencentAdLead[]             @relation("TencentLeadCreatedBy")
+  ownedPromotionAccounts     PromotionAccount[]          @relation("PromotionAccountOwner")
+  createdPromotionAccounts   PromotionAccount[]          @relation("PromotionAccountCreator")
+  ownedConsultations         ConsultationForm[]          @relation("ConsultationOwner")
+  createdConsultations       ConsultationForm[]          @relation("ConsultationCreator")
+  operatedConsultations      ConsultationForm[]          @relation("ConsultationLastOperator")
+  consultationFollowUps      ConsultationFollowUp[]      @relation("ConsultationFollowUpCreator")
+  consultationTags           ConsultationTag[]           @relation("ConsultationTagCreator")
+  consultationFields         ConsultationFieldConfig[]   @relation("ConsultationFieldCreator")
+  consultationImports        ConsultationImportBatch[]   @relation("ConsultationImportOperator")
+  consultationListPreference ConsultationListPreference?
 
   @@index([unionId])
+  @@index([customRoleId])
+  @@index([teamId])
+  @@index([status, deletedAt])
   @@index([notifyEnabled, status])
   @@map("admin_users")
+}
+
+model AdminRoleDefinition {
+  id                 String         @id @default(cuid()) @db.VarChar(32)
+  name               String         @unique @db.VarChar(64)
+  description        String?        @db.VarChar(255)
+  permissionsJson    Json
+  dataScope          AdminDataScope @default(ALL)
+  dataScopeMemberIds Json?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  users              AdminUser[]
+
+  @@map("admin_role_definitions")
+}
+
+model AdminTeam {
+  id            String      @id @default(cuid()) @db.VarChar(32)
+  name          String      @unique @db.VarChar(80)
+  leaderAdminId String?     @db.VarChar(32)
+  parentId      String?     @db.VarChar(32)
+  status        AdminStatus @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  leader        AdminUser?  @relation("AdminTeamLeader", fields: [leaderAdminId], references: [id], onDelete: SetNull)
+  parent        AdminTeam?  @relation("AdminTeamTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      AdminTeam[] @relation("AdminTeamTree")
+  members       AdminUser[] @relation("AdminTeamMembers")
+
+  @@index([parentId])
+  @@index([leaderAdminId])
+  @@index([status])
+  @@map("admin_teams")
 }
 
 model AdminWechatInvite {
@@ -374,32 +471,51 @@ model WebsitePage {
 }
 
 model WechatArticle {
-  id              String        @id @default(cuid()) @db.VarChar(32)
-  wechatArticleId String        @unique @db.VarChar(191)
-  mediaId         String?       @db.VarChar(191)
-  articleIndex    Int           @default(0)
-  slug            String        @unique @db.VarChar(191)
-  title           String        @db.VarChar(255)
-  author          String?       @db.VarChar(100)
-  digest          String?       @db.Text
-  seoTitle        String?       @db.VarChar(160)
-  seoKeywords     String?       @db.VarChar(300)
-  seoDescription  String?       @db.VarChar(300)
-  coverUrl        String?       @db.VarChar(1000)
-  contentHtml     String        @db.LongText
-  sourceUrl       String?       @db.VarChar(1000)
-  originalUrl     String?       @db.VarChar(1000)
-  syncHash        String        @db.VarChar(64)
-  status          ContentStatus @default(ACTIVE)
+  id              String                 @id @default(cuid()) @db.VarChar(32)
+  wechatArticleId String                 @unique @db.VarChar(191)
+  mediaId         String?                @db.VarChar(191)
+  articleIndex    Int                    @default(0)
+  slug            String                 @unique @db.VarChar(191)
+  title           String                 @db.VarChar(255)
+  categoryId      String                 @db.VarChar(32)
+  category        WebsiteArticleCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  author          String?                @db.VarChar(100)
+  digest          String?                @db.Text
+  seoTitle        String?                @db.VarChar(160)
+  seoKeywords     String?                @db.VarChar(300)
+  seoDescription  String?                @db.VarChar(300)
+  coverUrl        String?                @db.VarChar(1000)
+  contentHtml     String                 @db.LongText
+  sourceUrl       String?                @db.VarChar(1000)
+  originalUrl     String?                @db.VarChar(1000)
+  syncHash        String                 @db.VarChar(64)
+  status          ContentStatus          @default(ACTIVE)
+  viewCount       Int                    @default(0)
   publishedAt     DateTime?
   wechatUpdatedAt DateTime?
-  lastSyncedAt    DateTime      @default(now())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  lastSyncedAt    DateTime               @default(now())
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   @@index([status, publishedAt])
+  @@index([categoryId, status, publishedAt])
   @@index([mediaId])
   @@map("wechat_articles")
+}
+
+model WebsiteArticleCategory {
+  id          String          @id @default(cuid()) @db.VarChar(32)
+  name        String          @unique @db.VarChar(40)
+  slug        String          @unique @db.VarChar(60)
+  description String?         @db.VarChar(300)
+  sort        Int             @default(0)
+  status      ContentStatus   @default(ACTIVE)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  articles    WechatArticle[]
+
+  @@index([status, sort])
+  @@map("website_article_categories")
 }
 
 model LandingPage {
@@ -483,16 +599,17 @@ model DentalCategory {
 }
 
 model DentalProject {
-  id           String         @id @default(cuid()) @db.VarChar(32)
-  categoryId   String         @db.VarChar(32)
-  name         String         @db.VarChar(100)
-  description  String?        @db.VarChar(500)
-  sort         Int            @default(0)
-  status       ContentStatus  @default(ACTIVE)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  category     DentalCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  appointments Appointment[]
+  id            String             @id @default(cuid()) @db.VarChar(32)
+  categoryId    String             @db.VarChar(32)
+  name          String             @db.VarChar(100)
+  description   String?            @db.VarChar(500)
+  sort          Int                @default(0)
+  status        ContentStatus      @default(ACTIVE)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  category      DentalCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  appointments  Appointment[]
+  consultations ConsultationForm[]
 
   @@unique([categoryId, name])
   @@index([categoryId, status, sort])
@@ -625,42 +742,49 @@ model MediaAsset {
 }
 
 model PromotionAccount {
-  id        String                 @id @default(cuid()) @db.VarChar(32)
-  name      String                 @db.VarChar(120)
-  project   String                 @default("重庆") @db.VarChar(40)
-  platform  String                 @db.VarChar(80)
-  accountNo String?                @db.VarChar(120)
-  status    ContentStatus          @default(ACTIVE)
-  remark    String?                @db.VarChar(500)
-  createdAt DateTime               @default(now())
-  updatedAt DateTime               @updatedAt
-  metrics   PromotionDailyMetric[]
+  id               String                 @id @default(cuid()) @db.VarChar(32)
+  name             String                 @db.VarChar(120)
+  project          String                 @default("重庆") @db.VarChar(40)
+  platform         String                 @db.VarChar(80)
+  accountNo        String?                @db.VarChar(120)
+  status           ContentStatus          @default(ACTIVE)
+  remark           String?                @db.VarChar(500)
+  ownerAdminId     String?                @db.VarChar(32)
+  createdByAdminId String?                @db.VarChar(32)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  metrics          PromotionDailyMetric[]
+  consultations    ConsultationForm[]
+  owner            AdminUser?             @relation("PromotionAccountOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
+  createdBy        AdminUser?             @relation("PromotionAccountCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
   @@unique([project, platform, name])
   @@index([status])
+  @@index([ownerAdminId])
+  @@index([createdByAdminId])
   @@map("promotion_accounts")
 }
 
 model PromotionDailyMetric {
-  id          String           @id @default(cuid()) @db.VarChar(32)
-  accountId   String           @db.VarChar(32)
-  statDate    DateTime         @db.Date
-  spend       Decimal          @default(0) @db.Decimal(12, 2)
-  impressions Int              @default(0)
-  clicks      Int              @default(0)
-  leads       Int              @default(0)
-  validLeads  Int              @default(0)
-  appointments Int             @default(0)
-  transactions Int             @default(0)
-  revenue     Decimal          @default(0) @db.Decimal(12, 2)
+  id            String           @id @default(cuid()) @db.VarChar(32)
+  accountId     String           @db.VarChar(32)
+  statDate      DateTime         @db.Date
+  spend         Decimal          @default(0) @db.Decimal(12, 2)
+  impressions   Int              @default(0)
+  clicks        Int              @default(0)
+  leads         Int              @default(0)
+  validLeads    Int              @default(0)
+  appointments  Int              @default(0)
+  transactions  Int              @default(0)
+  revenue       Decimal          @default(0) @db.Decimal(12, 2)
   customMetrics Json?
-  remark      String?          @db.VarChar(500)
-  syncSource  String           @default("MANUAL") @db.VarChar(24)
-  syncedAt    DateTime?
-  isArchived  Boolean          @default(false)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  account     PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  remark        String?          @db.VarChar(500)
+  syncSource    String           @default("MANUAL") @db.VarChar(24)
+  syncedAt      DateTime?
+  isArchived    Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  account       PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, statDate])
   @@index([statDate])
@@ -668,16 +792,16 @@ model PromotionDailyMetric {
 }
 
 model PromotionDataSyncConfig {
-  id                String   @id @default(cuid()) @db.VarChar(32)
-  provider          String   @unique @db.VarChar(32)
-  enabled           Boolean  @default(false)
-  reportUrl         String   @db.VarChar(500)
-  accessTokenCipher String?  @db.Text
+  id                String    @id @default(cuid()) @db.VarChar(32)
+  provider          String    @unique @db.VarChar(32)
+  enabled           Boolean   @default(false)
+  reportUrl         String    @db.VarChar(500)
+  accessTokenCipher String?   @db.Text
   extraConfig       Json?
   lastSyncedAt      DateTime?
-  lastSyncMessage   String?  @db.VarChar(1000)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  lastSyncMessage   String?   @db.VarChar(1000)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@map("promotion_data_sync_configs")
 }
@@ -711,4 +835,203 @@ model PromotionDailyReportNote {
   @@unique([statDate, periodType, project, channel])
   @@index([statDate])
   @@map("promotion_daily_report_notes")
+}
+
+model WebsiteVisitorDaily {
+  id             String   @id @default(cuid()) @db.VarChar(32)
+  visitorHash    String   @db.VarChar(64)
+  statDate       DateTime @db.Date
+  viewCount      Int      @default(1)
+  firstPath      String?  @db.VarChar(255)
+  lastPath       String?  @db.VarChar(255)
+  firstVisitedAt DateTime @default(now())
+  lastVisitedAt  DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([visitorHash, statDate])
+  @@index([statDate])
+  @@index([visitorHash])
+  @@map("website_visitor_daily")
+}
+
+model ConsultationStatus {
+  id        String                     @id @default(cuid()) @db.VarChar(32)
+  name      String                     @db.VarChar(60)
+  code      String                     @unique @db.VarChar(60)
+  color     String                     @default("#457ea9") @db.VarChar(20)
+  sort      Int                        @default(0)
+  enabled   Boolean                    @default(true)
+  category  ConsultationStatusCategory @default(IN_PROGRESS)
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+  forms     ConsultationForm[]
+  followUps ConsultationFollowUp[]
+
+  @@index([enabled, sort])
+  @@map("consultation_statuses")
+}
+
+model ConsultationTag {
+  id               String                @id @default(cuid()) @db.VarChar(32)
+  name             String                @unique @db.VarChar(60)
+  color            String                @default("#838e7c") @db.VarChar(20)
+  sort             Int                   @default(0)
+  enabled          Boolean               @default(true)
+  createdByAdminId String?               @db.VarChar(32)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  createdBy        AdminUser?            @relation("ConsultationTagCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  forms            ConsultationFormTag[]
+
+  @@index([enabled, sort])
+  @@index([createdByAdminId])
+  @@map("consultation_tags")
+}
+
+model ConsultationFieldConfig {
+  id               String                @id @default(cuid()) @db.VarChar(32)
+  name             String                @db.VarChar(80)
+  code             String                @unique @db.VarChar(80)
+  source           String                @default("CUSTOM") @db.VarChar(16)
+  type             ConsultationFieldType @default(TEXT)
+  required         Boolean               @default(false)
+  enabled          Boolean               @default(true)
+  showInForm       Boolean               @default(true)
+  showInDetail     Boolean               @default(true)
+  showInList       Boolean               @default(false)
+  filterable       Boolean               @default(false)
+  exportable       Boolean               @default(false)
+  importable       Boolean               @default(false)
+  listTitle        String?               @db.VarChar(80)
+  listOrder        Int                   @default(0)
+  listWidth        Int                   @default(140)
+  optionsJson      Json?
+  createdByAdminId String?               @db.VarChar(32)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  createdBy        AdminUser?            @relation("ConsultationFieldCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([source, enabled, listOrder])
+  @@index([createdByAdminId])
+  @@map("consultation_field_configs")
+}
+
+model ConsultationForm {
+  id                    String                 @id @default(cuid()) @db.VarChar(32)
+  name                  String                 @db.VarChar(64)
+  phoneEncrypted        String                 @db.Text
+  phoneHash             String                 @db.VarChar(128)
+  phoneMasked           String                 @db.VarChar(32)
+  projectId             String?                @db.VarChar(32)
+  promotionAccountId    String?                @db.VarChar(32)
+  channelSource         String                 @db.VarChar(120)
+  statusId              String                 @db.VarChar(32)
+  ownerAdminId          String                 @db.VarChar(32)
+  createdByAdminId      String                 @db.VarChar(32)
+  lastOperatedByAdminId String                 @db.VarChar(32)
+  recordedAt            DateTime               @default(now())
+  lastFollowUpAt        DateTime?
+  nextFollowUpAt        DateTime?
+  invalidReason         String?                @db.VarChar(500)
+  customData            Json?
+  duplicateOfId         String?                @db.VarChar(32)
+  duplicateReason       String?                @db.VarChar(500)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  project               DentalProject?         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  promotionAccount      PromotionAccount?      @relation(fields: [promotionAccountId], references: [id], onDelete: SetNull)
+  status                ConsultationStatus     @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  owner                 AdminUser              @relation("ConsultationOwner", fields: [ownerAdminId], references: [id], onDelete: Restrict)
+  createdBy             AdminUser              @relation("ConsultationCreator", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  lastOperatedBy        AdminUser              @relation("ConsultationLastOperator", fields: [lastOperatedByAdminId], references: [id], onDelete: Restrict)
+  duplicateOf           ConsultationForm?      @relation("ConsultationDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates            ConsultationForm[]     @relation("ConsultationDuplicates")
+  followUps             ConsultationFollowUp[]
+  tags                  ConsultationFormTag[]
+
+  @@index([phoneHash])
+  @@index([projectId])
+  @@index([promotionAccountId])
+  @@index([statusId])
+  @@index([ownerAdminId])
+  @@index([createdByAdminId])
+  @@index([recordedAt])
+  @@index([nextFollowUpAt])
+  @@map("consultation_forms")
+}
+
+model ConsultationFollowUp {
+  id               String              @id @default(cuid()) @db.VarChar(32)
+  formId           String              @db.VarChar(32)
+  content          String              @db.Text
+  resultStatusId   String?             @db.VarChar(32)
+  nextFollowUpAt   DateTime?
+  createdByAdminId String?             @db.VarChar(32)
+  createdAt        DateTime            @default(now())
+  form             ConsultationForm    @relation(fields: [formId], references: [id], onDelete: Cascade)
+  resultStatus     ConsultationStatus? @relation(fields: [resultStatusId], references: [id], onDelete: SetNull)
+  createdBy        AdminUser?          @relation("ConsultationFollowUpCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([formId, createdAt])
+  @@index([createdByAdminId])
+  @@map("consultation_follow_ups")
+}
+
+model ConsultationFormTag {
+  formId    String           @db.VarChar(32)
+  tagId     String           @db.VarChar(32)
+  createdAt DateTime         @default(now())
+  form      ConsultationForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  tag       ConsultationTag  @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@id([formId, tagId])
+  @@index([tagId])
+  @@map("consultation_form_tags")
+}
+
+model ConsultationImportBatch {
+  id              String                    @id @default(cuid()) @db.VarChar(32)
+  fileName        String                    @db.VarChar(255)
+  status          ConsultationImportStatus  @default(VALIDATED)
+  operatorAdminId String?                   @db.VarChar(32)
+  totalCount      Int                       @default(0)
+  successCount    Int                       @default(0)
+  failedCount     Int                       @default(0)
+  duplicateCount  Int                       @default(0)
+  optionsJson     Json?
+  previewJson     Json?
+  committedAt     DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  operator        AdminUser?                @relation("ConsultationImportOperator", fields: [operatorAdminId], references: [id], onDelete: SetNull)
+  errors          ConsultationImportError[]
+
+  @@index([operatorAdminId, createdAt])
+  @@map("consultation_import_batches")
+}
+
+model ConsultationImportError {
+  id        String                  @id @default(cuid()) @db.VarChar(32)
+  batchId   String                  @db.VarChar(32)
+  rowNumber Int
+  field     String?                 @db.VarChar(80)
+  message   String                  @db.VarChar(500)
+  rowJson   Json?
+  createdAt DateTime                @default(now())
+  batch     ConsultationImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, rowNumber])
+  @@map("consultation_import_errors")
+}
+
+model ConsultationListPreference {
+  id          String    @id @default(cuid()) @db.VarChar(32)
+  adminUserId String    @unique @db.VarChar(32)
+  columnsJson Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@map("consultation_list_preferences")
 }

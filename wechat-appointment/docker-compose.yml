@@ -28,6 +28,8 @@ services:
     image: wechat-appointment-server:production-20260910-website-tencent-v4
     build:
       context: ./server
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     restart: unless-stopped
     env_file:
       - .env

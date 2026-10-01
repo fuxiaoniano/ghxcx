@@ -14,4 +14,9 @@ export class UpdateTencentAdLeadDto {
   @MaxLength(2000)
   @IsOptional()
   adminRemark?: string;
+
+  @IsString()
+  @MaxLength(32)
+  @IsOptional()
+  assignedToAdminId?: string | null;
 }

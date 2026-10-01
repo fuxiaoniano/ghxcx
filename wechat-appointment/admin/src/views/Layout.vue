@@ -1,40 +1,42 @@
 <template>
-  <el-container class="layout" :class="{ 'is-collapsed': sidebarCollapsed }">
-    <el-aside :width="sidebarCollapsed ? '76px' : '232px'" class="aside">
+  <el-container class="layout" :class="{ 'is-collapsed': sidebarCollapsed, 'mobile-nav-open': mobileNavigationOpen }">
+    <el-aside :width="isMobile ? '232px' : (sidebarCollapsed ? '76px' : '232px')" class="aside">
       <div class="brand">
         <div class="brand-mark">管</div>
-        <div v-show="!sidebarCollapsed" class="brand-copy">
-          <strong>运营管理后台</strong>
+        <div v-show="!sidebarCollapsed || isMobile" class="brand-copy">
+          <strong>傅小念的运营管理后台</strong>
           <span>预约管理中心</span>
         </div>
       </div>
 
       <nav class="navigation" aria-label="后台主导航">
-        <el-menu router :default-active="$route.path" :collapse="sidebarCollapsed" :collapse-transition="false">
+        <el-menu router :default-active="$route.path" :collapse="isMobile ? false : sidebarCollapsed" :collapse-transition="false" @select="closeMobileNavigation">
           <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
-          <el-sub-menu index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item index="/tencent-ad-leads">腾讯广告线索</el-menu-item><el-menu-item index="/appointments">挂号管理</el-menu-item><el-menu-item index="/users">用户管理</el-menu-item><el-menu-item index="/notifications">通知记录</el-menu-item></el-sub-menu>
-          <el-sub-menu v-if="canAccess('MANAGE_CONFIGS')" index="operations"><template #title><el-icon><DataLine /></el-icon><span>推广数据</span></template><el-menu-item index="/operations/daily">日数据</el-menu-item><el-menu-item index="/operations/weekly">周统计</el-menu-item><el-menu-item index="/operations/monthly">月统计</el-menu-item><el-menu-item index="/operations/daily-report">推广日报</el-menu-item><el-menu-item index="/operations/weekly-report">推广周报</el-menu-item><el-menu-item index="/operations/monthly-report">推广月报</el-menu-item><el-menu-item index="/operations/accounts">推广账户</el-menu-item><el-menu-item index="/operations/sync-settings">数据同步设置</el-menu-item><el-menu-item index="/operations/fields">字段设置</el-menu-item></el-sub-menu>
-          <el-sub-menu index="content"><template #title><el-icon><Menu /></el-icon><span>内容管理</span></template><el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('HOME_MANAGE') || canAccess('DOCTOR_MANAGE') || canAccess('PACKAGE_MANAGE')" index="/media-library">图片库</el-menu-item><el-menu-item index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
-          <el-sub-menu v-if="canAccess('WEBSITE_MANAGE')" index="website"><template #title><el-icon><Monitor /></el-icon><span>官网内容</span></template><el-menu-item index="/website-settings">官网设置</el-menu-item><el-menu-item index="/website-pages">官网页面</el-menu-item><el-menu-item index="/website-articles">口腔资讯</el-menu-item></el-sub-menu>
-          <el-sub-menu index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item index="/official-menu">公众号菜单</el-menu-item><el-menu-item index="/official-auto-reply">自动回复</el-menu-item><el-menu-item index="/admin-users">成员与预约通知</el-menu-item></el-sub-menu>
-          <el-sub-menu index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item index="/configs">系统配置</el-menu-item><el-menu-item index="/followup-forward">回访接口</el-menu-item><el-menu-item index="/audit-logs">审计日志</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['BUSINESS_LEADS','BUSINESS_APPOINTMENTS','BUSINESS_USERS','BUSINESS_NOTIFICATIONS'].some(canAccess)" index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item v-if="canAccess('BUSINESS_LEADS')" index="/tencent-ad-leads">腾讯广告线索</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_APPOINTMENTS')" index="/appointments">挂号管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_USERS')" index="/users">用户管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_NOTIFICATIONS')" index="/notifications">通知记录</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('CONSULTATION_VIEW') || canAccess('CONSULTATION_SETTINGS')" index="consultations"><template #title><el-icon><ChatLineRound /></el-icon><span>网咨数据</span></template><el-menu-item v-if="canAccess('CONSULTATION_VIEW')" index="/consultations">全部表单</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_VIEW')" index="/consultations/callbacks">今日需回访</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_SETTINGS')" index="/consultations/settings">网咨设置</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['PROMOTION_HOME','PROMOTION_DAILY','PROMOTION_WEEKLY','PROMOTION_MONTHLY','PROMOTION_FILTER','PROMOTION_DAILY_REPORT','PROMOTION_WEEKLY_REPORT','PROMOTION_MONTHLY_REPORT','PROMOTION_ACCOUNTS','PROMOTION_SYNC','PROMOTION_FIELDS','PROMOTION_SALARY'].some(canAccess)" index="operations"><template #title><el-icon><DataLine /></el-icon><span>推广数据</span></template><el-menu-item v-if="canAccess('PROMOTION_HOME')" index="/operations/dashboard">数据首页</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_DAILY')" index="/operations/daily">日统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_WEEKLY')" index="/operations/weekly">周统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MONTHLY')" index="/operations/monthly">月统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_FILTER')" index="/operations/filter">数据筛选</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_DAILY_REPORT')" index="/operations/daily-report">推广日报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_WEEKLY_REPORT')" index="/operations/weekly-report">推广周报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MONTHLY_REPORT')" index="/operations/monthly-report">推广月报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_ACCOUNTS')" index="/operations/accounts">推广账户</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_SYNC')" index="/operations/sync-settings">数据同步设置</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_FIELDS')" index="/operations/fields">字段设置</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_SALARY')" index="/operations/salary">工资测算</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['CONTENT_HOME','CONTENT_DEPARTMENTS','CONTENT_DOCTORS','CONTENT_PACKAGES','CONTENT_MEDIA','CONTENT_LINKS'].some(canAccess)" index="content"><template #title><el-icon><Menu /></el-icon><span>内容管理</span></template><el-menu-item v-if="canAccess('CONTENT_HOME')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DEPARTMENTS')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DOCTORS')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('CONTENT_PACKAGES')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_MEDIA')" index="/media-library">图片库</el-menu-item><el-menu-item v-if="canAccess('CONTENT_LINKS')" index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['WEBSITE_SETTINGS','WEBSITE_CATEGORIES','WEBSITE_ARTICLES'].some(canAccess)" index="website"><template #title><el-icon class="website-nav-icon"><Monitor /></el-icon><span>官网内容</span></template><el-menu-item v-if="canAccess('WEBSITE_SETTINGS')" index="/website-settings">官网设置</el-menu-item><el-menu-item v-if="canAccess('WEBSITE_CATEGORIES')" index="/website-categories">资讯分类</el-menu-item><el-menu-item v-if="canAccess('WEBSITE_ARTICLES')" index="/website-articles">口腔资讯</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('WECHAT_MENU') || canAccess('WECHAT_AUTO_REPLY')" index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item v-if="canAccess('WECHAT_MENU')" index="/official-menu">公众号菜单</el-menu-item><el-menu-item v-if="canAccess('WECHAT_AUTO_REPLY')" index="/official-auto-reply">自动回复</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['SYSTEM_MEMBERS','SYSTEM_ROLES','SYSTEM_OFFICIAL_BINDING','SYSTEM_CONFIGS','SYSTEM_FOLLOWUP','SYSTEM_WEBSITE_ANALYTICS','SYSTEM_AUDIT'].some(canAccess)" index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item v-if="canAccess('SYSTEM_MEMBERS')" index="/admin-users">成员与预约通知</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_ROLES')" index="/admin-roles">角色管理</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_OFFICIAL_BINDING')" index="/official-binding">公众号绑定</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_CONFIGS')" index="/configs">系统配置</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_FOLLOWUP')" index="/followup-forward">回访接口</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_WEBSITE_ANALYTICS')" index="/website-analytics">官网浏览统计</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_AUDIT')" index="/audit-logs">审计日志</el-menu-item></el-sub-menu>
         </el-menu>
       </nav>
 
       <div class="sidebar-footer">
         <span class="status-dot" />
-        <span v-show="!sidebarCollapsed">系统运行中</span>
+        <span v-show="!sidebarCollapsed || isMobile">系统运行中</span>
       </div>
     </el-aside>
+    <div v-if="isMobile && mobileNavigationOpen" class="mobile-nav-mask" @click="closeMobileNavigation" />
 
     <el-container class="main-shell">
       <el-header class="header">
         <div class="header-left">
-          <el-button class="collapse-button" text :aria-label="sidebarCollapsed ? '展开导航' : '收起导航'" @click="toggleSidebar">
-            <el-icon size="18"><Expand v-if="sidebarCollapsed" /><Fold v-else /></el-icon>
+          <el-button class="collapse-button" text :aria-label="isMobile ? (mobileNavigationOpen ? '收起导航' : '展开导航') : (sidebarCollapsed ? '展开导航' : '收起导航')" @click="toggleSidebar">
+            <el-icon size="18"><Expand v-if="isMobile ? !mobileNavigationOpen : sidebarCollapsed" /><Fold v-else /></el-icon>
           </el-button>
           <div class="breadcrumb-copy">
-            <span>管理后台</span>
+            <span>傅小念的运营管理后台</span>
             <strong>{{ currentPageTitle }}</strong>
           </div>
         </div>
@@ -69,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   ArrowDown,
@@ -88,23 +90,47 @@ import { useAuthStore } from '../stores/auth';
 const route = useRoute();
 const auth = useAuthStore();
 const sidebarCollapsed = ref(localStorage.getItem('admin_sidebar_collapsed') === '1');
+const isMobile = ref(false);
+const mobileNavigationOpen = ref(false);
 const canAccess = (permission: string) => auth.hasPermission(permission);
 function toggleSidebar() {
+  if (isMobile.value) {
+    mobileNavigationOpen.value = !mobileNavigationOpen.value;
+    return;
+  }
   sidebarCollapsed.value = !sidebarCollapsed.value;
   localStorage.setItem('admin_sidebar_collapsed', sidebarCollapsed.value ? '1' : '0');
 }
+function closeMobileNavigation() {
+  mobileNavigationOpen.value = false;
+}
+function updateViewport() {
+  isMobile.value = window.innerWidth <= 900;
+  if (!isMobile.value) closeMobileNavigation();
+}
+onMounted(() => {
+  updateViewport();
+  window.addEventListener('resize', updateViewport);
+});
+onBeforeUnmount(() => window.removeEventListener('resize', updateViewport));
 
 const pageTitles: Record<string, string> = {
   '/tencent-ad-leads': '腾讯广告线索',
-  '/operations/daily': '推广数据日数据',
+  '/consultations': '全部网咨表单',
+  '/consultations/callbacks': '今日需回访',
+  '/consultations/settings': '网咨设置',
+  '/operations/dashboard': '数据首页',
+  '/operations/daily': '推广数据日统计',
   '/operations/weekly': '推广数据周统计',
   '/operations/monthly': '推广数据月统计',
+  '/operations/filter': '数据筛选',
   '/operations/accounts': '推广账户',
   '/operations/sync-settings': '推广数据同步设置',
   '/operations/fields': '推广数据字段设置',
   '/operations/daily-report': '推广日报',
   '/operations/weekly-report': '推广周报',
   '/operations/monthly-report': '推广月报',
+  '/operations/salary': '工资测算',
   '/dashboard': '仪表盘',
   '/appointments': '挂号管理',
   '/users': '用户管理',
@@ -116,18 +142,21 @@ const pageTitles: Record<string, string> = {
   '/media-library': '图片库',
   '/mini-program-links': '页面跳转链接',
   '/website-settings': '官网设置',
-  '/website-pages': '官网页面',
+  '/website-categories': '资讯分类',
   '/website-articles': '口腔资讯',
   '/configs': '系统配置',
   '/official-menu': '公众号菜单',
   '/official-auto-reply': '自动回复',
   '/appointment-notify': '成员与通知',
   '/followup-forward': '回访接口',
+  '/website-analytics': '官网浏览统计',
   '/admin-users': '成员与通知',
+  '/admin-roles': '角色管理',
+  '/official-binding': '公众号绑定',
   '/audit-logs': '审计日志'
 };
 
-const currentPageTitle = computed(() => pageTitles[route.path] || '管理后台');
+const currentPageTitle = computed(() => pageTitles[route.path] || '傅小念的运营管理后台');
 const accountInitial = computed(() => (auth.user?.nickname || auth.user?.username || '管').slice(0, 1).toUpperCase());
 const roleLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -135,7 +164,7 @@ const roleLabel = computed(() => {
     MANAGER: '经理',
     STAFF: '员工'
   };
-  return labels[auth.user?.role || ''] || auth.user?.role || '管理员';
+  return auth.user?.roleName || labels[auth.user?.role || ''] || auth.user?.role || '管理员';
 });
 </script>
 
@@ -195,7 +224,7 @@ const roleLabel = computed(() => {
 }
 
 .brand-copy span {
-  color: #9ba9bc;
+  color: #cce0f4;
   font-size: 12px;
 }
 
@@ -204,13 +233,13 @@ const roleLabel = computed(() => {
   padding: 14px 10px;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-color: #344158 transparent;
+  scrollbar-color: #cce0f4 transparent;
   scrollbar-width: thin;
 }
 
 .nav-group-label {
   padding: 4px 12px 7px;
-  color: #76958f;
+  color: #cce0f4;
   font-size: 11px;
   font-weight: 650;
 }
@@ -228,16 +257,18 @@ const roleLabel = computed(() => {
   height: 44px;
   margin-bottom: 4px;
   padding: 0 12px !important;
-  color: #c3cbd8;
+  color: #eaf4fc;
   border-radius: 6px;
+  transition: color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
 
 .navigation :deep(.el-sub-menu__title) {
   height: 44px;
   margin-bottom: 4px;
   padding: 0 12px !important;
-  color: #c3cbd8;
+  color: #eaf4fc;
   border-radius: 6px;
+  transition: color 160ms ease, background-color 160ms ease;
 }
 
 .navigation :deep(.el-sub-menu__title:hover) {
@@ -248,27 +279,39 @@ const roleLabel = computed(() => {
 .navigation :deep(.el-sub-menu .el-menu-item) {
   min-width: 0;
   padding-left: 46px !important;
-  color: #aeb9c9;
+  color: #d9eaf8;
 }
 
 .navigation :deep(.el-menu-item .el-icon) {
   width: 20px;
   margin-right: 12px;
-  color: #93a4bb;
+  color: #cce0f4;
 }
 
 .navigation :deep(.el-menu-item:hover) {
   color: #ffffff;
   background: var(--admin-sidebar-hover);
+  transform: translateX(2px);
 }
 
 .navigation :deep(.el-menu-item.is-active) {
   color: #ffffff;
-  background: var(--admin-primary);
+  background: var(--admin-sidebar-hover);
   font-weight: 600;
+  box-shadow: inset 3px 0 0 #cce0f4;
 }
 
 .navigation :deep(.el-menu-item.is-active .el-icon) {
+  color: #ffffff;
+}
+
+.navigation :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
+  color: #ffffff;
+  background: rgba(131, 142, 124, 0.5);
+  font-weight: 600;
+}
+
+.navigation :deep(.el-sub-menu.is-active > .el-sub-menu__title > .el-icon) {
   color: #ffffff;
 }
 
@@ -295,8 +338,13 @@ const roleLabel = computed(() => {
 
 .is-collapsed .navigation :deep(.el-menu-item),
 .is-collapsed .navigation :deep(.el-sub-menu__title) {
+  display: flex;
   justify-content: center;
+  flex-wrap: nowrap;
   padding: 0 !important;
+  overflow: hidden;
+  white-space: nowrap;
+  transform: none;
 }
 
 .is-collapsed .navigation :deep(.el-menu-item > .el-icon),
@@ -304,8 +352,48 @@ const roleLabel = computed(() => {
   margin: 0 !important;
 }
 
-.is-collapsed .navigation :deep(.el-sub-menu__icon-arrow) {
-  display: none;
+/* 收起状态下，激活子菜单也必须保留图标（Element Plus 会覆盖该布局）。 */
+.is-collapsed .navigation :deep(.el-sub-menu > .el-sub-menu__title > .el-icon:first-child) {
+  display: inline-flex !important;
+  flex: 0 0 20px;
+  width: 20px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  visibility: visible !important;
+}
+
+.is-collapsed .navigation :deep(.el-sub-menu > .el-sub-menu__title > .el-icon:first-child svg) {
+  display: block !important;
+  width: 20px;
+  height: 20px;
+}
+
+/* Element Plus 收起子菜单时会重置图标布局；官网图标保持固定占位。 */
+.is-collapsed .navigation :deep(.website-nav-icon) {
+  display: inline-flex !important;
+  flex: 0 0 20px;
+  width: 20px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  color: #cce0f4 !important;
+  visibility: visible !important;
+}
+
+.is-collapsed .navigation :deep(.website-nav-icon svg) {
+  display: block !important;
+  width: 20px;
+  height: 20px;
+}
+
+.is-collapsed .navigation :deep(.el-sub-menu__icon-arrow),
+.is-collapsed .navigation :deep(.el-sub-menu > .el-sub-menu__title > .el-sub-menu__icon-arrow),
+.is-collapsed .navigation :deep(.el-icon-arrow-right),
+.is-collapsed .navigation :deep(.el-sub-menu__title > svg:last-child) {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  visibility: hidden !important;
 }
 
 .sidebar-footer {
@@ -314,7 +402,7 @@ const roleLabel = computed(() => {
   align-items: center;
   gap: 9px;
   padding: 0 22px;
-  color: #9ba9bc;
+  color: #cce0f4;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 12px;
   white-space: nowrap;
@@ -324,9 +412,9 @@ const roleLabel = computed(() => {
   flex: 0 0 8px;
   width: 8px;
   height: 8px;
-  background: #4ade80;
+  background: #838e7c;
   border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.12);
+  box-shadow: 0 0 0 3px rgba(131, 142, 124, 0.22);
 }
 
 .main-shell {
@@ -348,8 +436,10 @@ const roleLabel = computed(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: rgba(255, 255, 255, 0.97);
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--admin-border);
+  box-shadow: 0 4px 18px rgba(69, 126, 169, 0.06);
+  backdrop-filter: blur(10px);
 }
 
 .header-left,
@@ -398,7 +488,7 @@ const roleLabel = computed(() => {
 
 .account-button:hover,
 .account-button:focus-visible {
-  background: #f4f6f9;
+  background: #edf5fb;
   border-color: var(--admin-border);
   outline: none;
 }
@@ -447,41 +537,48 @@ const roleLabel = computed(() => {
 
 @media (max-width: 900px) {
   .aside {
-    width: 76px !important;
+    position: fixed;
+    z-index: 1002;
+    width: 232px !important;
+    height: 100dvh;
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: none;
   }
 
-  .brand-copy,
-  .nav-group-label,
-  .sidebar-footer span:not(.status-dot) {
-    display: none !important;
+  .mobile-nav-open .aside {
+    transform: translateX(0);
+    box-shadow: 8px 0 24px rgba(15, 23, 42, .24);
+  }
+
+  .mobile-nav-mask {
+    position: fixed;
+    z-index: 1001;
+    inset: 0;
+    background: rgba(15, 23, 42, .4);
   }
 
   .navigation :deep(.el-menu) {
-    width: 56px;
+    width: 100%;
   }
 
   .navigation :deep(.el-menu-item) {
-    justify-content: center;
-    padding: 0 !important;
-  }
-
-  .navigation :deep(.el-menu-item .el-icon) {
-    margin: 0;
+    padding-left: 20px !important;
   }
 
   .main-shell,
   .is-collapsed .main-shell {
-    margin-left: 76px;
+    margin-left: 0;
   }
 
   .collapse-button {
-    display: none;
+    display: inline-flex;
   }
 }
 
 @media (max-width: 640px) {
   .aside {
-    width: 64px !important;
+    width: min(82vw, 280px) !important;
   }
 
   .brand {
@@ -493,20 +590,6 @@ const roleLabel = computed(() => {
     width: 36px;
     height: 36px;
     flex-basis: 36px;
-  }
-
-  .navigation {
-    padding-right: 4px;
-    padding-left: 4px;
-  }
-
-  .navigation :deep(.el-menu) {
-    width: 56px;
-  }
-
-  .main-shell,
-  .is-collapsed .main-shell {
-    margin-left: 64px;
   }
 
   .header {

@@ -1,0 +1,2 @@
+ALTER TABLE `wechat_articles`
+  ADD COLUMN `viewCount` INTEGER NOT NULL DEFAULT 0;
