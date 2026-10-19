@@ -29,6 +29,16 @@ describe('OperationsService report account diagnosis', () => {
     expect(service.mergeReportAccounts(rows)[0]).toMatchObject({ conversions: 10, recordedDays: 2, averageDailyConversions: 5 });
   });
 
+  it('merges different account numbers with the same account name without double-counting days', () => {
+    const rows = [
+      { accountId: 'a1', accountName: '腾讯01', accountNo: '1001', statDate: '2026-09-01', conversions: 4, spend: 100, invalid: 1 },
+      { accountId: 'a2', accountName: '腾讯01', accountNo: '1002', statDate: '2026-09-01', conversions: 6, spend: 200, invalid: 2 },
+    ];
+    expect(service.mergeReportAccounts(rows)).toMatchObject([
+      { accountName: '腾讯01', accountNo: '1001、1002', conversions: 10, spend: 300, recordedDays: 1, averageDailyConversions: 10 },
+    ]);
+  });
+
   it('calculates channel and project daily conversions without counting the same date twice', () => {
     const rows = [
       { statDate: '2026-09-01', conversions: 4, spend: 100, invalid: 1 },

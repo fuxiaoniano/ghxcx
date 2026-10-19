@@ -8,6 +8,7 @@ export interface PageResult<T> {
   pageSize: number;
   list: T[];
 }
+export interface PlatformPageInfo { page: number; pageSize: number; totalNumber: number; totalPage: number; }
 
 export interface WebsiteAnalyticsSummary {
   today: number;
@@ -385,6 +386,7 @@ export interface PromotionAccountItem {
   accountNo?: string | null;
   status: 'ACTIVE' | 'DISABLED';
   remark?: string | null;
+  canManageCredentials?: boolean;
 }
 
 export interface PromotionMetricFieldItem {
@@ -433,11 +435,168 @@ export interface PromotionDataSyncConfigItem {
   clientId?: string;
   hasClientSecret?: boolean;
   hasRefreshToken?: boolean;
+  hasUserToken?: boolean;
+  userTokenExpiresAt?: string | null;
   authorizedAccountId?: string | null;
   accessTokenExpiresAt?: string | null;
   refreshTokenExpiresAt?: string | null;
   lastSyncedAt?: string | null;
   lastSyncMessage?: string | null;
+}
+
+export interface PromotionHealthIssue {
+  key: string;
+  level: 'RISK' | 'WARNING' | 'INFO';
+  title: string;
+  description: string;
+  recommendation: string;
+}
+
+export interface PromotionHealthTotals {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  validLeads: number;
+  clickRate: number | null;
+  conversionRate: number | null;
+  costPerLead: number | null;
+  validRate: number | null;
+  validCost: number | null;
+}
+
+export interface PromotionHealthAccountResult {
+  account: PromotionAccountItem;
+  current: PromotionHealthTotals;
+  previous: PromotionHealthTotals;
+  recordedDays: number;
+  latestSyncedAt?: string | null;
+  status: 'HEALTHY' | 'ATTENTION' | 'RISK' | 'INSUFFICIENT';
+  score: number | null;
+  issues: PromotionHealthIssue[];
+}
+
+export interface PromotionHealthAccountsResult {
+  accounts: PromotionAccountItem[];
+  connections: Array<{ provider: 'TENCENT_ADS' | 'OCEANENGINE'; enabled: boolean; connected: boolean; lastSyncedAt?: string | null; lastSyncMessage?: string | null }>;
+}
+
+export interface PromotionHealthReport {
+  dateFrom: string;
+  dateTo: string;
+  previousDateFrom: string;
+  previousDateTo: string;
+  overallScore: number | null;
+  summary: { healthy: number; attention: number; risk: number; insufficient: number };
+  accounts: PromotionHealthAccountResult[];
+  syncResults: Array<{ provider: string; synced: number; noData: number; skippedArchived: number; skipped: number; errors: string[] }>;
+  methodology: {
+    statement: string;
+    internalBaselines: { maxCostPerLead: number; minValidRate: number; trendWarning: number; trendRisk: number };
+    sources: Array<{ provider: string; label: string; url: string }>;
+  };
+}
+
+export type PromotionMaterialType = 'VIDEO' | 'IMAGE' | 'COPY' | 'LANDING_PAGE' | 'BRAND' | 'ACTION_BUTTON' | 'MINI_CARD_LINK' | 'TEXT_LINK' | 'FLOATING_ZONE' | 'LABEL' | 'SOCIAL_SKILL';
+export interface PromotionMaterialItem {
+  id: string;
+  type: PromotionMaterialType;
+  name: string;
+  status?: string | null;
+  previewUrl?: string | null;
+  metrics?: { spend: number; impressions: number; clicks: number; conversions: number } | null;
+  attributionNote?: string;
+  health: 'HEALTHY' | 'ATTENTION' | 'RISK' | 'UNASSESSED';
+  issues: string[];
+  recommendation: string;
+  calculated: { ctr: number | null; conversionRate: number | null; costPerConversion: number | null };
+  account?: Pick<PromotionAccountItem, 'id' | 'name' | 'accountNo' | 'project' | 'platform'>;
+}
+export interface PromotionMaterialReport {
+  businessUnit: { provider: 'TENCENT_ADS' | 'OCEANENGINE'; name: string; accountCount: number; analyzedAccountCount: number };
+  accounts: Array<Pick<PromotionAccountItem, 'id' | 'name' | 'accountNo' | 'project' | 'platform'>>;
+  dateFrom: string;
+  dateTo: string;
+  summary: { total: number; healthy: number; attention: number; risk: number; unassessed: number; byType: Record<PromotionMaterialType, number> };
+  items: PromotionMaterialItem[];
+  coverage: Array<{ type: PromotionMaterialType; available: boolean; metricsAvailable: boolean; message: string }>;
+  warnings: string[];
+  methodology: { statement: string; sources: Array<{ provider: string; label: string; url: string }> };
+}
+
+export interface PromotionCreativeBatchOptions {
+  accounts: Array<PromotionAccountItem & { authorized: boolean; hasUserToken: boolean; canCreate: boolean; authorizationMessage: string; tencentBusinessUnitKey?: string }>;
+  businessUnits: Array<{ key: string; name: string; project: string; accountCount: number }>;
+  maxBatchSize: number;
+  sdk: { apiVersion: string; packageVersion: string; ordinaryMode: string; programMode: string };
+}
+
+export interface PromotionCreativeAdgroup {
+  id: string; name: string; marketingGoal?: string | null; marketingSubGoal?: string | null; marketingCarrierType?: string | null;
+  marketingTargetType?: string | null; marketingTargetId?: string | null; optimizationGoal?: string | null;
+  configuredStatus?: string | null; systemStatus?: string | null; createdTime?: string | null; canCreate: boolean; unavailableReason?: string | null;
+}
+
+export interface PromotionCreativeTemplate {
+  id: string; name: string; style?: string | null; size?: string | null; sampleImage?: string | null; siteSet?: unknown;
+  supportBidModes: string[]; offline: boolean; offlineTips?: string | null;
+}
+
+export interface PromotionCreativeAsset {
+  id: string; source: 'ACCOUNT' | 'BUSINESS_UNIT'; sourceAccount: { id: string; name: string; accountNo?: string | null; project: string };
+  businessUnitKey: string; platformAssetId: string; platformAssetKind: 'COMPONENT' | 'VIDEO' | 'IMAGE' | 'REFERENCE'; type: 'TITLE' | 'VIDEO' | 'IMAGE' | 'LANDING_PAGE' | 'MARKETING' | 'BRAND' | 'WECHAT_CHANNELS' | 'CONVERSION' | 'OTHER';
+  componentField?: string | null; name: string; contentSummary?: string | null; previewUrl?: string | null; status?: string | null; auditStatus?: string | null;
+  componentSubType?: string | null; bundleItemCount?: number | null;
+  createdTime?: string | null; dimensions?: string | null; spend7Days?: number | null; spend15Days?: number | null; usable: boolean; unavailableReason?: string | null;
+  linkedLandingPage?: { pageId: string; name: string; platformAssetId: string } | null;
+}
+
+export interface PromotionCreativeBatchPayload {
+  accountId: string; businessUnitKey: string; adgroupId: string; templateId: string;
+  deliveryMode: 'DELIVERY_MODE_COMPONENT' | 'DELIVERY_MODE_CUSTOMIZE';
+  dynamicCreativeType: 'DYNAMIC_CREATIVE_TYPE_COMMON' | 'DYNAMIC_CREATIVE_TYPE_PROGRAM';
+  combinationMode: 'BALANCED' | 'CARTESIAN' | 'MANUAL'; namePattern: string;
+  materials: { titles: string[]; videos: string[]; landingPages: string[]; conversionComponents: string[]; images: string[]; otherComponents: string[] };
+  rules: { titleCount: number; videoCount: number; landingPageCount: number; conversionCount: number; imageCount: number };
+  manualGroups?: Array<{ titleIds: string[]; videoIds: string[]; landingPageIds: string[]; conversionIds: string[]; imageIds: string[]; otherComponentIds?: string[] }>;
+  options?: { configuredStatus?: 'AD_STATUS_NORMAL' | 'AD_STATUS_SUSPEND'; impressionTrackingUrl?: string; clickTrackingUrl?: string; pageTrackUrl?: string };
+}
+
+export interface PromotionCreativeBatchTask {
+  id: string; accountId: string; businessUnitKey: string; adgroupId: string; templateId: string; deliveryMode: string; dynamicCreativeType: string;
+  combinationMode: string; status: string; totalCount: number; successCount: number; failedCount: number; unknownCount: number; skippedCount: number;
+  createdAt: string; updatedAt: string; startedAt?: string | null; completedAt?: string | null; duplicate?: boolean; message?: string;
+  account?: Pick<PromotionAccountItem, 'id' | 'name' | 'accountNo' | 'project'>;
+  items?: Array<{ id: string; sequence: number; creativeName: string; status: string; platformCreativeId?: string | null; errorCode?: string | null; errorMessage?: string | null; recoverySuggestion?: string | null; submittedAt?: string | null; verifiedAt?: string | null; materialSnapshot: Array<Record<string, unknown>> }>;
+}
+
+export interface MultiAccountCreativePayload {
+  assetSnapshotIds: string[];
+  targets: Array<{ accountId: string; adgroupIds: string[]; templateId?: string; componentOverrides?: Array<{ componentType: string; configId: string }>; overrideReason?: string }>;
+  deliveryMode: 'DELIVERY_MODE_COMPONENT' | 'DELIVERY_MODE_CUSTOMIZE';
+  creativeType: 'DYNAMIC_CREATIVE_TYPE_COMMON' | 'DYNAMIC_CREATIVE_TYPE_PROGRAM';
+  combinationMode: 'CARTESIAN' | 'RANDOM_LIMITED' | 'SEQUENTIAL';
+  namePattern: string;
+  rules: { titleCount: number; videoCount: number; imageCount: number; maxPerAdgroup: number; maxPerAccount: number; maxTotal: number; allowMaterialReuse?: boolean; randomLimit?: number };
+  allowSkipInvalid?: boolean;
+  configuredStatus?: 'AD_STATUS_NORMAL' | 'AD_STATUS_SUSPEND';
+}
+
+export interface MultiAccountCreativePreflight {
+  accountCount: number; adgroupCount: number; estimatedCreativeCount: number; passedCount: number; failedCount: number;
+  targets: Array<{
+    account: { id: string; name: string; accountNo: string }; adgroup: { id: string; name: string }; template: { id: string; name: string };
+    status: 'PASSED' | 'FAILED'; reasons: string[]; creativeCount: number;
+    mappings: Array<{ assetId: string; name: string; status: string; targetPlatformAssetId?: string; reason?: string }>;
+    defaultComponents: Array<{ type: string; id: string; name: string }>;
+    items: Array<{ name: string; material: Record<string, unknown> }>;
+  }>;
+}
+
+export interface MultiAccountCreativeTask {
+  id: string; taskNo: string; status: string; totalAccountCount: number; totalAdgroupCount: number; totalCreativeCount: number;
+  confirmedCount: number; failedCount: number; skippedCount: number; pendingVerifyCount: number; createdAt: string; duplicate?: boolean; message?: string;
+  targets?: Array<{ id: string; adgroupId: string; adgroupName?: string; preflightStatus: string; executionStatus: string; failureReason?: string; account: { id: string; name: string; accountNo: string; project: string }; items: Array<{ id: string; sequence: number; creativeName: string; status: string; platformCreativeId?: string; errorCode?: string; errorMessage?: string; lastRequestedAt?: string; lastVerifiedAt?: string }> }>;
 }
 
 export interface PromotionCalculatedMetrics {
@@ -841,6 +1000,12 @@ export const deletePromotionMetricField = (id: string) => http.delete<unknown, {
 export const createPromotionAccount = (data: Omit<PromotionAccountItem, 'id'>) => http.post<unknown, PromotionAccountItem>(`${operationsBase}/accounts`, data);
 export const updatePromotionAccount = (id: string, data: Omit<PromotionAccountItem, 'id'>) => http.patch<unknown, PromotionAccountItem>(`${operationsBase}/accounts/${id}`, data);
 export const deletePromotionAccount = (id: string) => http.delete<unknown, { id: string; deleted: boolean }>(`${operationsBase}/accounts/${id}`);
+export interface PromotionAccountCredentialStatus { accountId?: string; clientId?: string; authorizedAccountId?: string | null; hasAccessToken: boolean; hasClientSecret: boolean; hasRefreshToken: boolean; hasUserToken: boolean; userTokenExpiresAt?: string | null; accessTokenExpiresAt?: string | null; refreshTokenExpiresAt?: string | null; lastValidatedAt?: string | null; }
+export const getPromotionAccountCredential = (id: string) => http.get<unknown, PromotionAccountCredentialStatus>(`${operationsBase}/accounts/${id}/credentials`);
+export const savePromotionAccountCredential = (id: string, data: { accessToken?: string; clientId?: string; clientSecret?: string; refreshToken?: string; userToken?: string; userTokenExpiresAt?: string; clearAccessToken?: boolean; clearClientSecret?: boolean; clearRefreshToken?: boolean; clearUserToken?: boolean }) => http.put<unknown, PromotionAccountCredentialStatus>(`${operationsBase}/accounts/${id}/credentials`, data);
+export interface PromotionAccountAccessGrantItem { adminUserId: string; username?: string; nickname?: string; role?: string; grant?: { canViewData: boolean; canViewMaterials: boolean; canViewCreatives: boolean; canCreateCreatives: boolean }; canViewData?: boolean; canViewMaterials?: boolean; canViewCreatives?: boolean; canCreateCreatives?: boolean; }
+export const getPromotionAccountAccessGrants = (id: string) => http.get<unknown, PromotionAccountAccessGrantItem[]>(`${operationsBase}/accounts/${id}/access-grants`);
+export const savePromotionAccountAccessGrants = (id: string, grants: Array<Pick<PromotionAccountAccessGrantItem, 'adminUserId' | 'canViewData' | 'canViewMaterials' | 'canViewCreatives' | 'canCreateCreatives'>>) => http.put<unknown, { accountId: string; grants: PromotionAccountAccessGrantItem[] }>(`${operationsBase}/accounts/${id}/access-grants`, { grants });
 export const getPromotionDailyMetrics = (params: Record<string, string>) => http.get<unknown, PromotionDailyMetricItem[]>(`${operationsBase}/daily`, { params: operationParams(params) });
 export const getPromotionDashboard = (params: Record<string, string>) => http.get<unknown, PromotionFilterData>(`${operationsBase}/dashboard`, { params: operationParams(params) });
 export const getPromotionFilterData = (params: Record<string, string>) => http.get<unknown, PromotionFilterData>(`${operationsBase}/filter-data`, { params: operationParams(params) });
@@ -849,8 +1014,49 @@ export const updatePromotionDailyMetric = (id: string, data: PromotionDailyMetri
 export const deletePromotionDailyMetric = (id: string) => http.delete<unknown, { id: string; deleted: boolean }>(`${operationsBase}/daily/${id}`);
 export const archivePromotionDailyMetric = (id: string, isArchived: boolean) => http.patch<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily/${id}/archive`, { isArchived });
 export const getPromotionSyncConfigs = () => http.get<unknown, PromotionDataSyncConfigItem[]>(`${operationsBase}/sync-configs`);
-export const updatePromotionSyncConfig = (data: { provider: 'TENCENT_ADS' | 'OCEANENGINE'; enabled: boolean; reportUrl: string; accessToken?: string; clientId?: string; clientSecret?: string; refreshToken?: string }) => http.put<unknown, PromotionDataSyncConfigItem>(`${operationsBase}/sync-configs`, data);
+export const updatePromotionSyncConfig = (data: { provider: 'TENCENT_ADS' | 'OCEANENGINE'; enabled: boolean; reportUrl: string; accessToken?: string; clientId?: string; clientSecret?: string; refreshToken?: string; userToken?: string; userTokenExpiresAt?: string }) => http.put<unknown, PromotionDataSyncConfigItem>(`${operationsBase}/sync-configs`, data);
 export const syncPromotionDailyMetrics = (data: { statDate: string; provider?: 'TENCENT_ADS' | 'OCEANENGINE'; accountIds?: string[] }) => http.post<unknown, Array<{ provider: string; synced: number; noData: number; skippedArchived: number; skipped: number; errors: string[] }>>(`${operationsBase}/daily/sync`, data);
+export const getPromotionHealthAccounts = () => http.get<unknown, PromotionHealthAccountsResult>(`${operationsBase}/health/accounts`);
+export const analyzePromotionHealth = (data: { accountIds: string[]; dateFrom: string; dateTo: string; syncEndDate?: boolean }) => http.post<unknown, PromotionHealthReport>(`${operationsBase}/health/analyze`, data);
+export const analyzePromotionMaterials = (data: { provider?: 'TENCENT_ADS' | 'OCEANENGINE'; accountId?: string; dateFrom: string; dateTo: string }) => http.post<unknown, PromotionMaterialReport>(`${operationsBase}/health/materials`, data);
+export const getPromotionCreativeBatchOptions = () => http.get<unknown, PromotionCreativeBatchOptions>(`${operationsBase}/creative-batches/options`);
+export const getPromotionCreativeAdgroups = (params: { accountId: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeAdgroup[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/creative-batches/adgroups`, { params });
+export const getPromotionCreativeTemplates = (params: { accountId: string; adgroupId: string; deliveryMode: string; dynamicCreativeType: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeTemplate[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/creative-batches/templates`, { params });
+export const getPromotionCreativeTemplateDetail = (params: { accountId: string; adgroupId: string; templateId: string; deliveryMode: string; dynamicCreativeType: string }) => http.get<unknown, { id: string; template: Record<string, unknown>; requirements: Array<{ name: string; path: string; required: boolean; elementType?: string; fieldType?: string; min: number; max: number; description?: string; restriction?: Record<string, unknown> }> }>(`${operationsBase}/creative-batches/template-detail`, { params });
+export const getPromotionCreativeAssets = (params: { accountId: string; source: 'ACCOUNT' | 'BUSINESS_UNIT'; businessUnitKey?: string; assetType?: string; dimensions?: string; search?: string; adgroupId?: string; templateId?: string; deliveryMode?: string; dynamicCreativeType?: string; sortBy?: string; sortOrder?: 'ASC' | 'DESC'; page?: number; pageSize?: number; refresh?: boolean }) => http.get<unknown, { list: PromotionCreativeAsset[]; pageInfo: PlatformPageInfo; availableDimensions: string[] }>(`${operationsBase}/creative-batches/assets`, { params });
+export const previewPromotionCreativeBatch = (data: PromotionCreativeBatchPayload) => http.post<unknown, { account: Record<string, unknown>; adgroup: Record<string, unknown>; template: Record<string, unknown>; items: Array<{ sequence: number; name: string; materials: Array<Record<string, unknown>>; creativeComponents: Record<string, unknown[]> }>; maxBatchSize: number; requiresConfirmation: boolean }>(`${operationsBase}/creative-batches/preview`, data);
+export const createPromotionCreativeBatch = (data: PromotionCreativeBatchPayload) => http.post<unknown, PromotionCreativeBatchTask>(`${operationsBase}/creative-batches`, data);
+export const getPromotionCreativeBatchTasks = (params: { accountId?: string; status?: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeBatchTask[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/creative-batches`, { params });
+export const getPromotionCreativeBatchTask = (id: string) => http.get<unknown, PromotionCreativeBatchTask>(`${operationsBase}/creative-batches/${id}`);
+export const retryPromotionCreativeBatch = (id: string) => http.post<unknown, PromotionCreativeBatchTask>(`${operationsBase}/creative-batches/${id}/retry`);
+export const cancelPromotionCreativeBatch = (id: string) => http.post<unknown, { id: string; cancelled: boolean }>(`${operationsBase}/creative-batches/${id}/cancel`);
+export async function exportPromotionCreativeBatch(id: string) {
+  const token = localStorage.getItem('admin_token') || '';
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}${operationsBase}/creative-batches/${id}/export`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.message || '导出失败');
+  const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a');
+  link.href = url; link.download = `creative-batch-${id}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+}
+export const getMultiAccountCreativeOptions = () => http.get<unknown, PromotionCreativeBatchOptions>(`${operationsBase}/multi-account-creative-batches/options`);
+export const getMultiAccountCreativeAdgroups = (params: { accountId: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeAdgroup[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/multi-account-creative-batches/adgroups`, { params });
+export const getMultiAccountCreativeTemplates = (params: { accountId: string; adgroupId: string; deliveryMode: string; dynamicCreativeType: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeTemplate[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/multi-account-creative-batches/templates`, { params });
+export const getMultiAccountCreativeAssets = (params: { accountId: string; source: 'ACCOUNT' | 'BUSINESS_UNIT'; businessUnitKey?: string; assetType?: string; dimensions?: string; search?: string; sortBy?: string; sortOrder?: 'ASC' | 'DESC'; page?: number; pageSize?: number; refresh?: boolean }) => http.get<unknown, { list: PromotionCreativeAsset[]; pageInfo: PlatformPageInfo; availableDimensions: string[] }>(`${operationsBase}/multi-account-creative-batches/assets`, { params });
+export const preflightMultiAccountCreativeBatch = (data: MultiAccountCreativePayload) => http.post<unknown, MultiAccountCreativePreflight>(`${operationsBase}/multi-account-creative-batches/preflight`, data);
+export const createMultiAccountCreativeBatch = (data: MultiAccountCreativePayload) => http.post<unknown, MultiAccountCreativeTask>(`${operationsBase}/multi-account-creative-batches`, data);
+export const getMultiAccountCreativeTasks = (params: { accountId?: string; adgroupId?: string; createdByAdminId?: string; status?: string; dateFrom?: string; dateTo?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: MultiAccountCreativeTask[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/multi-account-creative-batches`, { params });
+export const getMultiAccountCreativeTask = (id: string) => http.get<unknown, MultiAccountCreativeTask>(`${operationsBase}/multi-account-creative-batches/${id}`);
+export const retryMultiAccountCreativeBatch = (id: string) => http.post<unknown, MultiAccountCreativeTask>(`${operationsBase}/multi-account-creative-batches/${id}/retry`);
+export const cancelMultiAccountCreativeBatch = (id: string) => http.post<unknown, { id: string; cancelled: boolean }>(`${operationsBase}/multi-account-creative-batches/${id}/cancel`);
+export const getCreativeDefaultComponents = (accountId: string) => http.get<unknown, Array<{ id: string; accountId: string; componentType: string; platformComponentId: string; componentName: string; creativeType?: string; marketingGoal?: string; templateId?: string; status: string; priority: number; lastValidatedAt?: string }>>(`${operationsBase}/multi-account-creative-batches/default-components`, { params: { accountId } });
+export const saveCreativeDefaultComponent = (data: { accountId: string; componentType: string; platformComponentId: string; componentName: string; creativeType?: string; marketingGoal?: string; templateId?: string; priority?: number }) => http.post(`${operationsBase}/multi-account-creative-batches/default-components`, data);
+export const disableCreativeDefaultComponent = (id: string) => http.delete(`${operationsBase}/multi-account-creative-batches/default-components/${id}`);
+export async function exportMultiAccountCreativeBatch(id: string) {
+  const token = localStorage.getItem('admin_token') || '';
+  const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}${operationsBase}/multi-account-creative-batches/${id}/export`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.message || '导出失败');
+  const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a');
+  link.href = url; link.download = `multi-account-creative-batch-${id}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+}
 export const getPromotionWeekly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/weekly`, { params: operationParams(params) });
 export const getPromotionMonthly = (params: Record<string, string>) => http.get<unknown, PromotionSummaryItem[]>(`${operationsBase}/monthly`, { params: operationParams(params) });
 export const getPromotionDailyReport = (date: string) => http.get<unknown, PromotionDailyReport>(`${operationsBase}/daily-report`, { params: { date } });

@@ -2,7 +2,7 @@
   <div class="page-heading">
     <div>
       <h1 class="page-title">数据筛选</h1>
-      <p>按日期、项目、渠道和账户组合筛选推广数据，结果按账户汇总，项目、渠道和账户均支持多选。</p>
+      <p>按日期、项目、渠道、账户名称和户号组合筛选推广数据，结果按同项目同渠道的账户名称汇总。</p>
     </div>
     <div class="filter-actions">
       <el-select v-model="selectedProjects" class="project-picker" multiple collapse-tags collapse-tags-tooltip clearable placeholder="全部项目">
@@ -11,10 +11,13 @@
       <el-select v-model="selectedChannels" class="channel-picker" multiple collapse-tags collapse-tags-tooltip clearable filterable placeholder="全部渠道">
         <el-option v-for="item in channelOptions" :key="item" :label="item" :value="item" />
       </el-select>
-      <el-select v-model="selectedAccounts" class="account-picker" multiple collapse-tags collapse-tags-tooltip clearable filterable placeholder="全部账户">
-        <el-option v-for="item in accountOptions" :key="item.id" :label="item.name" :value="item.id">
+      <el-select v-model="selectedAccounts" class="account-picker" multiple collapse-tags collapse-tags-tooltip clearable filterable placeholder="全部账户名称">
+        <el-option v-for="item in accountOptions" :key="promotionAccountKey(item)" :label="item.name" :value="promotionAccountKey(item)">
           <span>{{ item.name }}</span><small>{{ item.project }} · {{ item.platform }}</small>
         </el-option>
+      </el-select>
+      <el-select v-model="selectedAccountNos" class="account-picker" multiple collapse-tags collapse-tags-tooltip clearable filterable placeholder="全部户号">
+        <el-option v-for="item in accountNoOptions" :key="item" :label="item" :value="item" />
       </el-select>
       <el-date-picker v-model="dateRange" class="day-range-picker" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
       <PromotionDateShortcuts mode="day" :model-value="dateRange" @select="selectQuickRange" />
@@ -25,6 +28,7 @@
 
   <div class="content-panel">
     <div class="result-note">所选周期共 {{ aggregatedRows.length }} 个账户汇总</div>
+    <p class="mobile-scroll-hint">左右滑动查看完整筛选结果</p>
     <el-table :data="aggregatedRows" v-loading="loading" border show-summary :summary-method="summary" class="filter-table">
       <el-table-column prop="statDate" label="时间周期" width="190" class-name="period-cell">
         <template #default="{ row }">
@@ -51,6 +55,7 @@
 import { computed, ref } from 'vue';
 import { getPromotionFilterData, type PromotionAccountItem, type PromotionDailyMetricItem, type PromotionMetricFieldItem } from '../api/admin';
 import PromotionDateShortcuts from '../components/PromotionDateShortcuts.vue';
+import { aggregatePromotionRows, promotionAccountKey } from '../utils/promotionMetrics';
 
 type Column = { key: string; label: string; type: 'integer' | 'number' | 'rate'; direct?: boolean; width: number };
 const columns: Column[] = [
@@ -80,6 +85,7 @@ const dateRange = ref<string[]>([dateText(yesterday), dateText(yesterday)]);
 const selectedProjects = ref<string[]>([]);
 const selectedChannels = ref<string[]>([]);
 const selectedAccounts = ref<string[]>([]);
+const selectedAccountNos = ref<string[]>([]);
 const sourceRows = ref<PromotionDailyMetricItem[]>([]);
 const allAccounts = ref<PromotionAccountItem[]>([]);
 const fields = ref<PromotionMetricFieldItem[]>([]);
@@ -88,73 +94,30 @@ const loading = ref(false);
 const projectOptions = computed(() => [...new Set(allAccounts.value.map((account) => account.project))].sort((a, b) => a.localeCompare(b, 'zh-CN')));
 const channelOptions = computed(() => [...new Set(allAccounts.value.filter((account) => !selectedProjects.value.length || selectedProjects.value.includes(account.project)).map((account) => account.platform))].sort((a, b) => a.localeCompare(b, 'zh-CN')));
 const accountOptions = computed<PromotionAccountItem[]>(() => {
-  return allAccounts.value
+  const candidates = allAccounts.value
     .filter((account) => !selectedProjects.value.length || selectedProjects.value.includes(account.project))
     .filter((account) => !selectedChannels.value.length || selectedChannels.value.includes(account.platform))
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  return [...new Map(candidates.map((account) => [promotionAccountKey(account), account])).values()];
 });
+const accountNoOptions = computed(() => [...new Set(allAccounts.value
+  .filter((account) => !selectedProjects.value.length || selectedProjects.value.includes(account.project))
+  .filter((account) => !selectedChannels.value.length || selectedChannels.value.includes(account.platform))
+  .filter((account) => !selectedAccounts.value.length || selectedAccounts.value.includes(promotionAccountKey(account)))
+  .map((account) => account.accountNo).filter((value): value is string => Boolean(value)))].sort());
 const filteredRows = computed(() => sourceRows.value
   .filter((row) => !selectedProjects.value.length || selectedProjects.value.includes(row.account.project))
   .filter((row) => !selectedChannels.value.length || selectedChannels.value.includes(row.account.platform))
-  .filter((row) => !selectedAccounts.value.length || selectedAccounts.value.includes(row.account.id)));
+  .filter((row) => !selectedAccounts.value.length || selectedAccounts.value.includes(promotionAccountKey(row.account)))
+  .filter((row) => !selectedAccountNos.value.length || selectedAccountNos.value.includes(row.account.accountNo || '')));
 const selectedPeriod = computed(() => {
   const from = dateRange.value?.[0];
   const to = dateRange.value?.[1];
   return from && to ? (from === to ? from : `${from} 至 ${to}`) : '全部日期';
 });
 const aggregatedRows = computed<PromotionDailyMetricItem[]>(() => {
-  const groups = new Map<string, PromotionDailyMetricItem>();
-  const numericCustomKeys = new Set(fields.value.filter((field) => field.source === 'CUSTOM' && field.dataType === 'NUMBER').map((field) => field.key));
-  for (const row of filteredRows.value) {
-    const current = groups.get(row.account.id) || {
-      ...row,
-      id: `summary-${row.account.id}`,
-      statDate: selectedPeriod.value,
-      spend: 0,
-      impressions: 0,
-      clicks: 0,
-      leads: 0,
-      validLeads: 0,
-      appointments: 0,
-      transactions: 0,
-      revenue: 0,
-      customMetrics: {},
-      calculated: { clickRate: null, validRate: null, averageCost: null, validCost: null, conversionRate: null, arrivalRate: null, validArrivalRate: null, arrivalCost: null, roi: null },
-    };
-    current.spend += Number(row.spend || 0);
-    current.impressions += Number(row.impressions || 0);
-    current.clicks += Number(row.clicks || 0);
-    current.leads += Number(row.leads || 0);
-    current.validLeads += Number(row.validLeads || 0);
-    current.appointments += Number(row.appointments || 0);
-    current.transactions += Number(row.transactions || 0);
-    current.revenue += Number(row.revenue || 0);
-    for (const [key, raw] of Object.entries(row.customMetrics || {})) {
-      if (numericCustomKeys.has(key)) current.customMetrics[key] = Number(current.customMetrics[key] || 0) + Number(raw || 0);
-      else if (raw !== '' && raw !== null && raw !== undefined) {
-        const values = new Set(String(current.customMetrics[key] || '').split('、').filter(Boolean));
-        values.add(String(raw));
-        current.customMetrics[key] = [...values].join('、');
-      }
-    }
-    groups.set(row.account.id, current);
-  }
-  return [...groups.values()].map((row) => {
-    row.spend = Number(row.spend.toFixed(2));
-    row.revenue = Number(row.revenue.toFixed(2));
-    row.calculated = {
-      clickRate: row.impressions ? row.clicks / row.impressions : null,
-      validRate: row.leads ? row.validLeads / row.leads : null,
-      averageCost: row.leads ? row.spend / row.leads : null,
-      validCost: row.validLeads ? row.spend / row.validLeads : null,
-      conversionRate: row.appointments ? row.transactions / row.appointments : null,
-      arrivalRate: row.leads ? row.appointments / row.leads : null,
-      validArrivalRate: row.validLeads ? row.appointments / row.validLeads : null,
-      arrivalCost: row.appointments ? row.spend / row.appointments : null,
-      roi: row.spend ? row.revenue / row.spend : null,
-    };
-    return row;
-  }).sort((left, right) => left.account.project.localeCompare(right.account.project, 'zh-CN') || left.account.platform.localeCompare(right.account.platform, 'zh-CN') || left.account.name.localeCompare(right.account.name, 'zh-CN'));
+  return aggregatePromotionRows(filteredRows.value, fields.value, selectedPeriod.value)
+    .sort((left, right) => left.account.project.localeCompare(right.account.project, 'zh-CN') || left.account.platform.localeCompare(right.account.platform, 'zh-CN') || left.account.name.localeCompare(right.account.name, 'zh-CN'));
 });
 const visibleSystemColumns = computed(() => columns.filter((column) => fields.value.find((field) => field.key === column.key)?.isVisible !== false));
 const visibleCustomFields = computed(() => fields.value.filter((field) => field.source === 'CUSTOM' && field.isVisible));
@@ -209,6 +172,7 @@ function resetFilters() {
   selectedProjects.value = [];
   selectedChannels.value = [];
   selectedAccounts.value = [];
+  selectedAccountNos.value = [];
 }
 
 load();
@@ -226,6 +190,7 @@ load();
 .filter-actions small { float:right; margin-left:18px; color:var(--admin-text-muted); }
 .filter-actions :deep(.el-button) { margin:0; }
 .result-note { margin:8px 0 12px; color:var(--admin-text-muted); font-size:13px; }
+.mobile-scroll-hint { display:none; }
 .filter-table { width:100%; font-size:clamp(7px,.72vw,13px); }
 .filter-table :deep(.el-table__header),.filter-table :deep(.el-table__body),.filter-table :deep(.el-table__footer) { width:100%!important; table-layout:fixed!important; }
 .filter-table :deep(col) { width:auto!important; }
@@ -238,5 +203,5 @@ load();
 @media(max-width:1450px){.page-heading{flex-direction:column}.filter-actions{width:100%;justify-content:flex-start}}
 @media(max-width:900px){.content-panel{padding:8px}.filter-table{font-size:7px}.filter-table :deep(.el-table__cell){padding:3px 0}.filter-table :deep(.cell){padding:0}}
 @media(min-width:761px){.filter-table :deep(col:nth-child(1)){width:15%!important}.filter-table :deep(col:nth-child(2)){width:5%!important}.filter-table :deep(col:nth-child(3)){width:6%!important}.filter-table :deep(col:nth-child(4)){width:7%!important}.filter-table :deep(.period-cell .cell){white-space:nowrap}}
-@media(max-width:760px){.filter-actions{display:grid;width:100%;grid-template-columns:1fr 1fr}.project-picker,.channel-picker,.account-picker,.day-range-picker{width:100%!important;grid-column:1/-1;flex:auto}.filter-actions :deep(.el-button){width:100%;margin:0}.filter-table{min-width:1980px;font-size:12px}.filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap){overflow-x:auto!important}.filter-table :deep(.el-scrollbar__bar.is-horizontal){display:block!important}.filter-table :deep(.cell){padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.period-value{display:flex;flex-direction:column;gap:0;line-height:1.45}.filter-table :deep(.period-cell .cell){white-space:normal}}
+@media(max-width:760px){.mobile-scroll-hint{display:block;margin:0 0 8px;color:var(--admin-text-muted);font-size:12px}.filter-actions{display:grid;width:100%;grid-template-columns:1fr 1fr}.project-picker,.channel-picker,.account-picker,.day-range-picker{width:100%!important;grid-column:1/-1;flex:auto}.filter-actions :deep(.el-button){width:100%;margin:0}.filter-table{min-width:1980px;font-size:12px}.filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap){overflow-x:auto!important}.filter-table :deep(.el-scrollbar__bar.is-horizontal){display:block!important}.filter-table :deep(.cell){padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.period-value{display:flex;flex-direction:column;gap:0;line-height:1.45}.filter-table :deep(.period-cell .cell){white-space:normal}}
 </style>

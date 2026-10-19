@@ -10,7 +10,8 @@
   </div>
   <div class="content-panel report-panel" v-loading="loading">
     <div v-if="!report?.projects.length" class="empty">所选日期暂无推广数据</div>
-    <div v-else class="table-wrap">
+    <p v-if="report?.projects.length" class="mobile-scroll-hint">左右滑动查看完整报表</p>
+    <div v-if="report?.projects.length" class="table-wrap">
       <table class="daily-report">
         <colgroup><col class="col-date"><col class="col-project"><col class="col-channel"><col class="col-remark"><col class="col-account"><col class="col-number"><col v-if="showDailyAverage" class="col-average"><col class="col-spend"><col class="col-cost"><col class="col-number"><col class="col-rate"><col class="col-note"><col class="col-note"></colgroup>
         <thead><tr><th>日期</th><th>项目</th><th>渠道</th><th>备注</th><th>户号</th><th>{{ conversionHeader }}</th><th v-if="showDailyAverage">日均转化量</th><th>{{ spendHeader }}</th><th>转化成本</th><th>无效数据</th><th>无效占比</th><th>账户问题</th><th>调整方式</th></tr></thead>
@@ -68,3 +69,14 @@ async function saveNote() { saving.value = true; try { await updatePromotionDail
 onMounted(load);
 </script>
 <style scoped>.page-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; }.page-title { margin:0 0 6px; }.page-heading p { margin:0; color:var(--admin-text-muted); }.actions { display:flex; gap:10px; }.table-wrap { width:100%; overflow:hidden; }.daily-report { width:100%; table-layout:fixed; border-collapse:collapse; color:#111; font-family:"Microsoft YaHei",sans-serif; font-size:clamp(9px,.78vw,13px); text-align:center; }.daily-report .col-date{width:7%}.daily-report .col-project{width:5%}.daily-report .col-channel{width:6%}.daily-report .col-remark{width:5%}.daily-report .col-account{width:18%}.daily-report .col-number{width:5.5%}.daily-report .col-average{width:6.5%}.daily-report .col-spend{width:6.5%}.daily-report .col-cost{width:6.5%}.daily-report .col-rate{width:6.5%}.daily-report .col-note{width:11.5%}.daily-report th,.daily-report td { border:1px solid #151515; padding:4px clamp(2px,.38vw,7px); line-height:1.25; overflow-wrap:anywhere; word-break:break-word; }.daily-report th { background:#ffd966; font-size:clamp(9px,.9vw,15px); font-weight:700; }.daily-report td { background:#fff; }.daily-report .channel-total td { background:#d9e8f3; }.daily-report .project-total td { background:#ffe699; font-weight:700; }.daily-report .note-cell { white-space:normal; }.date-line { display:block; white-space:normal; }.empty { padding:48px; color:var(--admin-text-muted); text-align:center; }@media(max-width:900px){.report-panel{padding:8px}.daily-report{font-size:8px}.daily-report th{font-size:8px}.daily-report th,.daily-report td{padding:3px 1px}.daily-report .col-account{width:17%}.daily-report .col-note{width:12%}}@media(max-width:760px){.page-heading{flex-direction:column}.actions{display:grid;width:100%;grid-template-columns:1fr 1fr}.actions :deep(.el-date-editor){grid-column:1/-1;width:100%}.actions :deep(.el-button){width:100%;margin:0}}</style>
+<style scoped>
+.mobile-scroll-hint { display: none; }
+@media (max-width: 760px) {
+  .mobile-scroll-hint { display: block; margin: 0 0 8px; color: var(--admin-text-muted); font-size: 12px; }
+  .table-wrap { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .daily-report { width: 1180px; min-width: 1180px; font-size: 11px; }
+  .daily-report th { font-size: 11px; }
+  .daily-report th, .daily-report td { padding: 4px 3px; word-break: normal; overflow-wrap: normal; }
+  .daily-report .note-cell { overflow-wrap: anywhere; }
+}
+</style>

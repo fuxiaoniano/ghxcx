@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -349,6 +350,9 @@ model AdminUser {
   createdTencentLeads        TencentAdLead[]             @relation("TencentLeadCreatedBy")
   ownedPromotionAccounts     PromotionAccount[]          @relation("PromotionAccountOwner")
   createdPromotionAccounts   PromotionAccount[]          @relation("PromotionAccountCreator")
+  promotionAccountGrants     PromotionAccountAccessGrant[] @relation("PromotionAccountGrantRecipient")
+  grantedPromotionAccounts  PromotionAccountAccessGrant[] @relation("PromotionAccountGrantIssuer")
+  updatedPromotionCredentials PromotionAccountCredential[] @relation("PromotionAccountCredentialUpdater")
   ownedConsultations         ConsultationForm[]          @relation("ConsultationOwner")
   createdConsultations       ConsultationForm[]          @relation("ConsultationCreator")
   operatedConsultations      ConsultationForm[]          @relation("ConsultationLastOperator")
@@ -742,27 +746,413 @@ model MediaAsset {
 }
 
 model PromotionAccount {
-  id               String                 @id @default(cuid()) @db.VarChar(32)
-  name             String                 @db.VarChar(120)
-  project          String                 @default("重庆") @db.VarChar(40)
-  platform         String                 @db.VarChar(80)
-  accountNo        String?                @db.VarChar(120)
-  status           ContentStatus          @default(ACTIVE)
-  remark           String?                @db.VarChar(500)
-  ownerAdminId     String?                @db.VarChar(32)
-  createdByAdminId String?                @db.VarChar(32)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  metrics          PromotionDailyMetric[]
-  consultations    ConsultationForm[]
-  owner            AdminUser?             @relation("PromotionAccountOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
-  createdBy        AdminUser?             @relation("PromotionAccountCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  id                        String                              @id @default(cuid()) @db.VarChar(32)
+  name                      String                              @db.VarChar(120)
+  project                   String                              @default("重庆") @db.VarChar(40)
+  platform                  String                              @db.VarChar(80)
+  accountNo                 String?                             @db.VarChar(120)
+  status                    ContentStatus                       @default(ACTIVE)
+  remark                    String?                             @db.VarChar(500)
+  ownerAdminId              String?                             @db.VarChar(32)
+  createdByAdminId          String?                             @db.VarChar(32)
+  createdAt                 DateTime                            @default(now())
+  updatedAt                 DateTime                            @updatedAt
+  metrics                   PromotionDailyMetric[]
+  consultations             ConsultationForm[]
+  creativeMaterialSnapshots PromotionCreativeMaterialSnapshot[]
+  creativeTemplateCaches    PromotionCreativeTemplateCache[]
+  creativeBatchTasks        PromotionCreativeBatchTask[]
+  multiCreativeTargets      MultiAccountCreativeBatchTarget[]
+  creativeAssetMappings     CreativeAssetTargetMapping[]
+  creativeDefaultComponents CreativeAccountDefaultComponent[]
+  credentials               PromotionAccountCredential?
+  accessGrants              PromotionAccountAccessGrant[]
+  owner                     AdminUser?                          @relation("PromotionAccountOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
+  createdBy                 AdminUser?                          @relation("PromotionAccountCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
-  @@unique([project, platform, name])
+  @@index([project, platform, name])
+  @@index([accountNo])
   @@index([status])
   @@index([ownerAdminId])
   @@index([createdByAdminId])
   @@map("promotion_accounts")
+}
+
+/// Per-account platform authorization material; values remain encrypted at rest.
+model PromotionAccountCredential {
+  id                    String           @id @default(cuid()) @db.VarChar(32)
+  accountId             String           @unique(map: "pac_account_uq") @db.VarChar(32)
+  accessTokenCipher     String?          @db.Text
+  clientId              String?          @db.VarChar(255)
+  clientSecretCipher    String?          @db.Text
+  refreshTokenCipher    String?          @db.Text
+  userTokenCipher       String?          @db.Text
+  userTokenExpiresAt    DateTime?
+  authorizedAccountId  String?          @db.VarChar(120)
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  updatedByAdminId      String?          @db.VarChar(32)
+  lastValidatedAt       DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  account               PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "pac_account_fk")
+  updatedBy             AdminUser?       @relation("PromotionAccountCredentialUpdater", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([updatedByAdminId])
+  @@map("promotion_account_credentials")
+}
+
+/// Grants are issued only by administrators; recipients never receive credential access.
+model PromotionAccountAccessGrant {
+  id                    String           @id @default(cuid()) @db.VarChar(32)
+  accountId             String           @db.VarChar(32)
+  adminUserId           String           @db.VarChar(32)
+  grantedByAdminId      String           @db.VarChar(32)
+  canViewData           Boolean          @default(false)
+  canViewMaterials      Boolean          @default(false)
+  canViewCreatives      Boolean          @default(false)
+  canCreateCreatives    Boolean          @default(false)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  account               PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "pacg_account_fk")
+  recipient             AdminUser        @relation("PromotionAccountGrantRecipient", fields: [adminUserId], references: [id], onDelete: Cascade, map: "pacg_recipient_fk")
+  grantedBy             AdminUser        @relation("PromotionAccountGrantIssuer", fields: [grantedByAdminId], references: [id], onDelete: Restrict, map: "pacg_issuer_fk")
+
+  @@unique([accountId, adminUserId], map: "pacg_account_recipient_uq")
+  @@index([adminUserId])
+  @@index([grantedByAdminId])
+  @@map("promotion_account_access_grants")
+}
+
+/// 腾讯广告素材/组件的本地只读快照；用于批量组合和跨账户归属校验，不保存授权凭证。
+model PromotionCreativeMaterialSnapshot {
+  id                String                 @id @default(cuid()) @db.VarChar(32)
+  originAccountId   String                 @db.VarChar(32)
+  businessUnitKey   String                 @db.VarChar(120)
+  platformAssetId   String                 @db.VarChar(160)
+  platformAssetKind String                 @db.VarChar(24)
+  assetType         String                 @db.VarChar(40)
+  componentField    String?                @db.VarChar(80)
+  name              String                 @db.VarChar(255)
+  previewUrl        String?                @db.VarChar(1000)
+  status            String?                @db.VarChar(100)
+  auditStatus       String?                @db.VarChar(100)
+  payloadJson       Json
+  isDeleted         Boolean                @default(false)
+  platformCreatedAt DateTime?
+  lastSyncedAt      DateTime               @default(now())
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  originAccount     PromotionAccount       @relation(fields: [originAccountId], references: [id], onDelete: Cascade, map: "pcms_origin_account_fk")
+  logicalAssets     LogicalCreativeAsset[]
+
+  @@unique([originAccountId, platformAssetKind, platformAssetId], map: "pcms_origin_kind_asset_uq")
+  @@index([businessUnitKey, assetType, isDeleted], map: "pcms_unit_type_deleted_ix")
+  @@index([originAccountId, assetType, status], map: "pcms_origin_type_status_ix")
+  @@map("promotion_creative_material_snapshots")
+}
+
+/// 腾讯广告根据账户、营销单元和创意类型返回的创意规格缓存。
+model PromotionCreativeTemplateCache {
+  id                  String           @id @default(cuid()) @db.VarChar(32)
+  accountId           String           @db.VarChar(32)
+  adgroupId           String           @db.VarChar(80)
+  templateId          String           @db.VarChar(80)
+  deliveryMode        String           @db.VarChar(80)
+  dynamicCreativeType String           @db.VarChar(80)
+  templateName        String           @db.VarChar(255)
+  templateJson        Json
+  lastSyncedAt        DateTime         @default(now())
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  account             PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "pctc_account_fk")
+
+  @@unique([accountId, adgroupId, templateId, deliveryMode, dynamicCreativeType], map: "pctc_acct_group_tpl_mode_type_uq")
+  @@index([accountId, adgroupId, lastSyncedAt], map: "pctc_acct_group_synced_ix")
+  @@map("promotion_creative_template_cache")
+}
+
+/// 批量创意任务。请求指纹按时间桶生成唯一 dedupeKey，防双击和请求重放。
+model PromotionCreativeBatchTask {
+  id                  String                           @id @default(cuid()) @db.VarChar(32)
+  dedupeKey           String                           @unique(map: "pcbt_dedupe_uq") @db.VarChar(96)
+  requestFingerprint  String                           @db.VarChar(64)
+  accountId           String                           @db.VarChar(32)
+  businessUnitKey     String                           @db.VarChar(120)
+  adgroupId           String                           @db.VarChar(80)
+  marketingTargetId   String?                          @db.VarChar(80)
+  templateId          String                           @db.VarChar(80)
+  deliveryMode        String                           @db.VarChar(80)
+  dynamicCreativeType String                           @db.VarChar(80)
+  combinationMode     String                           @db.VarChar(24)
+  materialRules       Json
+  requestSnapshot     Json
+  status              String                           @default("PENDING") @db.VarChar(32)
+  totalCount          Int                              @default(0)
+  successCount        Int                              @default(0)
+  failedCount         Int                              @default(0)
+  unknownCount        Int                              @default(0)
+  skippedCount        Int                              @default(0)
+  createdByAdminId    String                           @db.VarChar(32)
+  submittedIp         String?                          @db.VarChar(80)
+  submittedUserAgent  String?                          @db.VarChar(255)
+  startedAt           DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+  account             PromotionAccount                 @relation(fields: [accountId], references: [id], onDelete: Restrict, map: "pcbt_account_fk")
+  items               PromotionCreativeBatchItem[]
+  submissionLogs      PromotionCreativeSubmissionLog[]
+
+  @@index([accountId, status, createdAt], map: "pcbt_acct_status_created_ix")
+  @@index([createdByAdminId, createdAt], map: "pcbt_creator_created_ix")
+  @@index([requestFingerprint, createdAt], map: "pcbt_fingerprint_created_ix")
+  @@map("promotion_creative_batch_tasks")
+}
+
+model PromotionCreativeBatchItem {
+  id                 String                           @id @default(cuid()) @db.VarChar(32)
+  taskId             String                           @db.VarChar(32)
+  sequence           Int
+  creativeName       String                           @db.VarChar(255)
+  itemFingerprint    String                           @db.VarChar(64)
+  platformRequestKey String                           @db.VarChar(96)
+  creativePayload    Json
+  materialSnapshot   Json
+  status             String                           @default("PENDING") @db.VarChar(32)
+  platformCreativeId String?                          @db.VarChar(80)
+  platformRequestId  String?                          @db.VarChar(160)
+  errorCode          String?                          @db.VarChar(100)
+  errorMessage       String?                          @db.VarChar(1000)
+  recoverySuggestion String?                          @db.VarChar(500)
+  verifyResult       Json?
+  submittedAt        DateTime?
+  verifiedAt         DateTime?
+  retryCount         Int                              @default(0)
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
+  task               PromotionCreativeBatchTask       @relation(fields: [taskId], references: [id], onDelete: Cascade, map: "pcbi_task_fk")
+  submissionLogs     PromotionCreativeSubmissionLog[]
+
+  @@unique([taskId, sequence], map: "pcbi_task_seq_uq")
+  @@unique([taskId, itemFingerprint], map: "pcbi_task_fingerprint_uq")
+  @@index([taskId, status, sequence], map: "pcbi_task_status_seq_ix")
+  @@index([platformCreativeId], map: "pcbi_platform_creative_ix")
+  @@map("promotion_creative_batch_items")
+}
+
+model PromotionCreativeSubmissionLog {
+  id                String                      @id @default(cuid()) @db.VarChar(32)
+  taskId            String                      @db.VarChar(32)
+  itemId            String?                     @db.VarChar(32)
+  action            String                      @db.VarChar(80)
+  status            String                      @db.VarChar(32)
+  requestSummary    Json?
+  responseSummary   Json?
+  platformRequestId String?                     @db.VarChar(160)
+  errorCode         String?                     @db.VarChar(100)
+  errorMessage      String?                     @db.VarChar(1000)
+  createdAt         DateTime                    @default(now())
+  task              PromotionCreativeBatchTask  @relation(fields: [taskId], references: [id], onDelete: Cascade, map: "pcsl_task_fk")
+  item              PromotionCreativeBatchItem? @relation(fields: [itemId], references: [id], onDelete: Cascade, map: "pcsl_item_fk")
+
+  @@index([taskId, createdAt], map: "pcsl_task_created_ix")
+  @@index([itemId, createdAt], map: "pcsl_item_created_ix")
+  @@map("promotion_creative_submission_logs")
+}
+
+/// 多账户创意任务；与旧 PromotionCreativeBatchTask 并存，不改变旧任务语义。
+model MultiAccountCreativeBatch {
+  id                 String                              @id @default(cuid()) @db.VarChar(32)
+  taskNo             String                              @unique(map: "macb_task_no_uq") @db.VarChar(48)
+  dedupeKey          String                              @unique(map: "macb_dedupe_uq") @db.VarChar(96)
+  requestFingerprint String                              @db.VarChar(64)
+  status             String                              @default("DRAFT") @db.VarChar(40)
+  creativeType       String                              @db.VarChar(80)
+  deliveryMode       String                              @db.VarChar(80)
+  combinationMode    String                              @db.VarChar(32)
+  generationRules    Json
+  requestSnapshot    Json
+  allowSkipInvalid   Boolean                             @default(false)
+  totalAccountCount  Int                                 @default(0)
+  totalAdgroupCount  Int                                 @default(0)
+  totalCreativeCount Int                                 @default(0)
+  confirmedCount     Int                                 @default(0)
+  failedCount        Int                                 @default(0)
+  skippedCount       Int                                 @default(0)
+  pendingVerifyCount Int                                 @default(0)
+  createdByAdminId   String                              @db.VarChar(32)
+  submittedIp        String?                             @db.VarChar(80)
+  submittedUserAgent String?                             @db.VarChar(255)
+  startedAt          DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime                            @default(now())
+  updatedAt          DateTime                            @updatedAt
+  logicalAssets      LogicalCreativeAsset[]
+  targets            MultiAccountCreativeBatchTarget[]
+  submissionLogs     MultiAccountCreativeSubmissionLog[]
+
+  @@index([status, createdAt], map: "macb_status_created_ix")
+  @@index([createdByAdminId, createdAt], map: "macb_creator_created_ix")
+  @@index([requestFingerprint, createdAt], map: "macb_fingerprint_created_ix")
+  @@map("multi_account_creative_batches")
+}
+
+/// 一次多账户任务中选择的逻辑素材快照。
+model LogicalCreativeAsset {
+  id                    String                             @id @default(cuid()) @db.VarChar(32)
+  batchId               String                             @db.VarChar(32)
+  sourceSnapshotId      String?                            @db.VarChar(32)
+  assetType             String                             @db.VarChar(40)
+  sourceType            String                             @db.VarChar(24)
+  sourceAccountId       String?                            @db.VarChar(32)
+  sourceBusinessUnit    String?                            @db.VarChar(120)
+  sourcePlatformAssetId String                             @db.VarChar(160)
+  name                  String                             @db.VarChar(255)
+  fingerprint           String                             @db.VarChar(64)
+  specification         Json?
+  snapshot              Json
+  status                String                             @default("ACTIVE") @db.VarChar(32)
+  snapshottedAt         DateTime                           @default(now())
+  createdAt             DateTime                           @default(now())
+  batch                 MultiAccountCreativeBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade, map: "lca_batch_fk")
+  sourceSnapshot        PromotionCreativeMaterialSnapshot? @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull, map: "lca_snapshot_fk")
+  mappings              CreativeAssetTargetMapping[]
+
+  @@unique([batchId, fingerprint], map: "lca_batch_fingerprint_uq")
+  @@index([batchId, assetType], map: "lca_batch_type_ix")
+  @@index([sourceAccountId, sourcePlatformAssetId], map: "lca_source_asset_ix")
+  @@map("logical_creative_assets")
+}
+
+/// 逻辑素材在每个目标腾讯账户中的真实可用资产映射。
+model CreativeAssetTargetMapping {
+  id                    String               @id @default(cuid()) @db.VarChar(32)
+  logicalAssetId        String               @db.VarChar(32)
+  targetAccountId       String               @db.VarChar(32)
+  targetPlatformAssetId String?              @db.VarChar(160)
+  mappingStatus         String               @default("UNKNOWN") @db.VarChar(32)
+  validationSource      String?              @db.VarChar(80)
+  failureReason         String?              @db.VarChar(1000)
+  platformAssetStatus   String?              @db.VarChar(100)
+  templateCompatible    Boolean              @default(false)
+  validatedAt           DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  logicalAsset          LogicalCreativeAsset @relation(fields: [logicalAssetId], references: [id], onDelete: Cascade, map: "catm_asset_fk")
+  targetAccount         PromotionAccount     @relation(fields: [targetAccountId], references: [id], onDelete: Restrict, map: "catm_account_fk")
+
+  @@unique([logicalAssetId, targetAccountId], map: "catm_asset_account_uq")
+  @@index([targetAccountId, mappingStatus, validatedAt], map: "catm_account_status_ix")
+  @@map("creative_asset_target_mappings")
+}
+
+/// 每个“账户 × 营销单元”一条目标记录。
+model MultiAccountCreativeBatchTarget {
+  id                 String                          @id @default(cuid()) @db.VarChar(32)
+  batchId            String                          @db.VarChar(32)
+  accountId          String                          @db.VarChar(32)
+  adgroupId          String                          @db.VarChar(80)
+  adgroupName        String?                         @db.VarChar(255)
+  marketingGoal      String?                         @db.VarChar(100)
+  templateId         String?                         @db.VarChar(80)
+  templateName       String?                         @db.VarChar(255)
+  creativeType       String                          @db.VarChar(80)
+  preflightStatus    String                          @default("PENDING") @db.VarChar(32)
+  preflightResult    Json?
+  resolvedComponents Json?
+  assetMappingResult Json?
+  executionStatus    String                          @default("PENDING") @db.VarChar(40)
+  failureReason      String?                         @db.VarChar(1000)
+  idempotencyKey     String                          @unique(map: "macbt_idempotency_uq") @db.VarChar(96)
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+  batch              MultiAccountCreativeBatch       @relation(fields: [batchId], references: [id], onDelete: Cascade, map: "macbt_batch_fk")
+  account            PromotionAccount                @relation(fields: [accountId], references: [id], onDelete: Restrict, map: "macbt_account_fk")
+  items              MultiAccountCreativeBatchItem[]
+
+  @@unique([batchId, accountId, adgroupId], map: "macbt_batch_account_group_uq")
+  @@index([accountId, adgroupId, executionStatus], map: "macbt_account_group_status_ix")
+  @@index([batchId, preflightStatus], map: "macbt_batch_preflight_ix")
+  @@map("multi_account_creative_batch_targets")
+}
+
+model MultiAccountCreativeBatchItem {
+  id                   String                              @id @default(cuid()) @db.VarChar(32)
+  targetId             String                              @db.VarChar(32)
+  sequence             Int
+  creativeName         String                              @db.VarChar(255)
+  materialCombination  Json
+  requestPayload       Json
+  requestFingerprint   String                              @db.VarChar(64)
+  idempotencyKey       String                              @unique(map: "macbi_idempotency_uq") @db.VarChar(96)
+  platformRequestId    String?                             @db.VarChar(160)
+  platformCreativeId   String?                             @db.VarChar(80)
+  status               String                              @default("PENDING") @db.VarChar(40)
+  retryCount           Int                                 @default(0)
+  verificationAttempts Int                                 @default(0)
+  lastRequestedAt      DateTime?
+  lastVerifiedAt       DateTime?
+  platformResponse     Json?
+  verificationResult   Json?
+  errorCode            String?                             @db.VarChar(100)
+  errorMessage         String?                             @db.VarChar(1000)
+  createdAt            DateTime                            @default(now())
+  updatedAt            DateTime                            @updatedAt
+  target               MultiAccountCreativeBatchTarget     @relation(fields: [targetId], references: [id], onDelete: Cascade, map: "macbi_target_fk")
+  submissionLogs       MultiAccountCreativeSubmissionLog[]
+
+  @@unique([targetId, sequence], map: "macbi_target_seq_uq")
+  @@index([targetId, status, sequence], map: "macbi_target_status_seq_ix")
+  @@index([platformCreativeId], map: "macbi_platform_creative_ix")
+  @@map("multi_account_creative_batch_items")
+}
+
+model MultiAccountCreativeSubmissionLog {
+  id                String                         @id @default(cuid()) @db.VarChar(32)
+  batchId           String                         @db.VarChar(32)
+  itemId            String?                        @db.VarChar(32)
+  action            String                         @db.VarChar(80)
+  status            String                         @db.VarChar(40)
+  requestSummary    Json?
+  responseSummary   Json?
+  platformRequestId String?                        @db.VarChar(160)
+  errorCode         String?                        @db.VarChar(100)
+  errorMessage      String?                        @db.VarChar(1000)
+  createdAt         DateTime                       @default(now())
+  batch             MultiAccountCreativeBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade, map: "macsl_batch_fk")
+  item              MultiAccountCreativeBatchItem? @relation(fields: [itemId], references: [id], onDelete: Cascade, map: "macsl_item_fk")
+
+  @@index([batchId, createdAt], map: "macsl_batch_created_ix")
+  @@index([itemId, createdAt], map: "macsl_item_created_ix")
+  @@map("multi_account_creative_submission_logs")
+}
+
+/// 账户默认创意组件。组件仍需在每次预检时通过腾讯接口重新验证。
+model CreativeAccountDefaultComponent {
+  id                  String           @id @default(cuid()) @db.VarChar(32)
+  accountId           String           @db.VarChar(32)
+  componentType       String           @db.VarChar(80)
+  platformComponentId String           @db.VarChar(160)
+  componentName       String           @db.VarChar(255)
+  creativeType        String?          @db.VarChar(80)
+  marketingGoal       String?          @db.VarChar(100)
+  templateId          String?          @db.VarChar(80)
+  componentSnapshot   Json
+  status              String           @default("ACTIVE") @db.VarChar(32)
+  priority            Int              @default(0)
+  lastValidatedAt     DateTime?
+  createdByAdminId    String           @db.VarChar(32)
+  updatedByAdminId    String           @db.VarChar(32)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  account             PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "cadc_account_fk")
+
+  @@index([accountId, status, priority], map: "cadc_account_status_priority_ix")
+  @@index([accountId, componentType, templateId, creativeType, marketingGoal], map: "cadc_resolve_ix")
+  @@map("creative_account_default_components")
 }
 
 model PromotionDailyMetric {

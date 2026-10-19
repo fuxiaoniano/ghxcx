@@ -7,7 +7,7 @@ describe('enterprise admin permissions DTO compatibility', () => {
     const dto = Object.assign(new CreateAdminWechatInviteDto(), {
       nickname: '内容管理员',
       role: 'STAFF',
-      permissions: ['HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE', 'APPOINTMENT_MANAGE', 'PROMOTION_SALARY'],
+      permissions: ['HOME_MANAGE', 'DOCTOR_MANAGE', 'PACKAGE_MANAGE', 'APPOINTMENT_MANAGE', 'PROMOTION_SALARY', 'PROMOTION_OPERATIONS'],
       notifyEnabled: true
     });
 
@@ -23,6 +23,22 @@ describe('enterprise admin permissions DTO compatibility', () => {
         'CONSULTATION_FOLLOW_UP', 'CONSULTATION_IMPORT', 'CONSULTATION_EXPORT',
         'CONSULTATION_EXPORT_FULL_PHONE', 'CONSULTATION_ASSIGN', 'CONSULTATION_SETTINGS',
         'MANAGE_APPOINTMENTS',
+      ],
+      notifyEnabled: false,
+    });
+
+    await expect(validate(dto)).resolves.toHaveLength(0);
+  });
+
+  it('accepts all batch creative permissions in existing role and member DTO validation', async () => {
+    const dto = Object.assign(new CreateAdminWechatInviteDto(), {
+      nickname: '投放创意主管',
+      role: 'STAFF',
+      permissions: [
+        'PROMOTION_CREATIVE_BATCH_VIEW', 'PROMOTION_CREATIVE_BATCH_CREATE',
+        'PROMOTION_CREATIVE_BATCH_RETRY', 'PROMOTION_CREATIVE_BATCH_CANCEL',
+        'PROMOTION_CREATIVE_TEMPLATE_VIEW', 'PROMOTION_CREATIVE_ASSET_VIEW',
+        'PROMOTION_CREATIVE_RESULT_EXPORT',
       ],
       notifyEnabled: false,
     });
