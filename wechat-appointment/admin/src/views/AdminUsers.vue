@@ -83,11 +83,23 @@
       <el-table-column label="权限" min-width="220">
         <template #default="{ row }">
           <span v-if="row.role === 'SUPER_ADMIN'" class="all-permissions">全部权限</span>
-          <template v-else>
-            <el-tag v-for="permission in row.permissions" :key="permission" size="small" effect="plain" class="permission-tag">
+          <div v-else class="permission-summary-cell">
+            <el-tag v-for="permission in (row.permissions || []).slice(0, 2)" :key="permission" size="small" effect="plain" class="permission-tag">
               {{ permissionLabel(permission) }}
             </el-tag>
-          </template>
+            <el-popover v-if="(row.permissions || []).length > 2" placement="bottom-start" trigger="click" :width="360">
+              <template #reference>
+                <el-button link type="primary" size="small" class="permission-more">+{{ row.permissions.length - 2 }} 项</el-button>
+              </template>
+              <div class="permission-popover-title">{{ row.username }} · 全部权限（{{ row.permissions.length }}）</div>
+              <div class="permission-popover-list">
+                <el-tag v-for="permission in row.permissions" :key="permission" size="small" effect="plain">
+                  {{ permissionLabel(permission) }}
+                </el-tag>
+              </div>
+            </el-popover>
+            <span v-if="!(row.permissions || []).length" class="empty-permissions">暂无权限</span>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="最近登录" width="170">
@@ -479,6 +491,11 @@ onMounted(loadAll);
 .member-cell strong { color: var(--admin-text); font-size: 14px; }
 .member-cell small, .status-stack small, .invite-row span { color: var(--admin-text-muted); font-size: 11px; }
 .permission-tag { margin: 2px 5px 2px 0; }
+.permission-summary-cell { display:flex; min-width:0; align-items:center; flex-wrap:wrap; gap:3px; }
+.permission-more { flex:none; margin-left:2px; }
+.permission-popover-title { margin-bottom:10px; color:var(--admin-text); font-weight:600; }
+.permission-popover-list { display:flex; max-height:280px; flex-wrap:wrap; gap:6px; overflow:auto; }
+.empty-permissions { color:var(--admin-text-muted); font-size:12px; }
 .all-permissions { color: var(--admin-primary); font-size: 13px; font-weight: 600; }
 .member-actions { display: flex; width: 100%; align-items: center; justify-content: center; gap: 10px; white-space: nowrap; }
 .member-actions :deep(.el-button) { min-width: 0; height: 28px; margin: 0; padding: 0 2px; }

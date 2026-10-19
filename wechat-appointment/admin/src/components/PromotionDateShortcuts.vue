@@ -1,5 +1,5 @@
 <template>
-  <el-button-group class="period-shortcuts" aria-label="快捷日期选择">
+  <el-button-group class="period-shortcuts" :class="`period-shortcuts--${mode}`" aria-label="快捷日期选择">
     <el-button v-for="item in presets" :key="item.label" size="small" @click="select(item.offset)">{{ item.label }}</el-button>
     <el-button size="small" @click="selectEarlier">{{ earlierLabel }}</el-button>
   </el-button-group>
@@ -58,7 +58,12 @@ function selectEarlier() {
 </script>
 
 <style scoped>
-.period-shortcuts { display:inline-flex; flex-wrap:nowrap; }
+.period-shortcuts { display:inline-flex; flex-wrap:nowrap; min-width:0; max-width:100%; }
 .period-shortcuts :deep(.el-button) { min-width:48px; padding:6px 10px; }
-@media(max-width:760px){.period-shortcuts{display:grid;width:100%;grid-template-columns:repeat(4,minmax(0,1fr))}.period-shortcuts :deep(.el-button){width:100%;margin:0;border-radius:0}.period-shortcuts :deep(.el-button:first-child){border-radius:6px 0 0 6px}.period-shortcuts :deep(.el-button:last-child){border-radius:0 6px 6px 0}}
+@media(max-width:760px){
+  .period-shortcuts{display:flex!important;flex:0 0 100%;flex-wrap:nowrap!important;grid-column:1/-1;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+  .period-shortcuts :deep(.el-button){display:block;flex:1 1 0!important;width:0!important;min-width:0;max-width:100%;margin:0;padding:6px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:0}
+  .period-shortcuts :deep(.el-button:first-child){border-radius:6px 0 0 6px}
+  .period-shortcuts :deep(.el-button:last-child){border-radius:0 6px 6px 0}
+}
 </style>

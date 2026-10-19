@@ -48,4 +48,25 @@ describe('PermissionsGuard', () => {
     } as any;
     expect(new PermissionsGuard(reflector).canActivate(superContext)).toBe(true);
   });
+
+  it('keeps legacy promotion managers compatible with promotion operations', () => {
+    const reflector = { getAllAndOverride: jest.fn().mockReturnValue(['PROMOTION_OPERATIONS']) } as unknown as Reflector;
+    expect(new PermissionsGuard(reflector).canActivate(context(['PROMOTION_MANAGE']))).toBe(true);
+    expect(() => new PermissionsGuard(reflector).canActivate(context(['PROMOTION_DAILY'])))
+      .toThrow(expect.objectContaining({ status: 403 }));
+  });
+
+  it('keeps legacy promotion managers compatible with batch creative routes without granting them to unrelated users', () => {
+    const reflector = { getAllAndOverride: jest.fn().mockReturnValue(['PROMOTION_CREATIVE_BATCH_CREATE']) } as unknown as Reflector;
+    expect(new PermissionsGuard(reflector).canActivate(context(['PROMOTION_MANAGE']))).toBe(true);
+    expect(() => new PermissionsGuard(reflector).canActivate(context(['PROMOTION_DAILY'])))
+      .toThrow(expect.objectContaining({ status: 403 }));
+  });
+
+  it('keeps legacy promotion managers compatible with multi-account creative routes', () => {
+    const reflector = { getAllAndOverride: jest.fn().mockReturnValue(['PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CREATE']) } as unknown as Reflector;
+    expect(new PermissionsGuard(reflector).canActivate(context(['PROMOTION_MANAGE']))).toBe(true);
+    expect(() => new PermissionsGuard(reflector).canActivate(context(['PROMOTION_DAILY'])))
+      .toThrow(expect.objectContaining({ status: 403 }));
+  });
 });

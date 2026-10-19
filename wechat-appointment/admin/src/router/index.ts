@@ -36,6 +36,10 @@ const PromotionMonthlyReport = () => import('../views/PromotionMonthlyReport.vue
 const PromotionAccounts = () => import('../views/PromotionAccounts.vue');
 const PromotionSyncSettings = () => import('../views/PromotionSyncSettings.vue');
 const PromotionSalary = () => import('../views/PromotionSalary.vue');
+const PromotionOperations = () => import('../views/PromotionOperations.vue');
+const PromotionCreativeBatch = () => import('../views/PromotionCreativeBatch.vue');
+const MultiAccountCreativeBatch = () => import('../views/MultiAccountCreativeBatch.vue');
+const CreativeDefaultComponents = () => import('../views/CreativeDefaultComponents.vue');
 const WebsiteAnalytics = () => import('../views/WebsiteAnalytics.vue');
 const AdminRoles = () => import('../views/AdminRoles.vue');
 const ConsultationForms = () => import('../views/ConsultationForms.vue');
@@ -70,6 +74,13 @@ export const router = createRouter({
         { path: 'operations/weekly-report', component: PromotionWeeklyReport, meta: { permission: 'PROMOTION_WEEKLY_REPORT' } },
         { path: 'operations/monthly-report', component: PromotionMonthlyReport, meta: { permission: 'PROMOTION_MONTHLY_REPORT' } },
         { path: 'operations/salary', component: PromotionSalary, meta: { permission: 'PROMOTION_SALARY' } },
+        { path: 'promotion-operations', redirect: '/promotion-operations/account-health' },
+        { path: 'promotion-operations/account-analysis', redirect: '/promotion-operations/account-health' },
+        { path: 'promotion-operations/account-health', component: PromotionOperations, meta: { permission: 'PROMOTION_OPERATIONS' } },
+        { path: 'promotion-operations/material-analysis', component: PromotionOperations, meta: { permission: 'PROMOTION_OPERATIONS' } },
+        { path: 'promotion-operations/creative-batches', component: PromotionCreativeBatch, meta: { permission: 'PROMOTION_CREATIVE_BATCH_VIEW' } },
+        { path: 'promotion/multi-account-creative-batch', component: MultiAccountCreativeBatch, meta: { permission: 'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW' } },
+        { path: 'promotion/creative-default-components', component: CreativeDefaultComponents, meta: { permission: 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW' } },
         { path: 'notifications', component: Notifications, meta: { permission: 'BUSINESS_NOTIFICATIONS' } },
         { path: 'home-manage', component: HomeManage, meta: { permission: 'CONTENT_HOME' } },
         { path: 'doctor-manage', component: DoctorManage, meta: { permission: 'CONTENT_DOCTORS' } },

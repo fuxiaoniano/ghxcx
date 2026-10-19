@@ -1,25 +1,32 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import dayjs from 'dayjs';
 import { AdminCurrentUser, CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { AnyPermissions, Permissions } from '../../common/decorators/permissions.decorator';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
-import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, PromotionMetricFieldDto, PromotionSalaryConfigDto, PromotionSalaryQueryDto, SyncPromotionDailyMetricsDto } from './dto';
+import { ArchivePromotionDailyMetricDto, CreativeDefaultComponentDto, DateRangeQueryDto, MultiAccountCreativeBatchRequestDto, MultiAccountCreativeTaskQueryDto, PromotionAccountCredentialDto, PromotionAccountDto, PromotionAccountGrantsDto, PromotionCreativeAdgroupQueryDto, PromotionCreativeAssetQueryDto, PromotionCreativeBatchRequestDto, PromotionCreativeTaskQueryDto, PromotionCreativeTemplateQueryDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, PromotionHealthAnalyzeDto, PromotionMaterialAnalyzeDto, PromotionMetricFieldDto, PromotionSalaryConfigDto, PromotionSalaryQueryDto, SyncPromotionDailyMetricsDto } from './dto';
 import { OperationsService } from './operations.service';
+import { PromotionCreativeBatchService } from './promotion-creative-batch.service';
+import { MultiAccountCreativeBatchService } from './multi-account-creative-batch.service';
+import { csvCell } from '../../common/utils/csv-cell';
 
 @ApiTags('管理后台 - 信息流运营报表')
 @ApiBearerAuth()
 @UseGuards(AdminAuthGuard, PermissionsGuard)
 @Controller('/api/admin/operations')
 export class OperationsController {
-  constructor(private readonly operations: OperationsService) {}
+  constructor(private readonly operations: OperationsService, private readonly creativeBatches: PromotionCreativeBatchService, private readonly multiCreativeBatches: MultiAccountCreativeBatchService) {}
 
   @Get('/accounts') @Permissions('PROMOTION_ACCOUNTS') accounts(@CurrentUser() user: AdminCurrentUser) { return this.operations.accounts(user); }
   @Post('/accounts') @Permissions('PROMOTION_ACCOUNTS') createAccount(@Body() dto: PromotionAccountDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.createAccount(dto, user, req.ip, req.headers['user-agent']); }
   @Patch('/accounts/:id') @Permissions('PROMOTION_ACCOUNTS') updateAccount(@Param('id') id: string, @Body() dto: PromotionAccountDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.updateAccount(id, dto, user, req.ip, req.headers['user-agent']); }
   @Delete('/accounts/:id') @Permissions('PROMOTION_ACCOUNTS') deleteAccount(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.deleteAccount(id, user, req.ip, req.headers['user-agent']); }
+  @Get('/accounts/:id/credentials') @Permissions('PROMOTION_ACCOUNTS') accountCredentials(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) { return this.operations.promotionAccountCredential(id, user); }
+  @Put('/accounts/:id/credentials') @Permissions('PROMOTION_ACCOUNTS') saveAccountCredentials(@Param('id') id: string, @Body() dto: PromotionAccountCredentialDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.savePromotionAccountCredential(id, dto, user, req.ip, req.headers['user-agent']); }
+  @Get('/accounts/:id/access-grants') @Permissions('PROMOTION_ACCOUNTS') accountAccessGrants(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) { return this.operations.promotionAccountGrants(id, user); }
+  @Put('/accounts/:id/access-grants') @Permissions('PROMOTION_ACCOUNTS') saveAccountAccessGrants(@Param('id') id: string, @Body() dto: PromotionAccountGrantsDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.savePromotionAccountGrants(id, dto, user, req.ip, req.headers['user-agent']); }
 
   @Get('/fields') @Permissions('PROMOTION_FIELDS') fields() { return this.operations.fields(); }
   @Post('/fields') @Permissions('PROMOTION_FIELDS') createField(@Body() dto: PromotionMetricFieldDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.createField(dto, user, req.ip, req.headers['user-agent']); }
@@ -44,6 +51,47 @@ export class OperationsController {
   @Get('/sync-configs') @Permissions('PROMOTION_SYNC') syncConfigs() { return this.operations.syncConfigs(); }
   @Put('/sync-configs') @Permissions('PROMOTION_SYNC') updateSyncConfig(@Body() dto: PromotionDataSyncConfigDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.updateSyncConfig(dto, user, req.ip, req.headers['user-agent']); }
   @Post('/daily/sync') @Permissions('PROMOTION_SYNC') syncDaily(@Body() dto: SyncPromotionDailyMetricsDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.syncDaily(dto, user, req.ip, req.headers['user-agent']); }
+
+  @Get('/health/accounts') @Permissions('PROMOTION_OPERATIONS') healthAccounts(@CurrentUser() user: AdminCurrentUser) { return this.operations.healthAccounts(user); }
+  @Post('/health/analyze') @Permissions('PROMOTION_OPERATIONS') analyzeHealth(@Body() dto: PromotionHealthAnalyzeDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.analyzeHealth(dto, user, req.ip, req.headers['user-agent']); }
+  @Post('/health/materials') @Permissions('PROMOTION_OPERATIONS') analyzeMaterials(@Body() dto: PromotionMaterialAnalyzeDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.operations.analyzeMaterials(dto, user, req.ip, req.headers['user-agent']); }
+
+  @Get('/creative-batches/options') @Permissions('PROMOTION_CREATIVE_BATCH_VIEW') creativeBatchOptions(@CurrentUser() user: AdminCurrentUser) { return this.creativeBatches.options(user); }
+  @Get('/creative-batches/adgroups') @Permissions('PROMOTION_CREATIVE_BATCH_VIEW') creativeAdgroups(@Query() query: PromotionCreativeAdgroupQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.creativeBatches.adgroups(query, user); }
+  @Get('/creative-batches/templates') @Permissions('PROMOTION_CREATIVE_TEMPLATE_VIEW') creativeTemplates(@Query() query: PromotionCreativeTemplateQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.creativeBatches.templates(query, user); }
+  @Get('/creative-batches/template-detail') @Permissions('PROMOTION_CREATIVE_TEMPLATE_VIEW') creativeTemplateDetail(@Query() query: PromotionCreativeTemplateQueryDto, @Query('templateId') templateId: string, @CurrentUser() user: AdminCurrentUser) { return this.creativeBatches.templateDetail({ ...query, templateId }, user); }
+  @Get('/creative-batches/assets') @Permissions('PROMOTION_CREATIVE_ASSET_VIEW') creativeAssets(@Query() query: PromotionCreativeAssetQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.creativeBatches.assets(query, user); }
+  @Post('/creative-batches/preview') @Permissions('PROMOTION_CREATIVE_BATCH_CREATE') creativeBatchPreview(@Body() dto: PromotionCreativeBatchRequestDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.creativeBatches.preview(dto, user, req.ip, req.headers['user-agent']); }
+  @Post('/creative-batches') @Permissions('PROMOTION_CREATIVE_BATCH_CREATE') createCreativeBatch(@Body() dto: PromotionCreativeBatchRequestDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.creativeBatches.createTask(dto, user, req.ip, req.headers['user-agent']); }
+  @Get('/creative-batches') @Permissions('PROMOTION_CREATIVE_BATCH_VIEW') creativeBatchTasks(@Query() query: PromotionCreativeTaskQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.creativeBatches.tasks(query, user); }
+  @Get('/creative-batches/:id') @Permissions('PROMOTION_CREATIVE_BATCH_VIEW') creativeBatchTask(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) { return this.creativeBatches.task(id, user); }
+  @Post('/creative-batches/:id/retry') @Permissions('PROMOTION_CREATIVE_BATCH_RETRY') retryCreativeBatch(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.creativeBatches.retry(id, user, req.ip, req.headers['user-agent']); }
+  @Post('/creative-batches/:id/cancel') @Permissions('PROMOTION_CREATIVE_BATCH_CANCEL') cancelCreativeBatch(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.creativeBatches.cancel(id, user, req.ip, req.headers['user-agent']); }
+  @Get('/creative-batches/:id/export') @Permissions('PROMOTION_CREATIVE_RESULT_EXPORT') async exportCreativeBatch(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Res() response: Response) {
+    const rows = await this.creativeBatches.exportRows(id, user);
+    const csv = ['序号,创意名称,状态,腾讯创意ID,错误码,错误信息,提交时间,回查时间', ...rows.map((row) => [row.sequence, row.creativeName, row.status, row.platformCreativeId, row.errorCode, row.errorMessage, row.submittedAt?.toISOString() || '', row.verifiedAt?.toISOString() || ''].map(csvCell).join(','))].join('\n');
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8'); response.setHeader('Content-Disposition', `attachment; filename="creative-batch-${id}.csv"`); response.send(`\uFEFF${csv}`);
+  }
+
+  @Get('/multi-account-creative-batches/options') @AnyPermissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW', 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW') multiCreativeOptions(@CurrentUser() user: AdminCurrentUser) { return this.multiCreativeBatches.options(user); }
+  @Get('/multi-account-creative-batches/adgroups') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW') multiCreativeAdgroups(@Query() query: PromotionCreativeAdgroupQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.multiCreativeBatches.adgroups(query, user); }
+  @Get('/multi-account-creative-batches/templates') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW') multiCreativeTemplates(@Query() query: PromotionCreativeTemplateQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.multiCreativeBatches.templates(query, user); }
+  @Get('/multi-account-creative-batches/assets') @Permissions('PROMOTION_CREATIVE_ASSET_VIEW') @AnyPermissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW', 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_MANAGE') multiCreativeAssets(@Query() query: PromotionCreativeAssetQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.multiCreativeBatches.assets(query, user); }
+  @Post('/multi-account-creative-batches/preflight') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CREATE') multiCreativePreflight(@Body() dto: MultiAccountCreativeBatchRequestDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.multiCreativeBatches.preflight(dto, user, req.ip, req.headers['user-agent']); }
+  @Post('/multi-account-creative-batches') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CREATE') createMultiCreativeBatch(@Body() dto: MultiAccountCreativeBatchRequestDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.multiCreativeBatches.create(dto, user, req.ip, req.headers['user-agent']); }
+  @Get('/multi-account-creative-batches') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW') multiCreativeTasks(@Query() query: MultiAccountCreativeTaskQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.multiCreativeBatches.tasks(query, user); }
+  @Get('/multi-account-creative-batches/default-components') @AnyPermissions('PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW', 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_MANAGE') creativeDefaultComponents(@Query('accountId') accountId: string, @CurrentUser() user: AdminCurrentUser) { return this.multiCreativeBatches.defaultComponents(accountId, user); }
+  @Post('/multi-account-creative-batches/default-components') @Permissions('PROMOTION_CREATIVE_DEFAULT_COMPONENT_MANAGE') saveCreativeDefaultComponent(@Body() dto: CreativeDefaultComponentDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.multiCreativeBatches.saveDefaultComponent(dto, user, req.ip, req.headers['user-agent']); }
+  @Delete('/multi-account-creative-batches/default-components/:id') @Permissions('PROMOTION_CREATIVE_DEFAULT_COMPONENT_MANAGE') deleteCreativeDefaultComponent(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.multiCreativeBatches.deleteDefaultComponent(id, user, req.ip, req.headers['user-agent']); }
+  @Get('/multi-account-creative-batches/:id') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW') multiCreativeTask(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) { return this.multiCreativeBatches.task(id, user); }
+  @Post('/multi-account-creative-batches/:id/retry') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_RETRY') retryMultiCreativeBatch(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.multiCreativeBatches.retry(id, user, req.ip, req.headers['user-agent']); }
+  @Post('/multi-account-creative-batches/:id/cancel') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CANCEL') cancelMultiCreativeBatch(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.multiCreativeBatches.cancel(id, user, req.ip, req.headers['user-agent']); }
+  @Get('/multi-account-creative-batches/:id/export') @Permissions('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_RESULT_EXPORT') async exportMultiCreativeBatch(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request, @Res() response: Response) {
+    const rows = await this.multiCreativeBatches.exportRows(id, user, req.ip, req.headers['user-agent']);
+    const statusLabel: Record<string, string> = { CONFIRMED: '已确认创建', PLATFORM_ACCEPTED: '腾讯已受理待核验', VERIFYING: '腾讯已受理待核验', FAILED: '创建失败', UNKNOWN_NEEDS_REVIEW: '待人工处理', SKIPPED: '已跳过', CANCELLED: '已取消' };
+    const csv = ['任务编号,账户,户号,营销单元,营销单元ID,创意名称,状态,腾讯创意ID,错误码,错误信息,提交时间,核验时间', ...rows.map((row: Record<string, any>) => [row.taskNo, row.account, row.accountNo, row.adgroup, row.adgroupId, row.creativeName, statusLabel[row.status] || row.status, row.platformCreativeId, row.errorCode, row.errorMessage, row.submittedAt?.toISOString() || '', row.verifiedAt?.toISOString() || ''].map(csvCell).join(','))].join('\n');
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8'); response.setHeader('Content-Disposition', `attachment; filename="multi-creative-batch-${id}.csv"`); response.send(`\uFEFF${csv}`);
+  }
 
   @Get('/weekly') @Permissions('PROMOTION_WEEKLY') weekly(@Query() query: DateRangeQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.operations.summary(query, 'week', user); }
   @Get('/monthly') @Permissions('PROMOTION_MONTHLY') monthly(@Query() query: DateRangeQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.operations.summary(query, 'month', user); }
