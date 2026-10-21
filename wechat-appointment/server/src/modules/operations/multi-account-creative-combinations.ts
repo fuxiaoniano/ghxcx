@@ -48,6 +48,7 @@ export function generateMultiCreativeCombinations(
   rules: MultiCreativeRules,
 ): MultiCreativeCombination[] {
   const groups = { titles: unique(input.titles), videos: unique(input.videos), images: unique(input.images) };
+  if (rules.videoCount === 0 && rules.imageCount === 0) throw new Error('每条创意必须至少包含图片或视频');
   for (const [label, values, count] of [
     ['标题', groups.titles, rules.titleCount], ['视频', groups.videos, rules.videoCount], ['图片', groups.images, rules.imageCount],
   ] as Array<[string, string[], number]>) {
@@ -75,7 +76,7 @@ export function generateMultiCreativeCombinations(
     result = result.slice(0, wanted);
   } else {
     const sizes = [
-      Math.ceil(groups.titles.length / rules.titleCount), Math.ceil(groups.videos.length / rules.videoCount),
+      Math.ceil(groups.titles.length / rules.titleCount), rules.videoCount ? Math.ceil(groups.videos.length / rules.videoCount) : 1,
       rules.imageCount ? Math.ceil(groups.images.length / rules.imageCount) : 1,
     ];
     const total = rules.allowMaterialReuse ? Math.max(...sizes) : Math.min(...sizes);

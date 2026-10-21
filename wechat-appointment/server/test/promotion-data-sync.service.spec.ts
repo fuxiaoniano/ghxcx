@@ -109,6 +109,57 @@ describe('PromotionDataSyncService schedule and archived-data handling', () => {
 describe('PromotionDataSyncService Tencent real-name token', () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it('reuses the same logged-in user token across authorized Tencent accounts without mixing account access tokens', async () => {
+    const prisma = {
+      promotionDataSyncConfig: { findUnique: jest.fn().mockResolvedValue({ id: 'config', enabled: true, extraConfig: {} }) },
+      promotionAccount: { findMany: jest.fn()
+        .mockResolvedValueOnce([{ id: 'a', name: '腾讯01', ownerAdminId: 'owner', status: 'ACTIVE', platform: '腾讯营销' }])
+        .mockResolvedValueOnce([{ id: 'b', name: '腾讯02', ownerAdminId: 'owner', status: 'ACTIVE', platform: '腾讯营销' }]) },
+      promotionAccountCredential: { findUnique: jest.fn()
+        .mockResolvedValueOnce({ id: 'ca', accessTokenCipher: 'access-a' })
+        .mockResolvedValueOnce({ id: 'cb', accessTokenCipher: 'access-b' }) },
+      tencentUserToken: { findUnique: jest.fn().mockResolvedValue({ tokenCipher: 'user-shared', expiresAt: new Date(Date.now() + 60_000) }) },
+    };
+    const crypto = { decryptText: jest.fn((value: string) => value) };
+    const request = jest.spyOn(axios, 'request').mockResolvedValue({ data: { code: 0, data: { dynamic_creative_id: 123 } }, headers: {} } as any);
+    const service = new PromotionDataSyncService(prisma as never, crypto as never);
+
+    await service.tencentApi('POST', '/dynamic_creatives/add', '10001', {}, true, 'operator');
+    await service.tencentApi('POST', '/dynamic_creatives/add', '10002', {}, true, 'operator');
+
+    expect(prisma.tencentUserToken.findUnique).toHaveBeenCalledWith({ where: { adminUserId: 'operator' } });
+    expect(request.mock.calls.map(([options]) => (options as any).params.access_token)).toEqual(['access-a', 'access-b']);
+    expect(request.mock.calls.map(([options]) => (options as any).params.user_token)).toEqual(['user-shared', 'user-shared']);
+  });
+
+  it('never takes the account owner shared token when another employee submits a creative', async () => {
+    const prisma = {
+      promotionDataSyncConfig: { findUnique: jest.fn().mockResolvedValue({ enabled: true, accessTokenCipher: 'access', extraConfig: {} }) },
+      promotionAccount: { findMany: jest.fn().mockResolvedValue([{ id: 'a', name: '腾讯01', ownerAdminId: 'employee-a', status: 'ACTIVE', platform: '腾讯营销' }]) },
+      promotionAccountCredential: { findUnique: jest.fn().mockResolvedValue(null) },
+      tencentUserToken: { findUnique: jest.fn(async ({ where }) => where.adminUserId === 'employee-a' ? { tokenCipher: 'a-secret', expiresAt: null } : null) },
+    };
+    const request = jest.spyOn(axios, 'request');
+    const service = new PromotionDataSyncService(prisma as never, { decryptText: jest.fn() } as never);
+    await expect(service.tencentApi('POST', '/dynamic_creatives/add', '10001', {}, true, 'employee-b')).rejects.toMatchObject({ code: '11101' });
+    expect(prisma.tencentUserToken.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.tencentUserToken.findUnique).toHaveBeenCalledWith({ where: { adminUserId: 'employee-b' } });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('blocks expired login-level tokens instead of silently falling back to another legacy token', async () => {
+    const prisma = {
+      promotionDataSyncConfig: { findUnique: jest.fn().mockResolvedValue({ enabled: true, accessTokenCipher: 'access', extraConfig: { userTokenCipher: 'legacy' } }) },
+      promotionAccount: { findMany: jest.fn().mockResolvedValue([{ id: 'a', name: '腾讯01', status: 'ACTIVE', platform: '腾讯营销' }]) },
+      promotionAccountCredential: { findUnique: jest.fn().mockResolvedValue(null) },
+      tencentUserToken: { findUnique: jest.fn().mockResolvedValue({ tokenCipher: 'expired', expiresAt: new Date(Date.now() - 1_000) }) },
+    };
+    const request = jest.spyOn(axios, 'request');
+    const service = new PromotionDataSyncService(prisma as never, { decryptText: jest.fn() } as never);
+    await expect(service.tencentApi('POST', '/dynamic_creatives/add', '10001', {}, true, 'employee-a')).rejects.toMatchObject({ code: '11102' });
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('sends the encrypted User Token as a query parameter and never in the creative request body', async () => {
     const prisma = {
       promotionDataSyncConfig: { findUnique: jest.fn().mockResolvedValue({
@@ -117,6 +168,7 @@ describe('PromotionDataSyncService Tencent real-name token', () => {
       }) },
       promotionAccount: { findMany: jest.fn().mockResolvedValue([{ id: 'account_1', name: '腾讯01', status: 'ACTIVE', platform: '腾讯营销' }]) },
       promotionAccountCredential: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn().mockResolvedValue({}) },
+      tencentUserToken: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const crypto = { decryptText: jest.fn((value: string) => value === 'user-cipher' ? 'real-name-user-token' : 'access-token') };
     const request = jest.spyOn(axios, 'request').mockResolvedValue({ data: { code: 0, data: { dynamic_creative_id: 123 } }, headers: {} } as any);
@@ -137,6 +189,7 @@ describe('PromotionDataSyncService Tencent real-name token', () => {
       }) },
       promotionAccount: { findMany: jest.fn().mockResolvedValue([{ id: 'account_1', name: '腾讯01', status: 'ACTIVE', platform: '腾讯营销' }]) },
       promotionAccountCredential: { findUnique: jest.fn().mockResolvedValue(null) },
+      tencentUserToken: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const crypto = { decryptText: jest.fn().mockReturnValue('access-token') };
     const request = jest.spyOn(axios, 'request');
@@ -154,6 +207,7 @@ describe('PromotionDataSyncService Tencent real-name token', () => {
       }) },
       promotionAccount: { findMany: jest.fn().mockResolvedValue([{ id: 'account_1', name: '腾讯01', status: 'ACTIVE', platform: '腾讯营销' }]) },
       promotionAccountCredential: { findUnique: jest.fn().mockResolvedValue(null) },
+      tencentUserToken: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const crypto = { decryptText: jest.fn().mockReturnValue('access-token') };
     const request = jest.spyOn(axios, 'request');
@@ -175,6 +229,7 @@ describe('PromotionDataSyncService Tencent real-name token', () => {
       },
       promotionAccount: { findMany: jest.fn().mockResolvedValue([{ id: 'account_1', name: '腾讯01', status: 'ACTIVE', platform: '腾讯营销' }]) },
       promotionAccountCredential: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn().mockResolvedValue({}) },
+      tencentUserToken: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const crypto = { decryptText: jest.fn((value: string) => ({ 'expired-access-cipher': 'expired-access', 'secret-cipher': 'client-secret', 'refresh-cipher': 'refresh-token' } as Record<string, string>)[value] || value), encryptText: jest.fn((value: string) => `encrypted:${value}`) };
     jest.spyOn(axios, 'get').mockResolvedValue({ data: { code: 0, data: { access_token: 'new-access', access_token_expires_in: 3600 } } } as any);

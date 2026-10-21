@@ -64,6 +64,18 @@ select {
   font: inherit;
 }
 
+/* Mobile Safari zooms the entire admin page when a focused form control is below 16px. */
+@media (max-width: 900px) {
+  input,
+  textarea,
+  select,
+  .el-input__inner,
+  .el-textarea__inner,
+  .el-select__input {
+    font-size: 16px !important;
+  }
+}
+
 .page-title {
   position: relative;
   margin: 0 0 18px;

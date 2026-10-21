@@ -13,6 +13,8 @@ const OfficialAutoReply = () => import('../views/OfficialAutoReply.vue');
 const OfficialAccountBinding = () => import('../views/OfficialAccountBinding.vue');
 const FollowupForward = () => import('../views/FollowupForward.vue');
 const AdminUsers = () => import('../views/AdminUsers.vue');
+const AppointmentNotifySettings = () => import('../views/AppointmentNotifySettings.vue');
+const ChangePassword = () => import('../views/ChangePassword.vue');
 const AuditLogs = () => import('../views/AuditLogs.vue');
 const HomeManage = () => import('../views/HomeManage.vue');
 const DoctorManage = () => import('../views/DoctorManage.vue');
@@ -96,10 +98,11 @@ export const router = createRouter({
         { path: 'official-menu', component: OfficialMenu, meta: { permission: 'WECHAT_MENU' } },
         { path: 'official-auto-reply', component: OfficialAutoReply, meta: { permission: 'WECHAT_AUTO_REPLY' } },
         { path: 'official-binding', component: OfficialAccountBinding, meta: { permission: 'SYSTEM_OFFICIAL_BINDING' } },
-        { path: 'appointment-notify', redirect: '/admin-users' },
+        { path: 'appointment-notify', component: AppointmentNotifySettings, meta: { permission: 'SYSTEM_MEMBERS' } },
         { path: 'followup-forward', component: FollowupForward, meta: { permission: 'SYSTEM_FOLLOWUP' } },
         { path: 'website-analytics', component: WebsiteAnalytics, meta: { permission: 'SYSTEM_WEBSITE_ANALYTICS' } },
         { path: 'admin-users', component: AdminUsers, meta: { permission: 'SYSTEM_MEMBERS' } },
+        { path: 'change-password', component: ChangePassword },
         { path: 'admin-roles', component: AdminRoles, meta: { permission: 'SYSTEM_ROLES' } },
         { path: 'audit-logs', component: AuditLogs, meta: { permission: 'SYSTEM_AUDIT' } }
       ]

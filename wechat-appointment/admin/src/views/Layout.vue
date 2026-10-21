@@ -12,14 +12,14 @@
       <nav class="navigation" aria-label="后台主导航">
         <el-menu router :default-active="$route.path" :collapse="isMobile ? false : sidebarCollapsed" :collapse-transition="false" @select="closeMobileNavigation">
           <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
-          <el-sub-menu v-if="['BUSINESS_LEADS','BUSINESS_APPOINTMENTS','BUSINESS_USERS','BUSINESS_NOTIFICATIONS'].some(canAccess)" index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item v-if="canAccess('BUSINESS_LEADS')" index="/tencent-ad-leads">腾讯广告线索</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_APPOINTMENTS')" index="/appointments">挂号管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_USERS')" index="/users">用户管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_NOTIFICATIONS')" index="/notifications">通知记录</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['BUSINESS_LEADS','BUSINESS_APPOINTMENTS','BUSINESS_USERS','BUSINESS_NOTIFICATIONS'].some(canAccess)" index="business"><template #title><el-icon><Tickets /></el-icon><span>线索管理</span></template><el-menu-item v-if="canAccess('BUSINESS_LEADS')" index="/tencent-ad-leads">腾讯广告线索</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_APPOINTMENTS')" index="/appointments">挂号管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_USERS')" index="/users">用户管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_NOTIFICATIONS')" index="/notifications">通知记录</el-menu-item></el-sub-menu>
           <el-sub-menu v-if="canAccess('CONSULTATION_VIEW') || canAccess('CONSULTATION_SETTINGS')" index="consultations"><template #title><el-icon><ChatLineRound /></el-icon><span>网咨数据</span></template><el-menu-item v-if="canAccess('CONSULTATION_VIEW')" index="/consultations">全部表单</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_VIEW')" index="/consultations/callbacks">今日需回访</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_SETTINGS')" index="/consultations/settings">网咨设置</el-menu-item></el-sub-menu>
           <el-sub-menu v-if="['PROMOTION_HOME','PROMOTION_DAILY','PROMOTION_WEEKLY','PROMOTION_MONTHLY','PROMOTION_FILTER','PROMOTION_DAILY_REPORT','PROMOTION_WEEKLY_REPORT','PROMOTION_MONTHLY_REPORT','PROMOTION_ACCOUNTS','PROMOTION_SYNC','PROMOTION_FIELDS','PROMOTION_SALARY'].some(canAccess)" index="operations"><template #title><el-icon><DataLine /></el-icon><span>推广数据</span></template><el-menu-item v-if="canAccess('PROMOTION_HOME')" index="/operations/dashboard">数据首页</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_DAILY')" index="/operations/daily">日统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_WEEKLY')" index="/operations/weekly">周统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MONTHLY')" index="/operations/monthly">月统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_FILTER')" index="/operations/filter">数据筛选</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_DAILY_REPORT')" index="/operations/daily-report">推广日报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_WEEKLY_REPORT')" index="/operations/weekly-report">推广周报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MONTHLY_REPORT')" index="/operations/monthly-report">推广月报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_ACCOUNTS')" index="/operations/accounts">推广账户</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_SYNC')" index="/operations/sync-settings">数据同步设置</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_FIELDS')" index="/operations/fields">字段设置</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_SALARY')" index="/operations/salary">工资测算</el-menu-item></el-sub-menu>
           <el-sub-menu v-if="canAccess('PROMOTION_OPERATIONS') || canAccess('PROMOTION_CREATIVE_BATCH_VIEW') || canAccess('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW') || canAccess('PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW')" index="promotion-operations"><template #title><el-icon><TrendCharts /></el-icon><span>推广运营</span></template><el-menu-item v-if="canAccess('PROMOTION_OPERATIONS')" index="/promotion-operations/account-health">账户健康</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_OPERATIONS')" index="/promotion-operations/material-analysis">素材分析</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_CREATIVE_BATCH_VIEW')" index="/promotion-operations/creative-batches">新建创意</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW')" index="/promotion/multi-account-creative-batch">批量新建</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW')" index="/promotion/creative-default-components">默认创意组件</el-menu-item></el-sub-menu>
-          <el-sub-menu v-if="['CONTENT_HOME','CONTENT_DEPARTMENTS','CONTENT_DOCTORS','CONTENT_PACKAGES','CONTENT_MEDIA','CONTENT_LINKS'].some(canAccess)" index="content"><template #title><el-icon><Menu /></el-icon><span>内容管理</span></template><el-menu-item v-if="canAccess('CONTENT_HOME')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DEPARTMENTS')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DOCTORS')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('CONTENT_PACKAGES')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_MEDIA')" index="/media-library">图片库</el-menu-item><el-menu-item v-if="canAccess('CONTENT_LINKS')" index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['CONTENT_HOME','CONTENT_DEPARTMENTS','CONTENT_DOCTORS','CONTENT_PACKAGES','CONTENT_MEDIA','CONTENT_LINKS','SYSTEM_CONFIGS'].some(canAccess)" index="content"><template #title><el-icon><Menu /></el-icon><span>小程序页</span></template><el-menu-item v-if="canAccess('CONTENT_HOME')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DEPARTMENTS')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DOCTORS')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('CONTENT_PACKAGES')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_MEDIA')" index="/media-library">图片库</el-menu-item><el-menu-item v-if="canAccess('CONTENT_LINKS')" index="/mini-program-links">页面跳转链接</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_CONFIGS')" index="/configs">留资页面</el-menu-item></el-sub-menu>
           <el-sub-menu v-if="['WEBSITE_SETTINGS','WEBSITE_CATEGORIES','WEBSITE_ARTICLES'].some(canAccess)" index="website"><template #title><el-icon class="website-nav-icon"><Monitor /></el-icon><span>官网内容</span></template><el-menu-item v-if="canAccess('WEBSITE_SETTINGS')" index="/website-settings">官网设置</el-menu-item><el-menu-item v-if="canAccess('WEBSITE_CATEGORIES')" index="/website-categories">资讯分类</el-menu-item><el-menu-item v-if="canAccess('WEBSITE_ARTICLES')" index="/website-articles">口腔资讯</el-menu-item></el-sub-menu>
-          <el-sub-menu v-if="canAccess('WECHAT_MENU') || canAccess('WECHAT_AUTO_REPLY')" index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item v-if="canAccess('WECHAT_MENU')" index="/official-menu">公众号菜单</el-menu-item><el-menu-item v-if="canAccess('WECHAT_AUTO_REPLY')" index="/official-auto-reply">自动回复</el-menu-item></el-sub-menu>
-          <el-sub-menu v-if="['SYSTEM_MEMBERS','SYSTEM_ROLES','SYSTEM_OFFICIAL_BINDING','SYSTEM_CONFIGS','SYSTEM_FOLLOWUP','SYSTEM_WEBSITE_ANALYTICS','SYSTEM_AUDIT'].some(canAccess)" index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item v-if="canAccess('SYSTEM_MEMBERS')" index="/admin-users">成员与预约通知</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_ROLES')" index="/admin-roles">角色管理</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_OFFICIAL_BINDING')" index="/official-binding">公众号绑定</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_CONFIGS')" index="/configs">系统配置</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_FOLLOWUP')" index="/followup-forward">回访接口</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_WEBSITE_ANALYTICS')" index="/website-analytics">官网浏览统计</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_AUDIT')" index="/audit-logs">审计日志</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('WECHAT_MENU') || canAccess('WECHAT_AUTO_REPLY') || canAccess('SYSTEM_OFFICIAL_BINDING')" index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item v-if="canAccess('WECHAT_MENU')" index="/official-menu">公众号菜单</el-menu-item><el-menu-item v-if="canAccess('WECHAT_AUTO_REPLY')" index="/official-auto-reply">自动回复</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_OFFICIAL_BINDING')" index="/official-binding">公众号绑定</el-menu-item></el-sub-menu>
+          <el-sub-menu index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item v-if="canAccess('SYSTEM_MEMBERS')" index="/admin-users">成员管理</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_MEMBERS')" index="/appointment-notify">预约通知</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_ROLES')" index="/admin-roles">角色管理</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_FOLLOWUP')" index="/followup-forward">回访接口</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_WEBSITE_ANALYTICS')" index="/website-analytics">官网浏览统计</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_AUDIT')" index="/audit-logs">审计日志</el-menu-item><el-menu-item index="/change-password">修改密码</el-menu-item></el-sub-menu>
         </el-menu>
       </nav>
 
@@ -54,6 +54,7 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item disabled>{{ auth.user?.nickname || auth.user?.username }} · {{ roleLabel }}</el-dropdown-item>
+              <el-dropdown-item @click="router.push('/change-password')">修改密码</el-dropdown-item>
               <el-dropdown-item divided @click="auth.logout">
                 <el-icon><SwitchButton /></el-icon>退出登录
               </el-dropdown-item>
@@ -61,6 +62,13 @@
           </template>
         </el-dropdown>
       </el-header>
+
+      <nav class="page-tabs" aria-label="已打开的后台页面">
+        <div v-for="tab in openTabs" :key="tab.path" class="page-tab" :class="{ active: route.path === tab.path }">
+          <button type="button" class="page-tab-main" :aria-current="route.path === tab.path ? 'page' : undefined" :title="tab.title" @click="router.push(tab.path)">{{ tab.title }}</button>
+          <button type="button" class="page-tab-close" :aria-label="`关闭${tab.title}`" :title="`关闭${tab.title}`" @click="closeTab(tab.path)">×</button>
+        </div>
+      </nav>
 
       <el-main class="main-content">
         <div class="page-container">
@@ -72,8 +80,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   ArrowDown,
   ChatLineRound,
@@ -90,6 +98,7 @@ import {
 import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const sidebarCollapsed = ref(localStorage.getItem('admin_sidebar_collapsed') === '1');
 const isMobile = ref(false);
@@ -151,19 +160,54 @@ const pageTitles: Record<string, string> = {
   '/website-settings': '官网设置',
   '/website-categories': '资讯分类',
   '/website-articles': '口腔资讯',
-  '/configs': '系统配置',
+  '/configs': '留资页面',
   '/official-menu': '公众号菜单',
   '/official-auto-reply': '自动回复',
-  '/appointment-notify': '成员与通知',
+  '/appointment-notify': '预约通知',
   '/followup-forward': '回访接口',
   '/website-analytics': '官网浏览统计',
-  '/admin-users': '成员与通知',
+  '/admin-users': '成员管理',
+  '/change-password': '修改密码',
   '/admin-roles': '角色管理',
   '/official-binding': '公众号绑定',
   '/audit-logs': '审计日志'
 };
 
 const currentPageTitle = computed(() => pageTitles[route.path] || '傅小念的运营管理后台');
+interface PageTab { path: string; title: string }
+const openTabs = ref<PageTab[]>([]);
+const tabStorageKey = computed(() => `admin_page_tabs_${auth.user?.id || 'anonymous'}`);
+function permittedTab(path: string): PageTab | null {
+  const resolved = router.resolve(path);
+  if (resolved.path !== path || !pageTitles[path]) return null;
+  const permission = String(resolved.matched[resolved.matched.length - 1]?.meta.permission || '');
+  return permission && !auth.hasPermission(permission) ? null : { path, title: pageTitles[path] };
+}
+function saveTabs() {
+  try { sessionStorage.setItem(tabStorageKey.value, JSON.stringify(openTabs.value.map(tab => tab.path))); } catch { /* 无存储权限时仅保留当前会话内的标签 */ }
+}
+watch(() => auth.user?.id, () => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(tabStorageKey.value) || '[]') as unknown;
+    openTabs.value = Array.isArray(saved) ? [...new Set(saved.filter((item): item is string => typeof item === 'string'))].map(permittedTab).filter((item): item is PageTab => !!item).slice(-12) : [];
+  } catch { openTabs.value = []; }
+}, { immediate: true });
+watch(() => route.path, path => {
+  const tab = permittedTab(path);
+  if (!tab) return;
+  if (!openTabs.value.some(item => item.path === path)) {
+    openTabs.value.push(tab);
+    if (openTabs.value.length > 12) openTabs.value.shift();
+  }
+  saveTabs();
+}, { immediate: true });
+function closeTab(path: string) {
+  const index = openTabs.value.findIndex(item => item.path === path);
+  if (index < 0) return;
+  openTabs.value.splice(index, 1);
+  saveTabs();
+  if (route.path === path) router.push(openTabs.value[Math.min(index, openTabs.value.length - 1)]?.path || '/dashboard');
+}
 const accountInitial = computed(() => (auth.user?.nickname || auth.user?.username || '管').slice(0, 1).toUpperCase());
 const roleLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -535,6 +579,13 @@ const roleLabel = computed(() => {
   padding: 24px;
   background: var(--admin-bg);
 }
+.page-tabs{position:sticky;z-index:19;top:64px;display:flex;align-items:center;gap:6px;min-width:0;min-height:45px;padding:6px 24px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--admin-border);background:#f6f9fc;box-shadow:0 4px 12px rgba(45,75,98,.06);scrollbar-width:thin}
+.page-tab{display:flex;align-items:center;flex:none;max-width:210px;height:32px;border:1px solid var(--admin-border);border-radius:8px;background:#fff;color:var(--admin-text-secondary)}
+.page-tab.active{border-color:var(--admin-primary);background:#e9f4fb;color:var(--admin-primary);box-shadow:inset 0 -2px 0 var(--admin-primary)}
+.page-tab-main,.page-tab-close{height:100%;border:0;background:transparent;color:inherit;cursor:pointer}
+.page-tab-main{min-width:0;max-width:175px;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}
+.page-tab-close{flex:none;width:28px;padding:0;font-size:19px;line-height:1}
+.page-tab-close:hover,.page-tab-close:focus-visible{border-radius:0 7px 7px 0;background:#d9eaf7;outline:none}
 
 .page-container {
   width: 100%;
@@ -612,5 +663,6 @@ const roleLabel = computed(() => {
   .main-content {
     padding: 14px 10px;
   }
+  .page-tabs{top:58px;padding:6px 10px;min-height:43px}.page-tab{max-width:155px}.page-tab-main{max-width:119px}
 }
 </style>

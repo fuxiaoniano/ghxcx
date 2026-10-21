@@ -12,7 +12,7 @@ import {
   PromotionCreativeAdgroupQueryDto, PromotionCreativeAssetQueryDto, PromotionCreativeTemplateQueryDto,
 } from './dto';
 import { generateMultiCreativeCombinations } from './multi-account-creative-combinations';
-import { matchesTencentCreativeRecord } from './multi-account-creative-verification';
+import { matchesTencentCreativeRecord, normalizeTencentCreativeComponentsForVerification } from './multi-account-creative-verification';
 import { PromotionCreativeBatchService } from './promotion-creative-batch.service';
 import { PromotionDataSyncService, TencentMarketingApiError } from './promotion-data-sync.service';
 
@@ -25,7 +25,7 @@ type PreparedAsset = {
 type PreparedTarget = {
   account: any; adgroup: PlatformRecord; templateId: string; templateName: string; template: PlatformRecord;
   requirements: PlatformRecord[]; status: 'PASSED' | 'FAILED'; reasons: string[]; mappings: PreparedAsset[];
-  defaults: Array<{ config: any; field: string; component: PlatformRecord }>;
+  defaults: Array<{ config: any; field: string; component: PlatformRecord; sourceSnapshotId?: string }>;
   combinations: Array<{ titleIds: string[]; videoIds: string[]; imageIds: string[] }>;
   items: Array<{ name: string; fingerprint: string; idempotencyKey: string; payload: PlatformRecord; material: PlatformRecord }>;
 };
@@ -303,10 +303,10 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
   }
 
   async defaultComponents(accountId: string, user: AdminCurrentUser) {
-    this.assertAnyPermission(user, ['PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW', 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_MANAGE']);
-    await this.account(accountId, user);
+    this.assertAnyPermission(user, ['PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW', 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_MANAGE', 'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CREATE']);
+    const account = await this.account(accountId, user);
     const rows = await this.prisma.creativeAccountDefaultComponent.findMany({ where: { accountId }, orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }] });
-    return Promise.all(rows.map((row) => this.hydrateDefaultComponentName(accountId, row)));
+    return Promise.all(rows.map((row) => this.hydrateDefaultComponentName(accountId, String(account.accountNo), row)));
   }
 
   async saveDefaultComponent(dto: CreativeDefaultComponentDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
@@ -331,8 +331,16 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
     const row = await this.prisma.creativeAccountDefaultComponent.findUnique({ where: { id } });
     if (!row) throw new BusinessException(404882, '默认组件配置不存在', 404);
     await this.account(row.accountId, user);
-    await this.prisma.creativeAccountDefaultComponent.update({ where: { id }, data: { status: 'DISABLED', updatedByAdminId: user.adminUserId } });
-    await this.audit.create({ adminUserId: user.adminUserId, action: 'DISABLE_CREATIVE_DEFAULT_COMPONENT', resourceType: 'creative_account_default_components', resourceId: id, beforeJson: this.redact(row) as Prisma.InputJsonValue, afterJson: { status: 'DISABLED' } as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
+    if (row.status === 'DISABLED') return { id, disabled: true, alreadyDisabled: true };
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.creativeAccountDefaultComponent.updateMany({ where: { id, status: 'ACTIVE' }, data: { status: 'DISABLED', updatedByAdminId: user.adminUserId } });
+      if (!updated.count) return;
+      await tx.auditLog.create({ data: {
+        adminUserId: user.adminUserId, action: 'DISABLE_CREATIVE_DEFAULT_COMPONENT', resourceType: 'creative_account_default_components', resourceId: id,
+        beforeJson: this.redact(row) as Prisma.InputJsonValue, afterJson: { status: 'DISABLED' } as Prisma.InputJsonValue,
+        ip, userAgent: this.ua(userAgent),
+      } });
+    });
     return { id, disabled: true };
   }
 
@@ -354,7 +362,8 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
     const videos = assets.filter((item) => item.assetType === 'VIDEO');
     const titles = assets.filter((item) => item.assetType === 'TITLE' || ['title', 'description'].includes(String(item.componentField || '')));
     const images = assets.filter((item) => item.assetType === 'IMAGE');
-    if (!videos.length || !titles.length) throw new BusinessException(400887, '视频与标题/文案至少各选择一项', 400);
+    if ((!videos.length && !images.length) || !titles.length) throw new BusinessException(400887, '图片或视频至少选择一项，标题/文案至少选择一项', 400);
+    if (dto.rules.videoCount === 0 && dto.rules.imageCount === 0) throw new BusinessException(400887, '每条创意的图片和视频数量不能同时为 0', 400);
     const combinations = generateMultiCreativeCombinations(dto.combinationMode, {
       titles: titles.map((item) => item.id), videos: videos.map((item) => item.id), images: images.map((item) => item.id),
     }, dto.rules);
@@ -363,6 +372,7 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
     const targets: PreparedTarget[] = [];
     for (const selection of dto.targets) {
       const account = accountMap.get(selection.accountId)!;
+      const disabledDefaults = new Set((selection.disabledDefaultComponentTypes || []).map((field) => this.canonicalField(field)));
       for (const adgroupId of [...new Set(selection.adgroupIds)]) {
         const reasons: string[] = [];
         let adgroup: PlatformRecord = { adgroup_id: adgroupId };
@@ -373,6 +383,9 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
         const mappings: PreparedAsset[] = [];
         const defaults: PreparedTarget['defaults'] = [];
         try {
+          const authorization = await this.sync.tencentAccountCredentialStatus(account.id, user.adminUserId);
+          if (!authorization.enabled || !authorization.authorized) throw new BusinessException(400893, '目标账户未配置有效的腾讯广告授权', 400);
+          if (!authorization.hasUserToken) throw new BusinessException(400894, '当前登录账号的腾讯 User Token 缺失或已过期，请在推广账户页面扫码获取', 400);
           adgroup = await this.adgroup(account.accountNo!, adgroupId);
           if (!templateId) throw new BusinessException(400888, '必须为每个账户明确选择兼容创意规格', 400);
           const detail = await this.single.templateDetail({ accountId: account.id, adgroupId, templateId, deliveryMode: dto.deliveryMode, dynamicCreativeType: dto.creativeType }, user);
@@ -389,15 +402,103 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
           for (const requirement of requirements.filter((entry) => entry.required)) {
             const field = this.requirementField(requirement);
             if (this.requirementSatisfiedBySelection(field, selectedFields)) continue;
+            if (['video', 'video_list', 'short_video', 'app_promotion_video', 'video_showcase', 'image', 'image_list', 'image_showcase'].includes(field)) {
+              reasons.push(`创意规格必填“${requirement.description || field}”，请选择对应的图片或视频素材，或更换兼容规格`);
+              continue;
+            }
+            if (disabledDefaults.has(field)) { reasons.push(`创意规格必填组件“${requirement.description || field}”已关闭，请开启后重试`); continue; }
             const overrideId = selection.componentOverrides?.find((entry) => this.canonicalField(entry.componentType) === field)?.configId;
             const configured = overrideId
               ? await this.prisma.creativeAccountDefaultComponent.findFirst({ where: { id: overrideId, accountId: account.id, componentType: field, status: 'ACTIVE' } })
               : await this.resolveDefault(account, field, dto.creativeType, adgroup.marketing_goal, templateId);
-            const resolved = configured ? await this.hydrateDefaultComponentName(account.id, configured) : null;
+            const resolved = configured ? await this.hydrateDefaultComponentName(account.id, String(account.accountNo), configured) : null;
             if (!resolved) { reasons.push(`缺少账户默认组件：${field}`); continue; }
             const verified = await this.lookupDefaultComponent(account.accountNo!, resolved);
             if (!verified.row) { reasons.push(`默认组件“${resolved.componentName}”在腾讯后台不可用`); continue; }
             defaults.push({ config: resolved, field, component: this.componentFromRow(verified.row, field, resolved.componentSnapshot as PlatformRecord) });
+          }
+          const channelVideoPlacement = Array.isArray(template.site_set)
+            && template.site_set.includes('SITE_SET_CHANNELS')
+            && requirements.some((entry) => ['video', 'video_list', 'short_video', 'app_promotion_video', 'video_showcase'].includes(this.requirementField(entry)));
+          // An enabled account default is an explicit choice, not merely a fallback
+          // for required fields. Only submit fields advertised by this Tencent
+          // template; never inject unrelated account components into the payload.
+          const allowedFields = new Set(requirements.map((entry) => this.requirementField(entry)));
+          const activeDefaultTypes = await this.prisma.creativeAccountDefaultComponent.findMany({
+            where: { accountId: account.id, status: 'ACTIVE' }, select: { componentType: true },
+          });
+          const optionalFields = [...new Set(activeDefaultTypes.map((entry) => this.canonicalField(entry.componentType)))];
+          for (const field of optionalFields) {
+            if (!allowedFields.has(field) || selectedFields.has(field) || disabledDefaults.has(field) || defaults.some((entry) => entry.field === field)) continue;
+            if (channelVideoPlacement && ['text_link', 'mini_card_link', 'floating_zone', 'wechat_channels'].includes(field)) continue;
+            const overrideId = selection.componentOverrides?.find((entry) => this.canonicalField(entry.componentType) === field)?.configId;
+            const configured = overrideId
+              ? await this.prisma.creativeAccountDefaultComponent.findFirst({ where: { id: overrideId, accountId: account.id, componentType: field, status: 'ACTIVE' } })
+              : await this.resolveDefault(account, field, dto.creativeType, adgroup.marketing_goal, templateId);
+            if (!configured) continue;
+            const resolved = await this.hydrateDefaultComponentName(account.id, String(account.accountNo), configured);
+            const verified = await this.lookupDefaultComponent(account.accountNo!, resolved);
+            if (!verified.row) { reasons.push(`已开启的默认组件“${resolved.componentName}”在腾讯后台不可用`); continue; }
+            defaults.push({ config: resolved, field, component: this.componentFromRow(verified.row, field, resolved.componentSnapshot as PlatformRecord) });
+          }
+          // 视频号版位还有规格字段之外的联动要求。原单账户流程会带入这些
+          // 可选组件；多账户流程也必须从目标账户默认配置中解析，不能等到
+          // validatePlacementDependencies 才报“未选择”。
+          if (channelVideoPlacement) {
+            const existingFields = new Set(defaults.map((entry) => entry.field));
+            if (!existingFields.has('text_link') && !existingFields.has('mini_card_link')) {
+              let linked = false;
+              for (const field of ['text_link', 'mini_card_link']) {
+                if (disabledDefaults.has(field)) continue;
+                const overrideId = selection.componentOverrides?.find((entry) => this.canonicalField(entry.componentType) === field)?.configId;
+                const configured = overrideId
+                  ? await this.prisma.creativeAccountDefaultComponent.findFirst({ where: { id: overrideId, accountId: account.id, componentType: field, status: 'ACTIVE' } })
+                  : await this.resolveDefault(account, field, dto.creativeType, adgroup.marketing_goal, templateId);
+                const resolved = configured ? await this.hydrateDefaultComponentName(account.id, String(account.accountNo), configured) : null;
+                if (!resolved) continue;
+                const verified = await this.lookupDefaultComponent(account.accountNo!, resolved);
+                if (!verified.row) continue;
+                defaults.push({ config: resolved, field, component: this.componentFromRow(verified.row, field, resolved.componentSnapshot as PlatformRecord) });
+                existingFields.add(field);
+                linked = true;
+                break;
+              }
+              if (!linked) reasons.push('视频号版位需要启用可用的账户默认文字链或图文链接组件');
+            }
+            for (const field of ['floating_zone']) {
+              if (existingFields.has(field)) continue;
+              if (disabledDefaults.has(field)) { reasons.push('视频号版位必填的默认浮层卡片已关闭，请开启后重试'); continue; }
+              const overrideId = selection.componentOverrides?.find((entry) => this.canonicalField(entry.componentType) === field)?.configId;
+              const configured = overrideId
+                ? await this.prisma.creativeAccountDefaultComponent.findFirst({ where: { id: overrideId, accountId: account.id, componentType: field, status: 'ACTIVE' } })
+                : await this.resolveDefault(account, field, dto.creativeType, adgroup.marketing_goal, templateId);
+              const resolved = configured ? await this.hydrateDefaultComponentName(account.id, String(account.accountNo), configured) : null;
+              if (!resolved) { reasons.push('视频号版位缺少账户默认浮层卡片组件'); continue; }
+              const verified = await this.lookupDefaultComponent(account.accountNo!, resolved);
+              if (!verified.row) { reasons.push(`默认组件“${resolved.componentName}”在腾讯后台不可用`); continue; }
+              defaults.push({ config: resolved, field, component: this.componentFromRow(verified.row, field, resolved.componentSnapshot as PlatformRecord) });
+              existingFields.add(field);
+            }
+            const brand = defaults.find((entry) => entry.field === 'brand')?.component;
+            const username = String(brand?.value?.jump_info?.page_spec?.wechat_channels_profile_spec?.username || '').trim();
+            if (!username) reasons.push('视频号版位的新版品牌形象缺少已授权视频号标识，无法补齐腾讯要求的视频号兼容组件');
+            else if (disabledDefaults.has('wechat_channels')) reasons.push('视频号版位必填的视频号兼容组件已关闭，请开启后重试');
+            else if (!existingFields.has('wechat_channels')) {
+              const candidates = await this.prisma.promotionCreativeMaterialSnapshot.findMany({
+                where: { originAccountId: account.id, componentField: 'wechat_channels', platformAssetKind: 'COMPONENT', isDeleted: false },
+                orderBy: { lastSyncedAt: 'desc' }, take: 100,
+              });
+              const compatible = candidates.find((candidate) => String((candidate.payloadJson as PlatformRecord)?.component?.value?.username || '').trim() === username);
+              if (!compatible) reasons.push('目标账户未同步与新版品牌形象匹配的视频号兼容组件，请刷新账户素材');
+              else {
+                const verified = await this.lookupAsset(account.accountNo!, compatible);
+                if (!verified.row) reasons.push('目标账户的视频号兼容组件在腾讯后台不可用');
+                else defaults.push({
+                  config: { componentType: 'wechat_channels', componentName: compatible.name, platformComponentId: compatible.platformAssetId },
+                  field: 'wechat_channels', component: this.componentFromAssetRow(verified.row, compatible), sourceSnapshotId: compatible.id,
+                });
+              }
+            }
           }
           const itemPayloads = combinations.slice(0, dto.rules.maxPerAdgroup).map((combination, index) => {
             const chosen = [...combination.titleIds, ...combination.videoIds, ...combination.imageIds];
@@ -409,10 +510,11 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
               (components[field] ||= []).push((this.single as any).normalizeTencentAssetIds(value));
             }
             for (const entry of defaults) (components[entry.field] ||= []).push((this.single as any).normalizeTencentAssetIds(entry.component));
+            (this.single as any).aggregateImageListComponents(components);
             (this.single as any).validateTemplateComponents(requirements, components, dto.creativeType);
             (this.single as any).validatePlacementDependencies(template, components);
             const chosenAssets = chosen.map((id) => assetMap.get(id)!);
-            const name = (this.single as any).creativeName(dto.namePattern, index + 1, chosenAssets, account.name);
+            const name = this.creativeNameForTarget(dto.namePattern, String(adgroup.adgroup_name || adgroupId), index + 1, chosenAssets, account.name);
             const payload = {
               account_id: this.safeInteger(account.accountNo!, '账户 ID'), adgroup_id: this.safeInteger(adgroupId, '营销单元 ID'),
               dynamic_creative_name: name, creative_template_id: this.safeInteger(templateId, '创意规格 ID'),
@@ -422,7 +524,7 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
             const itemFingerprint = this.hash({ account: account.accountNo, adgroupId, templateId, payload });
             return {
               name, fingerprint: itemFingerprint, idempotencyKey: itemFingerprint,
-              payload, material: { selected: chosen.map((id) => ({ snapshotId: id, name: assetMap.get(id)?.name, platformAssetId: mappings.find((entry) => entry.snapshot.id === id)?.targetPlatformAssetId })), defaults: defaults.map((entry) => ({ type: entry.field, id: entry.config.platformComponentId, name: entry.config.componentName })) },
+              payload, material: { selected: chosen.map((id) => ({ snapshotId: id, name: assetMap.get(id)?.name, platformAssetId: mappings.find((entry) => entry.snapshot.id === id)?.targetPlatformAssetId })), defaults: defaults.map((entry) => ({ type: entry.field, id: entry.config.platformComponentId, name: entry.config.componentName, ...(entry.sourceSnapshotId ? { sourceSnapshotId: entry.sourceSnapshotId } : {}) })) },
             };
           });
           targets.push({ account, adgroup, templateId, templateName, template, requirements, mappings, defaults, combinations, items: reasons.length ? [] : itemPayloads, status: reasons.length ? 'FAILED' : 'PASSED', reasons });
@@ -467,14 +569,17 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
 
   private async lookupAsset(accountNo: string, snapshot: any, organizationId?: string) {
     const kind = snapshot.platformAssetKind;
-    const field = kind === 'VIDEO' ? 'video_id' : kind === 'IMAGE' ? 'image_id' : 'component_id';
+    // 腾讯 /videos/get 的 filtering 使用 media_id，但返回记录仍是 video_id。
+    // 图片和组件的过滤/返回字段均保持各自 ID；不能把三类接口混用。
+    const field = kind === 'VIDEO' ? 'media_id' : kind === 'IMAGE' ? 'image_id' : 'component_id';
+    const resultField = kind === 'VIDEO' ? 'video_id' : field;
     const path = kind === 'VIDEO' ? '/videos/get' : kind === 'IMAGE' ? '/images/get' : '/components/get';
     const fields = kind === 'COMPONENT' ? { fields: COMPONENT_FIELDS } : {};
     const response = await this.sync.tencentApi('GET', path, accountNo, {
       ...fields, ...(organizationId ? { organization_id: this.safeInteger(organizationId, '业务单元 ID') } : {}),
       filtering: JSON.stringify([{ field, operator: 'EQUALS', values: [snapshot.platformAssetId] }]), page: 1, page_size: 10,
     }, !organizationId);
-    const row = this.rows(response.data).find((entry) => String(entry[field] || '') === String(snapshot.platformAssetId));
+    const row = this.rows(response.data).find((entry) => String(entry[resultField] || '') === String(snapshot.platformAssetId));
     return { row, requestId: response.requestId };
   }
 
@@ -487,11 +592,18 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
 
   private async resolveDefault(account: any, field: string, creativeType: string, marketingGoal: unknown, templateId: string) {
     const candidates = await this.prisma.creativeAccountDefaultComponent.findMany({ where: { accountId: account.id, componentType: field, status: 'ACTIVE' }, orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }] });
-    const score = (item: any) => item.templateId === templateId ? 400 : item.creativeType === creativeType ? 300 : item.marketingGoal === marketingGoal ? 200 : (!item.templateId && !item.creativeType && !item.marketingGoal) ? 100 : -1;
+    const score = (item: any) => {
+      if ((item.templateId && item.templateId !== templateId) || (item.creativeType && item.creativeType !== creativeType) || (item.marketingGoal && item.marketingGoal !== marketingGoal)) return -1;
+      return (item.templateId ? 400 : 0) + (item.creativeType ? 300 : 0) + (item.marketingGoal ? 200 : 0) + 100;
+    };
     return candidates.map((item) => ({ item, score: score(item) })).filter((entry) => entry.score >= 0).sort((a, b) => b.score - a.score || b.item.priority - a.item.priority)[0]?.item || null;
   }
 
-  private async hydrateDefaultComponentName(accountId: string, config: any) {
+  private creativeNameForTarget(pattern: string, adgroupName: string, sequence: number, assets: any[], accountName: string) {
+    return (this.single as any).creativeName(pattern.replaceAll('{营销单元}', adgroupName), sequence, assets, accountName);
+  }
+
+  private async hydrateDefaultComponentName(accountId: string, accountNo: string, config: any) {
     const snapshot = await this.prisma.promotionCreativeMaterialSnapshot.findFirst({
       where: { originAccountId: accountId, platformAssetId: config.platformComponentId, isDeleted: false },
       select: { name: true, payloadJson: true },
@@ -502,10 +614,10 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
       const pageId = (this.single as any).officialLandingPageId(payload.component);
       if (pageId) {
         const landingPage = await this.prisma.promotionCreativeMaterialSnapshot.findFirst({
-          where: { originAccountId: accountId, assetType: 'LANDING_PAGE', platformAssetId: String(pageId), isDeleted: false },
+          where: { originAccountId: accountId, assetType: 'LANDING_PAGE', platformAssetKind: 'REFERENCE', platformAssetId: String(pageId), isDeleted: false },
           select: { name: true },
         });
-        if (landingPage?.name) displayName = landingPage.name;
+        displayName = landingPage?.name || await (this.single as any).landingPageNameFromTencent(accountNo, String(pageId)) || displayName;
       }
     }
     return { ...config, componentName: this.defaultComponentDisplayName(config, displayName) };
@@ -559,7 +671,7 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
       if (duplicate) throw new BusinessException(400891, `相同腾讯请求已由创意 ${duplicate.platformCreativeId || duplicate.id} 确认成功，已阻止重复创建`, 400);
       await this.log(batch.id, item.id, 'SUBMIT_TENCENT_CREATIVE', 'SUBMITTING', item.requestPayload);
       let response;
-      try { response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', account.accountNo!, item.requestPayload as PlatformRecord); }
+      try { response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', account.accountNo!, item.requestPayload as PlatformRecord, true, batch.createdByAdminId); }
       catch (error) {
         if (error instanceof TencentMarketingApiError && error.retryable) {
           await this.prisma.multiAccountCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN_NEEDS_REVIEW', errorCode: error.code, errorMessage: error.message, platformRequestId: error.requestId } });
@@ -591,7 +703,7 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
       const response = await this.sync.tencentApi('GET', '/dynamic_creatives/get', full.target.account.accountNo!, {
         fields: JSON.stringify(['dynamic_creative_id', 'dynamic_creative_name', 'adgroup_id', 'creative_template_id', 'delivery_mode', 'dynamic_creative_type', 'creative_components', 'configured_status', 'created_time']),
         filtering: JSON.stringify([{ field: 'dynamic_creative_id', operator: 'EQUALS', values: [full.platformCreativeId] }]), page: 1, page_size: 10,
-      });
+      }, true, full.target.batch.createdByAdminId);
       const row = this.rows(response.data).find((entry) => String(entry.dynamic_creative_id || '') === full.platformCreativeId);
       if (!row) {
         const attempts = full.verificationAttempts + 1;
@@ -609,7 +721,10 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
         deliveryMode: String(full.target.batch.deliveryMode),
         creativeType: String(full.target.creativeType),
         components: payload.creative_components || {},
-      }, row, (expected, actual) => (this.single as any).platformComponentsMatch(expected, actual));
+      }, row, (expected, actual) => (this.single as any).platformComponentsMatch(
+        normalizeTencentCreativeComponentsForVerification(expected),
+        normalizeTencentCreativeComponentsForVerification(actual),
+      ));
       if (!matches) {
         await this.prisma.multiAccountCreativeBatchItem.update({ where: { id: full.id }, data: { status: 'UNKNOWN_NEEDS_REVIEW', errorCode: 'VERIFY_MISMATCH', errorMessage: '腾讯回查结果与目标账户上下文、营销单元、规格、类型或关键组件不一致', verificationResult: this.redact(row) as Prisma.InputJsonValue } });
         return;
@@ -649,6 +764,11 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
     }
     const defaults = Array.isArray(material?.defaults) ? material.defaults : [];
     for (const entry of defaults as PlatformRecord[]) {
+      if (entry.sourceSnapshotId) {
+        const source = await this.prisma.promotionCreativeMaterialSnapshot.findFirst({ where: { id: String(entry.sourceSnapshotId), originAccountId: account.id, platformAssetId: String(entry.id || ''), isDeleted: false } });
+        if (!source || !(await this.lookupAsset(account.accountNo!, source)).row) throw new BusinessException(400895, `执行前视频号兼容组件“${entry.name || entry.type}”已失效，已阻止提交`, 400);
+        continue;
+      }
       const config = await this.prisma.creativeAccountDefaultComponent.findFirst({ where: { accountId: account.id, componentType: String(entry.type || ''), platformComponentId: String(entry.id || ''), status: 'ACTIVE' } });
       if (!config || !(await this.lookupDefaultComponent(account.accountNo!, config)).row) throw new BusinessException(400895, `执行前默认组件“${entry.name || entry.type}”已失效，已阻止提交`, 400);
     }
@@ -694,7 +814,16 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
   }
   private componentFromRow(row: PlatformRecord, field: string, fallback: PlatformRecord) {
     const value = row.component_value?.[field] || row.component_value?.[this.canonicalField(field)];
-    return value ? { component_id: String(row.component_id), ...value } : fallback.component || fallback;
+    const component = value ? { ...value, component_id: row.component_id } : fallback.component || fallback;
+    return this.normalizeComponentIds(component);
+  }
+  private normalizeComponentIds(value: unknown): any {
+    if (Array.isArray(value)) return value.map((entry) => this.normalizeComponentIds(entry));
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value as PlatformRecord).map(([key, entry]) => [
+      key,
+      key === 'component_id' ? this.safeInteger(String(entry), '组件 ID') : this.normalizeComponentIds(entry),
+    ]));
   }
   private assetSource(snapshot: any) { const scopes = (snapshot.payloadJson as PlatformRecord)?.platformAssetScopes; return Array.isArray(scopes) && scopes.includes('BUSINESS_UNIT') ? 'BUSINESS_UNIT' : 'ACCOUNT'; }
   private assetSpecification(snapshot: any) { const payload = snapshot.payloadJson as PlatformRecord; return { width: payload.width || null, height: payload.height || null, fileSize: payload.fileSize || null, status: snapshot.status, auditStatus: snapshot.auditStatus, syncedAt: snapshot.lastSyncedAt }; }

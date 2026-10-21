@@ -45,6 +45,8 @@ const COMPONENT_FIELDS = JSON.stringify([
 @Injectable()
 export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PromotionCreativeBatchService.name);
+  private readonly landingPageNameCache = new Map<string, { name: string | null; expiresAt: number }>();
+  private readonly liveAssetKeysCache = new Map<string, { keys: Set<string>; expiresAt: number }>();
   private worker?: NodeJS.Timeout;
   private workerBusy = false;
 
@@ -70,6 +72,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       orderBy: [{ project: 'asc' }, { name: 'asc' }, { accountNo: 'asc' }],
     });
     const config = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } });
+    const sharedUserToken = await this.prisma.tencentUserToken.findUnique({ where: { adminUserId: user.adminUserId } });
     const credentials = await this.prisma.promotionAccountCredential.findMany({ where: { accountId: { in: accounts.map((account) => account.id) } } });
     const credentialMap = new Map(credentials.map((credential) => [credential.accountId, credential]));
     const businessUnitMap = new Map<string, { key: string; name: string; project: string; accountCount: number }>();
@@ -82,7 +85,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     return {
       accounts: await Promise.all(accounts.map(async (account) => {
         const credential = credentialMap.get(account.id);
-        const credentialStatus = this.sync.credentialStatus(credential, config);
+        const credentialStatus = this.sync.credentialStatus(credential, config, sharedUserToken);
         const authorized = Boolean(config?.enabled && credentialStatus.authorized);
         const hasUserToken = credentialStatus.hasUserToken;
         const accountCanCreate = this.promotionAccess ? await this.promotionAccess.canCreateCreatives(user, account) : true;
@@ -90,7 +93,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         id: account.id, name: account.name, accountNo: account.accountNo, project: account.project, platform: account.platform,
         tencentBusinessUnitKey: this.tencentAccountScopeKey(String(account.accountNo)),
         authorized, hasUserToken, canCreate: authorized && hasUserToken && accountCanCreate && this.has(user, 'PROMOTION_CREATIVE_BATCH_CREATE'),
-        authorizationMessage: !authorized ? '未配置可用的腾讯业务单元或账户级授权凭证' : !hasUserToken ? '缺少有效的腾讯 User Token，请联系管理员检查业务单元授权或账户凭证' : !accountCanCreate ? '当前成员未获该账户的创意创建权限' : '腾讯授权已配置；目标账户权限将在读取营销单元时由腾讯接口确认',
+        authorizationMessage: !authorized ? '未配置可用的腾讯业务单元或账户级授权凭证' : !hasUserToken ? '当前登录账号缺少有效的腾讯 User Token，请在推广账户页面扫码获取' : !accountCanCreate ? '当前成员未获该账户的创意创建权限' : '腾讯授权已配置；目标账户权限将在读取营销单元时由腾讯接口确认',
       }})),
       businessUnits: [...businessUnitMap.values()],
       maxBatchSize: await this.maxBatchSize(),
@@ -192,6 +195,8 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const target = await this.account(query.accountId, user, 'MATERIALS');
     const businessUnitKey = this.tencentAccountScopeKey(String(target.accountNo));
     if (query.businessUnitKey && ![businessUnitKey, this.businessUnitKey(target.project)].includes(query.businessUnitKey)) throw new BusinessException(400852, '腾讯资产范围与目标账户不匹配', 400);
+    const liveCacheKey = `${target.id}:${query.source}:${query.assetType || 'ALL'}`;
+    let liveKeys = this.liveAssetKeysCache.get(liveCacheKey);
     // Landing-page snapshots created by the earlier implementation were
     // reference-only. Refresh them on access so approved pages become
     // selectable without requiring an operator to know about cache migration.
@@ -200,10 +205,16 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     // (often video) to suppress later component syncs, so newly-created text
     // links and other account components never reached the admin list. Keep a
     // short per-category/per-source cache and refresh stale or missing scopes.
-    if (query.refresh || !await this.hasFreshAssetSnapshots(target.id, query.assetType, query.source)) {
-      await this.syncAssets(target, query.assetType, query.page || 1, 100, query.source);
+    // The official page list is authoritative for account landing pages. A
+    // cached component snapshot can outlive a deleted page or duplicate it.
+    if (query.refresh || !liveKeys || liveKeys.expiresAt <= Date.now()) {
+      const keys = await this.syncAssets(target, query.assetType, 1, 100, query.source);
+      if (keys instanceof Set) {
+        liveKeys = { keys, expiresAt: Date.now() + 60_000 };
+        this.liveAssetKeysCache.set(liveCacheKey, liveKeys);
+      }
     }
-    if (['TEXT_LINK', 'ACTION_BUTTON'].includes(String(query.assetType || ''))
+    if (['TEXT_LINK', 'ACTION_BUTTON', 'MINI_CARD_LINK'].includes(String(query.assetType || ''))
       && (query.refresh || !await this.hasFreshAssetSnapshots(target.id, 'LANDING_PAGE', 'ACCOUNT'))) {
       await this.syncAssets(target, 'LANDING_PAGE', 1, 100, 'ACCOUNT');
     }
@@ -231,10 +242,15 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       : null;
     const where: Prisma.PromotionCreativeMaterialSnapshotWhereInput = {
       originAccountId: target.id, businessUnitKey, isDeleted: false, ...componentTypeScope,
+      ...(query.source === 'ACCOUNT' && query.assetType === 'LANDING_PAGE'
+        ? { platformAssetKind: 'REFERENCE', status: 'LANDING_PAGE_STATUS_APPROVED' } : {}),
       ...(query.search ? { OR: [{ name: { contains: query.search } }, { platformAssetId: { contains: query.search } }] } : {}),
     };
     const candidates = await this.prisma.promotionCreativeMaterialSnapshot.findMany({ where, include: { originAccount: { select: { id: true, name: true, accountNo: true, project: true } } }, orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }], take: 1000 });
-    const sourceRows = candidates.filter((row) => {
+    const scopedRows = candidates.filter((row) => {
+      // A snapshot alone never proves that Tencent still exposes this asset.
+      // Keep only IDs returned by the current, account-scoped platform query.
+      if (liveKeys && !liveKeys.keys.has(`${row.platformAssetKind}:${row.platformAssetId}`)) return false;
       const payload = row.payloadJson as Record<string, any>;
       const scopes = Array.isArray(payload.platformAssetScopes) ? payload.platformAssetScopes.map(String) : [];
       const sourceMatches = scopes.length
@@ -252,6 +268,20 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       const submissionField = this.componentSubmissionField(canonical, templateRequirements);
       return allowedTemplateFields.has(this.canonicalCreativeComponentField(submissionField))
         && this.assetMatchesTemplateDimensions(row, submissionField, templateRequirements);
+    });
+    // Tencent may keep two component IDs with the same field and payload.
+    // Show one selectable entry, while retaining both snapshots for history.
+    const stateRank = (row: typeof scopedRows[number]) => /reject|invalid|delete|offline|disabled|fail/i.test(`${row.status || ''} ${row.auditStatus || ''}`) ? 1 : 0;
+    scopedRows.sort((left, right) => stateRank(left) - stateRank(right) || (right.updatedAt?.getTime() || 0) - (left.updatedAt?.getTime() || 0));
+    const seenComponents = new Set<string>();
+    const sourceRows = scopedRows.filter((row) => {
+      if (row.platformAssetKind !== 'COMPONENT') return true;
+      const payload = row.payloadJson as PlatformRecord;
+      if (!payload.component) return true;
+      const identity = this.hash({ field: this.canonicalCreativeComponentField(row.componentField), component: payload.component });
+      if (seenComponents.has(identity)) return false;
+      seenComponents.add(identity);
+      return true;
     });
     const dimensionsOf = (row: typeof sourceRows[number]) => {
       const payload = row.payloadJson as Record<string, any>;
@@ -276,7 +306,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       ? await this.assetSpendWindows(String(target.accountNo))
       : query.assetType === 'COPY'
         ? await this.componentSpendWindows(String(target.accountNo), await this.tencentBusinessUnitId(String(target.accountNo)))
-        : { seven: new Map<string, number>(), fifteen: new Map<string, number>(), available: false };
+        : { seven: new Map<string, number>(), fifteen: new Map<string, number>(), targetConversionCost: new Map<string, number>(), available: false };
     const sortBy = query.sortBy || 'CREATED_TIME'; const direction = query.sortOrder === 'ASC' ? 1 : -1;
     rows.sort((left, right) => {
       const compareText = (a: unknown, b: unknown) => String(a || '').localeCompare(String(b || ''), 'zh-CN');
@@ -286,15 +316,16 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       else if (sortBy === 'STATUS') compared = compareText(`${left.status || ''}:${left.auditStatus || ''}`, `${right.status || ''}:${right.auditStatus || ''}`);
       else if (sortBy === 'SPEND_7_DAYS') compared = compareNumber(spend.seven.get(left.platformAssetId), spend.seven.get(right.platformAssetId));
       else if (sortBy === 'SPEND_15_DAYS') compared = compareNumber(spend.fifteen.get(left.platformAssetId), spend.fifteen.get(right.platformAssetId));
+      else if (sortBy === 'TARGET_CONVERSION_COST') compared = compareNumber(spend.targetConversionCost.get(left.platformAssetId), spend.targetConversionCost.get(right.platformAssetId));
       else compared = compareNumber(left.platformCreatedAt?.getTime(), right.platformCreatedAt?.getTime());
       return compared * direction || compareText(left.name, right.name);
     });
     const total = rows.length;
     const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
-    const showsLinkedLandingPage = ['TEXT_LINK', 'ACTION_BUTTON', 'MINI_CARD_LINK'].includes(String(query.assetType || ''));
+    const showsLinkedLandingPage = ['TEXT_LINK', 'ACTION_BUTTON', 'MINI_CARD_LINK', 'LANDING_PAGE'].includes(String(query.assetType || ''));
     const landingPageRows = showsLinkedLandingPage
       ? await this.prisma.promotionCreativeMaterialSnapshot.findMany({
-        where: { originAccountId: target.id, businessUnitKey, assetType: 'LANDING_PAGE', isDeleted: false },
+        where: { originAccountId: target.id, businessUnitKey, assetType: 'LANDING_PAGE', platformAssetKind: 'REFERENCE', isDeleted: false },
         select: { platformAssetId: true, name: true, payloadJson: true },
         take: 1000,
       })
@@ -303,6 +334,14 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     for (const landingPage of landingPageRows) {
       const pageId = this.officialLandingPageId((landingPage.payloadJson as PlatformRecord)?.component);
       if (pageId && !landingPageByPageId.has(pageId)) landingPageByPageId.set(pageId, { pageId, name: landingPage.name, platformAssetId: landingPage.platformAssetId });
+    }
+    // Some Tencent accounts expose links but omit their referenced pages from
+    // the paged landing-page list. Resolve only visible missing IDs per account.
+    const missingPageIds = [...new Set(pageRows.map((row) => this.officialLandingPageId((row.payloadJson as PlatformRecord)?.component))
+      .filter((id): id is string => Boolean(id) && !landingPageByPageId.has(String(id))))];
+    if (showsLinkedLandingPage) for (const pageId of missingPageIds) {
+      const name = await this.landingPageNameFromTencent(String(target.accountNo), pageId);
+      if (name) landingPageByPageId.set(pageId, { pageId, name, platformAssetId: pageId });
     }
     return {
       list: pageRows.map((row) => {
@@ -313,21 +352,29 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         // 腾讯业务单元资产使用平台原始素材 ID 直接引用，不复制到目标账户。
         // 资产查询已按业务单元和成员数据范围收敛；提交时还会再次校验。
         const usable = platformReady && stateValid;
-        const linkedPageId = ['text_link', 'mini_card_link', 'action_button', 'chosen_button'].includes(this.canonicalCreativeComponentField(row.componentField))
+        const linkedPageId = ['text_link', 'mini_card_link', 'action_button', 'chosen_button', 'main_jump_info'].includes(this.canonicalCreativeComponentField(row.componentField))
           ? this.officialLandingPageId(payload.component)
           : null;
         const linkedLandingPage = linkedPageId
           ? landingPageByPageId.get(linkedPageId) || { pageId: linkedPageId, name: `腾讯落地页 ${linkedPageId}`, platformAssetId: linkedPageId }
           : null;
+        const contentSummary = row.assetType === 'LANDING_PAGE' && linkedLandingPage && !linkedLandingPage.name.startsWith('腾讯落地页 ')
+          ? linkedLandingPage.name
+          : this.imageListItemCount(payload) > 1
+            ? `${row.name} · 九图组件（${this.imageListItemCount(payload)} 张）`
+            : this.componentContent(row.componentField, payload.component, row.name);
         return {
           id: row.id, source: sameAccount ? 'ACCOUNT' : 'BUSINESS_UNIT', sourceAccount: row.originAccount,
           businessUnitKey: row.businessUnitKey, platformAssetId: row.platformAssetId, platformAssetKind: row.platformAssetKind, type: row.assetType, componentField: row.componentField,
-          name: row.name, contentSummary: this.imageListItemCount(payload) > 1 ? `${row.name} · 九图组件（${this.imageListItemCount(payload)} 张）` : this.componentContent(row.componentField, payload.component, row.name), previewUrl: null, status: row.status, auditStatus: row.auditStatus, createdTime: row.platformCreatedAt,
+          name: row.name, contentSummary,
+          labelTexts: row.componentField === 'label' ? this.labelTexts(payload.component) : undefined,
+          previewUrl: null, status: row.status, auditStatus: row.auditStatus, createdTime: row.platformCreatedAt,
           dimensions: dimensionsOf(row),
           bundleItemCount: this.imageListItemCount(payload) || null,
           componentSubType: payload.componentSubType || null,
           spend7Days: spend.available ? (spend.seven.get(row.platformAssetId) ?? 0) : null,
           spend15Days: spend.available ? (spend.fifteen.get(row.platformAssetId) ?? 0) : null,
+          targetConversionCost7Days: spend.targetConversionCost.get(row.platformAssetId) ?? null,
           linkedLandingPage,
           usable,
           referenceMode: sameAccount ? 'ACCOUNT_DIRECT' : 'BUSINESS_UNIT_DIRECT',
@@ -417,7 +464,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const task = await this.taskOrThrow(id, user);
     const taskAccount = await this.account(task.accountId, user);
     await this.promotionAccess?.assertCanCreateCreatives(user, taskAccount);
-    await this.assertTencentUserTokenConfigured(task.accountId);
+    await this.assertTencentUserTokenConfigured(task.accountId, task.createdByAdminId);
     if (task.status === 'CANCELLED') throw new BusinessException(400858, '已取消任务不能重试', 400);
     const items = await this.prisma.promotionCreativeBatchItem.findMany({ where: { taskId: id, status: { in: ['FAILED', 'UNKNOWN'] } } });
     if (!items.length) throw new BusinessException(400859, '没有可重试或待确认的创意', 400);
@@ -454,7 +501,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     this.assertPermission(user, 'PROMOTION_CREATIVE_TEMPLATE_VIEW');
     this.assertPermission(user, 'PROMOTION_CREATIVE_ASSET_VIEW');
     const account = await this.account(dto.accountId, user);
-    await this.assertTencentUserTokenConfigured(account.id);
+    await this.assertTencentUserTokenConfigured(account.id, user.adminUserId);
     const acceptedScopeKeys = [this.tencentAccountScopeKey(String(account.accountNo)), this.businessUnitKey(account.project)];
     if (!acceptedScopeKeys.includes(dto.businessUnitKey)) throw new BusinessException(400852, '腾讯资产范围与目标账户不匹配', 400);
     const adgroupRaw = await this.adgroup(account, dto.adgroupId, true);
@@ -535,6 +582,9 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         (creativeComponents[field] ||= []).push(this.normalizeTencentAssetIds(component));
       }
       this.aggregateImageListComponents(creativeComponents);
+      if (creativeComponents.mini_card_link?.length && creativeComponents.text_link?.length) {
+        throw new BusinessException(400876, '图文链接和文字链不能同时使用，请只保留一种', 400);
+      }
       const upgraded = await this.upgradeLegacyChannelComponents(
         { creative_components: creativeComponents },
         { accountId: account.id, businessUnitKey: dto.businessUnitKey },
@@ -589,7 +639,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       this.assertPermission(creator, 'PROMOTION_CREATIVE_BATCH_CREATE');
       await this.account(task.accountId, creator);
       await this.promotionAccess?.assertCanCreateCreatives(creator, account);
-      await this.assertTencentUserTokenConfigured(account.id);
+      await this.assertTencentUserTokenConfigured(account.id, task.createdByAdminId);
       const adgroup = await this.adgroup(account, task.adgroupId, true);
       if (!this.adgroupUsable(adgroup)) return this.failItem(task, item, 'ADGROUP_UNAVAILABLE', this.adgroupUnavailableReason(adgroup), '选择可投放营销单元后重新创建批次');
       await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'PREPARING_ASSETS' } });
@@ -611,7 +661,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       } });
       await this.submissionLog(task.id, item.id, 'SUBMIT_TENCENT_CREATIVE', 'SUBMITTING', creativePayload);
       let response;
-      try { response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', String(account.accountNo), creativePayload); }
+      try { response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', String(account.accountNo), creativePayload, true, task.createdByAdminId); }
       catch (error) {
         if (error instanceof TencentMarketingApiError && error.retryable) {
           await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN', errorCode: error.code, errorMessage: error.message, recoverySuggestion: '平台响应不确定，必须先回查，系统不会直接重复创建', platformRequestId: error.requestId, submittedAt: new Date() } });
@@ -663,7 +713,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
           'configured_status', 'system_status',
         ]),
         filtering: JSON.stringify(filtering), page: 1, page_size: 20, is_deleted: false,
-      });
+      }, true, task.createdByAdminId);
       const row = this.rows(response.data).find((entry) => String(entry.dynamic_creative_id || '') === String(item.platformCreativeId || '') || String(entry.dynamic_creative_name || '') === item.creativeName);
       const payload = item.creativePayload as Record<string, any>;
       const submittedAt = item.submittedAt ? new Date(item.submittedAt).getTime() : Date.now();
@@ -713,14 +763,13 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     await this.submissionLog(task.id, item.id, 'TENCENT_CREATIVE_REJECTED', 'FAILED', undefined, undefined, new TencentMarketingApiError(code, message));
   }
 
-  private async assertTencentUserTokenConfigured(accountId: string) {
-    const config = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' }, select: { enabled: true, extraConfig: true } });
-    const credential = await this.prisma.promotionAccountCredential.findUnique({ where: { accountId }, select: { userTokenCipher: true, userTokenExpiresAt: true } });
-    const expired = Boolean(credential?.userTokenExpiresAt && credential.userTokenExpiresAt.getTime() <= Date.now());
-    if (!config?.enabled || !credential?.userTokenCipher || expired) {
+  private async assertTencentUserTokenConfigured(accountId: string, actorAdminId: string) {
+    const status = await this.sync.tencentAccountCredentialStatus(accountId, actorAdminId);
+    const expired = Boolean(status.userTokenExpiresAt && new Date(status.userTokenExpiresAt).getTime() <= Date.now());
+    if (!status.enabled || !status.hasUserToken) {
       throw new BusinessException(400867, expired
-        ? '该账户的腾讯 User Token 已过期，请到推广账户的账户凭证重新扫码获取'
-        : '该账户缺少腾讯 User Token，请到推广账户的账户凭证扫码获取并保存', 400);
+        ? '当前登录账号的腾讯 User Token 已过期，请在推广账户页面重新扫码获取'
+        : '当前登录账号缺少腾讯 User Token，请在推广账户页面扫码获取', 400);
     }
   }
 
@@ -743,7 +792,10 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const authorizedBrands = source === 'ACCOUNT' && types.includes('BRAND')
       ? await this.authorizedBrandAccounts(account.accountNo)
       : { channels: new Map<string, PlatformRecord>(), officials: new Map<string, PlatformRecord>() };
+    const liveKeys = new Set<string>();
     const upsert = async (asset: { id: string; kind: 'COMPONENT' | 'VIDEO' | 'IMAGE' | 'REFERENCE'; type: AssetFamily; field?: string; name: string; preview?: string | null; status?: string | null; auditStatus?: string | null; payload: Record<string, unknown>; createdTime?: unknown; deleted?: boolean }) => {
+      if (!asset.id || asset.id === 'undefined' || asset.id === 'null') return;
+      liveKeys.add(`${asset.kind}:${asset.id}`);
       const existing = await this.prisma.promotionCreativeMaterialSnapshot.findUnique({ where: { originAccountId_platformAssetKind_platformAssetId: { originAccountId: account.id, platformAssetKind: asset.kind, platformAssetId: asset.id } }, select: { payloadJson: true } });
       const existingPayload = existing?.payloadJson && typeof existing.payloadJson === 'object' ? existing.payloadJson as PlatformRecord : {};
       const platformAssetScopes = [...new Set([...(Array.isArray(existingPayload.platformAssetScopes) ? existingPayload.platformAssetScopes.map(String) : []), source])];
@@ -778,11 +830,19 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       for (const row of rows) await upsert({ id: String(row.image_id), kind: 'IMAGE', type: 'IMAGE', field: 'image', name: String(row.description || `图片 ${row.image_id}`), preview: row.preview_url, status: row.status, auditStatus: row.similarity_status, payload: { kind: 'IMAGE', componentField: 'image', platformOwnerAccountId: row.account_id ? String(row.account_id) : account.accountNo, platformOrganizationId: row.organization_id ? String(row.organization_id) : null, width: Number(row.width) || null, height: Number(row.height) || null, fileSize: Number(row.file_size) || null, component: { value: { image_id: String(row.image_id), ...(row.preview_url ? { image_url: row.preview_url } : {}) } } }, createdTime: row.created_time });
     }
     if (source === 'ACCOUNT' && types.includes('LANDING_PAGE')) {
-      const response = await this.sync.tencentApi('GET', '/official_landing_page_list/get', account.accountNo, {
-        fields: JSON.stringify(['page_id', 'landing_page_id', 'page_name', 'page_title', 'page_type', 'page_status', 'reject_reason']),
-        page, page_size: Math.min(pageSize, 100),
-      });
-      for (const row of this.rows(response.data)) {
+      const pageRows: PlatformRecord[] = [];
+      let complete = false;
+      for (let pageNumber = 1; pageNumber <= 50; pageNumber += 1) {
+        const response = await this.sync.tencentApi('GET', '/official_landing_page_list/get', account.accountNo, {
+          fields: JSON.stringify(['page_id', 'landing_page_id', 'page_name', 'page_title', 'page_type', 'page_status', 'reject_reason']),
+          page: pageNumber, page_size: 100,
+        });
+        const current = this.rows(response.data);
+        pageRows.push(...current);
+        if (current.length < 100) { complete = true; break; }
+      }
+      if (!complete) throw new BusinessException(400878, '腾讯落地页分页超过安全上限，无法确认完整列表；请联系管理员处理', 503);
+      for (const row of pageRows) {
         if (!row.page_id) continue;
         const approved = row.page_status === 'LANDING_PAGE_STATUS_APPROVED';
         await upsert({
@@ -802,7 +862,17 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
           deleted: row.page_status === 'LANDING_PAGE_STATUS_OFFLINE',
         });
       }
+      // Reconcile only after every page was fetched successfully. Never hide
+      // older pages when Tencent times out or truncates a large list.
+      if (complete) await this.prisma.promotionCreativeMaterialSnapshot.updateMany({
+        where: {
+          originAccountId: account.id, platformAssetKind: 'REFERENCE', assetType: 'LANDING_PAGE',
+          platformAssetId: { notIn: pageRows.map((row) => String(row.page_id)).filter(Boolean) },
+        },
+        data: { isDeleted: true },
+      });
     }
+    return liveKeys;
   }
 
   private async tencentBusinessUnitId(accountNo: string) {
@@ -824,9 +894,9 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       const current = this.rows(response.data);
       rows.push(...current);
       const totalPage = Number((response.data as any)?.page_info?.total_page || 0);
-      if (!current.length || (totalPage > 0 ? page >= totalPage : current.length < pageSize)) break;
+      if (!current.length || (totalPage > 0 ? page >= totalPage : current.length < pageSize)) return rows;
     }
-    return rows;
+    throw new BusinessException(400877, '腾讯素材分页超过安全上限，无法确认完整列表；请联系管理员缩小查询范围', 503);
   }
 
   private async authorizedBrandAccounts(accountNo: string) {
@@ -959,6 +1029,10 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     });
     const addedAssets: any[] = [];
     const nextComponents = { ...components };
+    // Tencent rejects these two mutually exclusive link components. Older
+    // queued payloads may contain an auto-filled text link alongside the
+    // operator's chosen image-text link; keep the chosen image-text link.
+    if (nextComponents.mini_card_link?.length && nextComponents.text_link?.length) delete nextComponents.text_link;
     // 管理后台仅展示并选择新版 brand。腾讯部分视频号版位仍会在提交接口
     // 强制校验 wechat_channels，因此从新版品牌形象中的 username 自动匹配并
     // 补齐平台兼容字段，不再要求用户额外选择旧组件。
@@ -992,7 +1066,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     // 腾讯要求主落地页 page_spec/page_id 与文字链 link_page_spec/page_id 完全一致。
     // 旧逻辑只在缺少文字链时补齐，用户选中不匹配的文字链会直接触发 31050。
     // 这里从本次已选组件或账户快照中重新匹配同一 page_id，避免提交无效组合。
-    if (!currentTextLink || (landingPageId && currentTextLinkPageId !== landingPageId)) {
+    if (!nextComponents.mini_card_link?.length && (!currentTextLink || (landingPageId && currentTextLinkPageId !== landingPageId))) {
       const textLink = this.matchPlacementComponent(selectedAssets, 'text_link', task.accountId, landingPageId)
         || this.matchPlacementComponent(candidates, 'text_link', task.accountId, landingPageId);
       if (!textLink) throw new BusinessException(400870, `视频号版位缺少与当前落地页${landingPageId ? `（page_id：${landingPageId}）` : ''}匹配的文字链组件，请同步账户组件或更换落地页后创建批次`, 400);
@@ -1079,6 +1153,27 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     return pageId === undefined || pageId === null ? null : String(pageId);
   }
 
+  private async landingPageNameFromTencent(accountNo: string, pageId: string): Promise<string | null> {
+    const cacheKey = `${accountNo}:${pageId}`;
+    const cached = this.landingPageNameCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.name;
+    let name: string | null = null;
+    try {
+      const response = await this.sync.tencentApi('GET', '/official_landing_page_detail/get', accountNo, {
+        page_id: this.safeInteger(pageId, '落地页 ID'),
+      });
+      const detail = response.data as PlatformRecord;
+      if (String(detail?.page_id || '') === pageId) {
+        const value = detail?.page_config?.page_name || detail?.page_config?.page_title;
+        if (typeof value === 'string' && value.trim()) name = value.trim();
+      }
+    } catch {
+      // A retired page or missing permission must not break the asset list.
+    }
+    this.landingPageNameCache.set(cacheKey, { name, expiresAt: Date.now() + (name ? 15 : 2) * 60_000 });
+    return name;
+  }
+
   private materialSnapshotEntry(asset: any, targetAccountId: string) {
     return {
       id: asset.id, type: asset.assetType, source: asset.originAccountId === targetAccountId ? 'ACCOUNT' : 'BUSINESS_UNIT',
@@ -1093,6 +1188,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     // advertises that capacity. The per-field minimum/maximum below is the
     // single source of truth; fixed components remain constrained by max=1.
     void dynamicType;
+    if (components.mini_card_link?.length && components.text_link?.length) throw new BusinessException(400876, '图文链接和文字链不能同时使用，请只保留一种', 400);
     for (const requirement of requirements) {
       const field = String(requirement.path || requirement.name || '').split('.').pop() || '';
       if (!CREATIVE_COMPONENT_FIELDS.has(field)) continue;
@@ -1119,14 +1215,20 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       && (Boolean(components.wechat_channels?.length)
         || (components.brand || []).some((component: any) => component?.value?.jump_info?.page_type === 'PAGE_TYPE_WECHAT_CHANNELS_PROFILE'));
     if (!channelPlacement || !this.templateUsesVideo(template)) return;
-    if (!components.text_link?.length) throw new BusinessException(400870, '视频号版位需填写营销组件中的文字链', 400);
+    if (!components.text_link?.length && !components.mini_card_link?.length) throw new BusinessException(400870, '视频号版位需填写图文链接或文字链组件', 400);
+    if (components.text_link?.length && components.mini_card_link?.length) throw new BusinessException(400876, '图文链接和文字链不能同时使用，请只保留一种', 400);
     if (!components.floating_zone?.length) throw new BusinessException(400871, '视频号版位必填营销组件中的浮层卡片', 400);
     const landingPageId = this.officialLandingPageId(components.main_jump_info?.[0]);
-    const mismatchedTextLink = components.text_link.find((component) => {
+    const mismatchedTextLink = components.text_link?.find((component) => {
       const textLinkPageId = this.officialLandingPageId(component);
       return landingPageId && textLinkPageId && textLinkPageId !== landingPageId;
     });
     if (mismatchedTextLink) throw new BusinessException(400874, `文字链落地页必须与主落地页一致（当前主落地页 page_id：${landingPageId}）`, 400);
+    const mismatchedMiniCard = components.mini_card_link?.find((component) => {
+      const linkedPageId = this.officialLandingPageId(component);
+      return landingPageId && linkedPageId && linkedPageId !== landingPageId;
+    });
+    if (mismatchedMiniCard) throw new BusinessException(400874, `图文链接落地页必须与主落地页一致（当前主落地页 page_id：${landingPageId}）`, 400);
   }
 
   private templateUsesVideo(template: PlatformRecord) {
@@ -1309,7 +1411,11 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const payload = payloadJson && typeof payloadJson === 'object' ? payloadJson as PlatformRecord : {};
     const component = payload.component && typeof payload.component === 'object' ? payload.component as PlatformRecord : {};
     const value = component.value && typeof component.value === 'object' ? component.value as PlatformRecord : {};
-    return Array.isArray(value.list) ? value.list.length : 0;
+    if (!Array.isArray(value.list)) return 0;
+    // Tencent also uses value.list for labels and other components; those are
+    // not nine-image bundles and must not override their displayed copy.
+    return value.list.every((item) => item && typeof item === 'object'
+      && ('image_id' in item || 'image_url' in item)) ? value.list.length : 0;
   }
   private requestedAssetMatches(assetType: string | undefined, family: AssetFamily, field: string) {
     if (!assetType) return true;
@@ -1326,15 +1432,16 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(value);
     };
     const toMap = (items: Array<{ id: string; metrics?: { spend: number } | null }>) => new Map(items.map((item) => [String(item.id), Number(item.metrics?.spend || 0)]));
+    const toCostMap = (items: Array<{ id: string; metrics?: { targetConversionCost?: number | null } | null }>) => new Map(items.filter((item) => item.metrics?.targetConversionCost !== null && item.metrics?.targetConversionCost !== undefined).map((item) => [String(item.id), Number(item.metrics?.targetConversionCost)]));
     try {
       const [seven, fifteen] = await Promise.all([
         this.sync.fetchMaterialAnalysis('TENCENT_ADS', accountNo, date(6), date(0)),
         this.sync.fetchMaterialAnalysis('TENCENT_ADS', accountNo, date(14), date(0)),
       ]);
-      return { seven: toMap(seven.items), fifteen: toMap(fifteen.items), available: true };
+      return { seven: toMap(seven.items), fifteen: toMap(fifteen.items), targetConversionCost: toCostMap(seven.items), available: true };
     } catch (error) {
       this.logger.warn(`读取腾讯素材近7/15天消费失败: ${error instanceof Error ? error.message : 'unknown'}`);
-      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), available: false };
+      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), targetConversionCost: new Map<string, number>(), available: false };
     }
   }
   private async componentSpendWindows(accountNo: string, organizationId: string) {
@@ -1343,17 +1450,25 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(value);
     };
     const fetch = async (daysAgo: number) => {
-      const result = new Map<string, number>();
+      const result = new Map<string, { spend: number; reportedCost: number | null }>();
       for (let page = 1; page <= 50; page += 1) {
-        const response = await this.sync.tencentApi('GET', '/daily_reports/get', accountNo, {
+        const reportQuery = {
           organization_id: this.safeInteger(organizationId, '腾讯业务单元 ID'),
           level: 'REPORT_LEVEL_COMPONENT',
           date_range: JSON.stringify({ start_date: date(daysAgo), end_date: date(0) }),
           group_by: JSON.stringify(['component_id']),
-          fields: JSON.stringify(['component_id', 'component_type', 'cost']),
+          fields: JSON.stringify(['component_id', 'component_type', 'cost', 'conversions_cost']),
           page,
           page_size: 100,
-        }, false);
+        };
+        let response;
+        try {
+          response = await this.sync.tencentApi('GET', '/daily_reports/get', accountNo, reportQuery, false);
+        } catch {
+          response = await this.sync.tencentApi('GET', '/daily_reports/get', accountNo, {
+            ...reportQuery, fields: JSON.stringify(['component_id', 'component_type', 'cost']),
+          }, false);
+        }
         const rows = this.rows(response.data);
         for (const row of rows) {
           const dimensions = row.dimensions && typeof row.dimensions === 'object' ? row.dimensions as PlatformRecord : {};
@@ -1362,7 +1477,9 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
           if (componentId === undefined || componentId === null) continue;
           const spend = Number(row.cost ?? metrics.cost ?? 0) / 100;
           const key = String(componentId);
-          result.set(key, (result.get(key) || 0) + spend);
+          const previous = result.get(key) || { spend: 0, reportedCost: null };
+          const reported = row.conversions_cost ?? metrics.conversions_cost;
+          result.set(key, { spend: previous.spend + spend, reportedCost: reported === undefined || reported === null || !Number.isFinite(Number(reported)) ? previous.reportedCost : Number(reported) / 100 });
         }
         const totalPage = Number((response.data as PlatformRecord)?.page_info?.total_page || 0);
         if (!rows.length || (totalPage > 0 ? page >= totalPage : rows.length < 100)) break;
@@ -1371,10 +1488,12 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     };
     try {
       const [seven, fifteen] = await Promise.all([fetch(6), fetch(14)]);
-      return { seven, fifteen, available: true };
+      const spending = (values: typeof seven) => new Map([...values].map(([id, item]) => [id, item.spend]));
+      const targetConversionCost = new Map([...seven].filter(([, item]) => item.reportedCost !== null).map(([id, item]) => [id, Number(item.reportedCost)]));
+      return { seven: spending(seven), fifteen: spending(fifteen), targetConversionCost, available: true };
     } catch (error) {
       this.logger.warn(`读取腾讯文案组件近7/15天消费失败: ${error instanceof Error ? error.message : 'unknown'}`);
-      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), available: false };
+      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), targetConversionCost: new Map<string, number>(), available: false };
     }
   }
   private async maxBatchSize() { const config = await this.prisma.systemConfig.findUnique({ where: { key: 'promotionCreativeBatchMax' } }); const value = Number((config?.valueJson as any)?.value || 50); return Math.min(100, Math.max(1, Number.isFinite(value) ? Math.round(value) : 50)); }
@@ -1526,6 +1645,10 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
   private componentContent(field: string | null, component: unknown, fallback: string) {
     const record = component && typeof component === 'object' ? component as PlatformRecord : {};
     const value = record.value && typeof record.value === 'object' ? record.value as PlatformRecord : {};
+    if (field === 'label') {
+      const labels = this.labelTexts(component);
+      if (labels.length) return labels.join(' · ');
+    }
     const preferredKeys = field === 'brand' || field === 'channels_brand' || field === 'wechat_channels'
       ? ['brand_name', 'wechat_channels_account_name', 'wechat_official_account_name', 'username', 'nickname']
       : field === 'text_link'
@@ -1554,6 +1677,24 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     }
     if (field === 'main_jump_info') return fallback;
     return fallback;
+  }
+
+  private labelTexts(component: unknown): string[] {
+    const record = component && typeof component === 'object' ? component as PlatformRecord : {};
+    const value = record.value && typeof record.value === 'object' ? record.value as PlatformRecord : {};
+    const texts: string[] = [];
+    const append = (item: unknown) => {
+      if (typeof item === 'string' && item.trim()) { texts.push(item.trim()); return; }
+      if (!item || typeof item !== 'object') return;
+      const label = item as PlatformRecord;
+      const content = label.display_content || label.label_content || label.label_text || label.content || label.text;
+      if (typeof content === 'string' && content.trim()) texts.push(content.trim());
+    };
+    for (const key of ['list', 'label_list', 'labels', 'label_content_list']) {
+      if (Array.isArray(value[key])) value[key].forEach(append);
+    }
+    append(value);
+    return [...new Set(texts)];
   }
   private textLinkCopy(type: string) {
     const labels: Record<string, string> = {

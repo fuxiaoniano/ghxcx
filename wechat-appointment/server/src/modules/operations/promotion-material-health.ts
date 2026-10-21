@@ -5,6 +5,8 @@ export type PromotionMaterialMetrics = {
   impressions: number;
   clicks: number;
   conversions: number;
+  /** Tencent daily report's conversions_cost, in yuan; absent when not returned. */
+  targetConversionCost?: number | null;
 };
 
 export type PromotionMaterialInput = {

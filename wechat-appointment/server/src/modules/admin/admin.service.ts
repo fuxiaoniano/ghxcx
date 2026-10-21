@@ -39,7 +39,7 @@ import {
 } from '../configs/configs.service';
 import { WechatOfficialAccountService } from '../wechat-official-account/wechat-official-account.service';
 import { FollowupForwarderService } from '../followup-forwarder/followup-forwarder.service';
-import { ADMIN_PERMISSIONS, AdminLoginDto, CreateLandingPageDto } from './dto';
+import { ADMIN_PERMISSIONS, AdminLoginDto, ChangeOwnPasswordDto, CreateLandingPageDto } from './dto';
 import { DataScopeService } from '../../common/data-scope/data-scope.service';
 
 dayjs.extend(utc);
@@ -114,6 +114,37 @@ export class AdminService {
         teamId: admin.teamId
       }
     };
+  }
+
+  async changeOwnPassword(dto: ChangeOwnPasswordDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const failKey = `admin:password-change:fail:${user.adminUserId}:${ip || 'unknown'}`;
+    if (Number((await this.redis.get(failKey)) || 0) >= 5) {
+      throw new BusinessException(429501, '密码验证失败次数过多，请 15 分钟后再试', 429);
+    }
+    const admin = await this.prisma.adminUser.findUnique({ where: { id: user.adminUserId }, select: { id: true, passwordHash: true, status: true } });
+    if (!admin || admin.status !== AdminStatus.ACTIVE || !admin.passwordHash || !await bcrypt.compare(dto.currentPassword, admin.passwordHash)) {
+      await this.markLoginFailed(failKey);
+      throw new BusinessException(400501, '当前密码不正确', 400);
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BusinessException(400502, '新密码不能与当前密码相同', 400);
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    const changed = await this.prisma.adminUser.updateMany({ where: { id: admin.id, passwordHash: admin.passwordHash }, data: { passwordHash } });
+    if (changed.count !== 1) {
+      throw new BusinessException(409501, '密码已被其他操作修改，请刷新后重试', 409);
+    }
+    await this.redis.del(failKey);
+    await this.audit.create({
+      adminUserId: admin.id,
+      action: 'ADMIN_PASSWORD_CHANGED',
+      resourceType: 'admin_users',
+      resourceId: admin.id,
+      afterJson: { changed: true },
+      ip,
+      userAgent: this.ua(userAgent)
+    });
+    return { changed: true };
   }
 
   async createWechatLoginSession() {

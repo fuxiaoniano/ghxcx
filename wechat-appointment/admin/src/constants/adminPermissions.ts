@@ -1,10 +1,10 @@
 export const adminPermissionGroups = [
-  { label: '业务管理', items: [
-    { value: 'MANAGE_APPOINTMENTS', label: '旧版预约管理（兼容权限）', pages: '历史权限；启用后兼容开放业务管理页面' },
-    { value: 'BUSINESS_LEADS', label: '腾讯广告线索', pages: '业务管理 / 腾讯广告线索' },
-    { value: 'BUSINESS_APPOINTMENTS', label: '挂号管理', pages: '业务管理 / 挂号管理' },
-    { value: 'BUSINESS_USERS', label: '用户管理', pages: '业务管理 / 用户管理' },
-    { value: 'BUSINESS_NOTIFICATIONS', label: '通知记录', pages: '业务管理 / 通知记录' },
+  { label: '线索管理', items: [
+    { value: 'MANAGE_APPOINTMENTS', label: '旧版预约管理（兼容权限）', pages: '历史权限；启用后兼容开放线索管理页面' },
+    { value: 'BUSINESS_LEADS', label: '腾讯广告线索', pages: '线索管理 / 腾讯广告线索' },
+    { value: 'BUSINESS_APPOINTMENTS', label: '挂号管理', pages: '线索管理 / 挂号管理' },
+    { value: 'BUSINESS_USERS', label: '用户管理', pages: '线索管理 / 用户管理' },
+    { value: 'BUSINESS_NOTIFICATIONS', label: '通知记录', pages: '线索管理 / 通知记录' },
   ] },
   { label: '手机号与隐私权限', items: [
     { value: 'VIEW_FULL_PHONE', label: '查看完整手机号', pages: '预约、线索及网咨详情' },
@@ -54,13 +54,14 @@ export const adminPermissionGroups = [
   { label: '推广运营', items: [
     { value: 'PROMOTION_OPERATIONS', label: '账户与素材分析', pages: '推广运营 / 账户健康、素材分析' },
   ] },
-  { label: '内容管理', items: [
-    { value: 'CONTENT_HOME', label: '首页管理', pages: '内容管理 / 首页管理' },
-    { value: 'CONTENT_DEPARTMENTS', label: '科室与项目', pages: '内容管理 / 科室与项目' },
-    { value: 'CONTENT_DOCTORS', label: '医生与出诊', pages: '内容管理 / 医生与出诊' },
-    { value: 'CONTENT_PACKAGES', label: '套餐管理', pages: '内容管理 / 套餐管理' },
-    { value: 'CONTENT_MEDIA', label: '图片库', pages: '内容管理 / 图片库' },
-    { value: 'CONTENT_LINKS', label: '页面跳转链接', pages: '内容管理 / 页面跳转链接' },
+  { label: '小程序页', items: [
+    { value: 'CONTENT_HOME', label: '首页管理', pages: '小程序页 / 首页管理' },
+    { value: 'CONTENT_DEPARTMENTS', label: '科室与项目', pages: '小程序页 / 科室与项目' },
+    { value: 'CONTENT_DOCTORS', label: '医生与出诊', pages: '小程序页 / 医生与出诊' },
+    { value: 'CONTENT_PACKAGES', label: '套餐管理', pages: '小程序页 / 套餐管理' },
+    { value: 'CONTENT_MEDIA', label: '图片库', pages: '小程序页 / 图片库' },
+    { value: 'CONTENT_LINKS', label: '页面跳转链接', pages: '小程序页 / 页面跳转链接' },
+    { value: 'SYSTEM_CONFIGS', label: '留资页面', pages: '小程序页 / 留资页面' },
   ] },
   { label: '官网内容', items: [
     { value: 'WEBSITE_SETTINGS', label: '官网设置', pages: '官网内容 / 官网设置' },
@@ -70,12 +71,11 @@ export const adminPermissionGroups = [
   { label: '微信运营', items: [
     { value: 'WECHAT_MENU', label: '公众号菜单', pages: '微信运营 / 公众号菜单' },
     { value: 'WECHAT_AUTO_REPLY', label: '自动回复', pages: '微信运营 / 自动回复' },
+    { value: 'SYSTEM_OFFICIAL_BINDING', label: '公众号绑定', pages: '微信运营 / 公众号绑定' },
   ] },
   { label: '系统管理', items: [
-    { value: 'SYSTEM_MEMBERS', label: '成员与预约通知', pages: '系统管理 / 成员与预约通知' },
+    { value: 'SYSTEM_MEMBERS', label: '成员管理与预约通知', pages: '系统管理 / 成员管理、预约通知' },
     { value: 'SYSTEM_ROLES', label: '角色管理', pages: '系统管理 / 角色管理' },
-    { value: 'SYSTEM_OFFICIAL_BINDING', label: '公众号绑定', pages: '系统管理 / 公众号绑定' },
-    { value: 'SYSTEM_CONFIGS', label: '系统配置', pages: '系统管理 / 系统配置' },
     { value: 'SYSTEM_FOLLOWUP', label: '回访接口', pages: '系统管理 / 回访接口' },
     { value: 'SYSTEM_WEBSITE_ANALYTICS', label: '官网浏览统计', pages: '系统管理 / 官网浏览统计' },
     { value: 'SYSTEM_AUDIT', label: '审计日志', pages: '系统管理 / 审计日志' },

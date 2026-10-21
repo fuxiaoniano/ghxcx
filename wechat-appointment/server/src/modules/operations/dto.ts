@@ -24,6 +24,12 @@ export class PromotionAccountCredentialDto {
   @IsOptional() @IsBoolean() clearUserToken?: boolean;
 }
 
+export class TencentUserTokenDto {
+  @IsOptional() @IsString() @MaxLength(4000) userToken?: string;
+  @IsOptional() @IsDateString() userTokenExpiresAt?: string;
+  @IsOptional() @IsBoolean() clearUserToken?: boolean;
+}
+
 export class PromotionAccountGrantItemDto {
   @IsString() @MaxLength(32) adminUserId!: string;
   @IsBoolean() canViewData!: boolean;
@@ -165,7 +171,7 @@ export class PromotionCreativeAssetQueryDto extends PromotionCreativePagedQueryD
   @IsOptional() @IsString() @Matches(/^\d+$/) @MaxLength(80) templateId?: string;
   @IsOptional() @IsIn(['DELIVERY_MODE_COMPONENT', 'DELIVERY_MODE_CUSTOMIZE']) deliveryMode?: 'DELIVERY_MODE_COMPONENT' | 'DELIVERY_MODE_CUSTOMIZE';
   @IsOptional() @IsIn(['DYNAMIC_CREATIVE_TYPE_COMMON', 'DYNAMIC_CREATIVE_TYPE_PROGRAM']) dynamicCreativeType?: 'DYNAMIC_CREATIVE_TYPE_COMMON' | 'DYNAMIC_CREATIVE_TYPE_PROGRAM';
-  @IsOptional() @IsIn(['CREATED_TIME', 'NAME', 'SPEND_7_DAYS', 'SPEND_15_DAYS', 'STATUS']) sortBy?: 'CREATED_TIME' | 'NAME' | 'SPEND_7_DAYS' | 'SPEND_15_DAYS' | 'STATUS';
+  @IsOptional() @IsIn(['CREATED_TIME', 'NAME', 'SPEND_7_DAYS', 'SPEND_15_DAYS', 'TARGET_CONVERSION_COST', 'STATUS']) sortBy?: 'CREATED_TIME' | 'NAME' | 'SPEND_7_DAYS' | 'SPEND_15_DAYS' | 'TARGET_CONVERSION_COST' | 'STATUS';
   @IsOptional() @IsIn(['ASC', 'DESC']) sortOrder?: 'ASC' | 'DESC';
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() refresh?: boolean;
 }
@@ -233,12 +239,13 @@ export class MultiAccountCreativeTargetDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @IsString({ each: true }) @Matches(/^\d+$/, { each: true }) adgroupIds!: string[];
   @IsOptional() @IsString() @Matches(/^\d+$/) @MaxLength(80) templateId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(30) @ValidateNested({ each: true }) @Type(() => MultiAccountCreativeComponentOverrideDto) componentOverrides?: MultiAccountCreativeComponentOverrideDto[];
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) @MaxLength(80, { each: true }) disabledDefaultComponentTypes?: string[];
   @IsOptional() @IsString() @MaxLength(500) overrideReason?: string;
 }
 
 export class MultiAccountCreativeRulesDto {
   @Type(() => Number) @IsInt() @Min(1) @Max(20) titleCount!: number;
-  @Type(() => Number) @IsInt() @Min(1) @Max(20) videoCount!: number;
+  @Type(() => Number) @IsInt() @Min(0) @Max(20) videoCount!: number;
   @Type(() => Number) @IsInt() @Min(0) @Max(20) imageCount!: number;
   @Type(() => Number) @IsInt() @Min(1) @Max(50) maxPerAdgroup!: number;
   @Type(() => Number) @IsInt() @Min(1) @Max(200) maxPerAccount!: number;

@@ -26,6 +26,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { validateStoredImageUpload } from '../../common/utils/validate-image-upload';
 import {
   AssignAppointmentDto,
+  ChangeOwnPasswordDto,
   CreateAdminRoleDefinitionDto,
   CreateAdminUserDto,
   CreateAdminTeamDto,
@@ -59,6 +60,11 @@ const allowedImageExts = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 @Controller('/api/admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
+
+  @Post('/account/change-password')
+  changeOwnPassword(@Body() dto: ChangeOwnPasswordDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.changeOwnPassword(dto, user, request.ip, request.headers['user-agent']);
+  }
 
   @Get('/dashboard')
   dashboard(@CurrentUser() user: AdminCurrentUser) {

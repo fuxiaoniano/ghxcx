@@ -1,6 +1,6 @@
 <template>
   <div class="page-heading">
-    <h1 class="page-title">系统配置</h1>
+    <h1 class="page-title">留资页面</h1>
     <p>管理独立挂号页、表单文案和门店信息</p>
   </div>
 

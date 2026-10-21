@@ -353,6 +353,7 @@ model AdminUser {
   promotionAccountGrants     PromotionAccountAccessGrant[] @relation("PromotionAccountGrantRecipient")
   grantedPromotionAccounts  PromotionAccountAccessGrant[] @relation("PromotionAccountGrantIssuer")
   updatedPromotionCredentials PromotionAccountCredential[] @relation("PromotionAccountCredentialUpdater")
+  tencentUserToken           TencentUserToken?
   ownedConsultations         ConsultationForm[]          @relation("ConsultationOwner")
   createdConsultations       ConsultationForm[]          @relation("ConsultationCreator")
   operatedConsultations      ConsultationForm[]          @relation("ConsultationLastOperator")
@@ -800,6 +801,18 @@ model PromotionAccountCredential {
 
   @@index([updatedByAdminId])
   @@map("promotion_account_credentials")
+}
+
+/// Tencent real-name User Token belongs to the authenticated backend user, not an ad account.
+model TencentUserToken {
+  adminUserId    String    @id @db.VarChar(32)
+  tokenCipher    String    @db.Text
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  adminUser      AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@map("tencent_user_tokens")
 }
 
 /// Grants are issued only by administrators; recipients never receive credential access.

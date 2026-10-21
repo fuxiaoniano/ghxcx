@@ -54,6 +54,17 @@ export class AdminLoginDto {
   password!: string;
 }
 
+export class ChangeOwnPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  newPassword!: string;
+}
+
 export class UpdateAppointmentStatusDto {
   @IsIn(Object.values(AppointmentStatus))
   status!: AppointmentStatus;

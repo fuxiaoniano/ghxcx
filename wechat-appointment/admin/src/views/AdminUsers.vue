@@ -1,29 +1,13 @@
 <template>
   <div class="page-heading">
     <div>
-      <h1 class="page-title">成员与通知</h1>
+      <h1 class="page-title">成员管理</h1>
       <p>成员可使用账号密码登录；微信绑定为可选，绑定后可扫码登录并接收预约通知。</p>
     </div>
     <el-button type="primary" @click="openCreateDialog">
       <el-icon><Plus /></el-icon>添加成员
     </el-button>
   </div>
-
-  <section class="content-panel notify-panel">
-    <div class="section-heading">
-      <div>
-        <h2>预约通知</h2>
-        <p>总开关关闭后，所有成员都不会收到新预约通知。</p>
-      </div>
-      <el-switch v-model="notifyForm.enabled" inline-prompt active-text="已启用" inactive-text="已关闭" />
-    </div>
-    <el-form class="notify-form" label-position="top">
-      <el-form-item label="公众号消息模板 ID">
-        <el-input v-model="notifyForm.templateId" placeholder="请输入用于工作人员预约提醒的模板 ID" />
-      </el-form-item>
-      <el-button type="primary" :loading="savingNotify" @click="saveNotifyConfig">保存通知设置</el-button>
-    </el-form>
-  </section>
 
   <section class="content-panel">
     <div class="section-heading"><div><h2>团队管理</h2><p>团队层级用于 TEAM 数据范围；成员调岗后可见范围按当前主团队即时重新计算。</p></div><el-button type="primary" @click="openTeam()">新增团队</el-button></div>
@@ -232,9 +216,7 @@ import {
   getAdminUsers,
   getAdminRoles,
   getAdminWechatInvitations,
-  getAppointmentNotifyConfig,
   updateAdminUser,
-  updateAppointmentNotifyConfig
 } from '../api/admin';
 import { adminPermissionGroups, adminPermissionOptions } from '../constants/adminPermissions';
 import { useAuthStore } from '../stores/auth';
@@ -253,7 +235,6 @@ const createdInvite = ref<AdminWechatInviteItem | null>(null);
 const total = ref(0);
 const loading = ref(false);
 const savingMember = ref(false);
-const savingNotify = ref(false);
 const memberDialogVisible = ref(false);
 const bindDialogVisible = ref(false);
 const teamDialogVisible = ref(false);
@@ -263,7 +244,6 @@ const deletingMember = ref<AdminUserItem|null>(null);
 const successorAdminId = ref('');
 const handoverSummary = ref<any>(null);
 const query = reactive({ page: 1, pageSize: 20, keyword: '' });
-const notifyForm = reactive({ enabled: true, templateId: '' });
 const memberForm = reactive({
   id: '',
   username: '',
@@ -291,9 +271,7 @@ async function loadMembers() {
 }
 
 async function loadAll() {
-  const [notify, pending, roles, teamRows, allMembers] = await Promise.all([getAppointmentNotifyConfig(), getAdminWechatInvitations(), getAdminRoles(), getAdminTeams(), getAdminUsers({ page: 1, pageSize: 200 })]);
-  notifyForm.enabled = notify.enabled;
-  notifyForm.templateId = notify.templateId || '';
+  const [pending, roles, teamRows, allMembers] = await Promise.all([getAdminWechatInvitations(), getAdminRoles(), getAdminTeams(), getAdminUsers({ page: 1, pageSize: 200 })]);
   invitations.value = pending;
   customRoles.value = roles;
   teams.value = teamRows;
@@ -408,16 +386,6 @@ async function saveMember() {
     }
   } finally {
     savingMember.value = false;
-  }
-}
-
-async function saveNotifyConfig() {
-  savingNotify.value = true;
-  try {
-    await updateAppointmentNotifyConfig({ enabled: notifyForm.enabled, templateId: notifyForm.templateId.trim() });
-    ElMessage.success('预约通知设置已保存');
-  } finally {
-    savingNotify.value = false;
   }
 }
 

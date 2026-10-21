@@ -43,4 +43,18 @@ describe('multi-account creative combinations', () => {
     expect(() => generateMultiCreativeCombinations('SEQUENTIAL', { titles: [], videos: ['v1'], images: [] }, rules))
       .toThrow('标题已选 0 项');
   });
+
+  it('creates image-only creatives without dividing by zero in sequential mode', () => {
+    const imageRules = { ...rules, videoCount: 0, imageCount: 1 };
+    const result = generateMultiCreativeCombinations('SEQUENTIAL', { titles: ['t1', 't2'], videos: [], images: ['i1', 'i2'] }, imageRules);
+    expect(result).toEqual([
+      { titleIds: ['t1'], videoIds: [], imageIds: ['i1'] },
+      { titleIds: ['t2'], videoIds: [], imageIds: ['i2'] },
+    ]);
+  });
+
+  it('blocks a creative with neither image nor video', () => {
+    expect(() => generateMultiCreativeCombinations('SEQUENTIAL', { titles: ['t1'], videos: [], images: [] }, { ...rules, videoCount: 0, imageCount: 0 }))
+      .toThrow('图片或视频');
+  });
 });

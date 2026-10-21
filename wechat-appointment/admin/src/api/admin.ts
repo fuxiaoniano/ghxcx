@@ -384,6 +384,7 @@ export interface PromotionAccountItem {
   project: '重庆' | '绵阳';
   platform: string;
   accountNo?: string | null;
+  owner?: { id: string; username: string; nickname: string | null } | null;
   status: 'ACTIVE' | 'DISABLED';
   remark?: string | null;
   canManageCredentials?: boolean;
@@ -544,10 +545,10 @@ export interface PromotionCreativeTemplate {
 
 export interface PromotionCreativeAsset {
   id: string; source: 'ACCOUNT' | 'BUSINESS_UNIT'; sourceAccount: { id: string; name: string; accountNo?: string | null; project: string };
-  businessUnitKey: string; platformAssetId: string; platformAssetKind: 'COMPONENT' | 'VIDEO' | 'IMAGE' | 'REFERENCE'; type: 'TITLE' | 'VIDEO' | 'IMAGE' | 'LANDING_PAGE' | 'MARKETING' | 'BRAND' | 'WECHAT_CHANNELS' | 'CONVERSION' | 'OTHER';
-  componentField?: string | null; name: string; contentSummary?: string | null; previewUrl?: string | null; status?: string | null; auditStatus?: string | null;
+  businessUnitKey: string; platformAssetId: string; platformAssetKind: 'COMPONENT' | 'VIDEO' | 'IMAGE' | 'REFERENCE'; type: 'TITLE' | 'VIDEO' | 'IMAGE' | 'LANDING_PAGE' | 'MARKETING' | 'BRAND' | 'WECHAT_CHANNELS' | 'CONVERSION' | 'ACTION_BUTTON' | 'MINI_CARD_LINK' | 'TEXT_LINK' | 'FLOATING_ZONE' | 'LABEL' | 'SOCIAL_SKILL' | 'OTHER';
+  componentField?: string | null; name: string; contentSummary?: string | null; labelTexts?: string[]; previewUrl?: string | null; status?: string | null; auditStatus?: string | null;
   componentSubType?: string | null; bundleItemCount?: number | null;
-  createdTime?: string | null; dimensions?: string | null; spend7Days?: number | null; spend15Days?: number | null; usable: boolean; unavailableReason?: string | null;
+  createdTime?: string | null; dimensions?: string | null; spend7Days?: number | null; spend15Days?: number | null; targetConversionCost7Days?: number | null; usable: boolean; unavailableReason?: string | null;
   linkedLandingPage?: { pageId: string; name: string; platformAssetId: string } | null;
 }
 
@@ -572,7 +573,7 @@ export interface PromotionCreativeBatchTask {
 
 export interface MultiAccountCreativePayload {
   assetSnapshotIds: string[];
-  targets: Array<{ accountId: string; adgroupIds: string[]; templateId?: string; componentOverrides?: Array<{ componentType: string; configId: string }>; overrideReason?: string }>;
+  targets: Array<{ accountId: string; adgroupIds: string[]; templateId?: string; componentOverrides?: Array<{ componentType: string; configId: string }>; overrideReason?: string; disabledDefaultComponentTypes?: string[] }>;
   deliveryMode: 'DELIVERY_MODE_COMPONENT' | 'DELIVERY_MODE_CUSTOMIZE';
   creativeType: 'DYNAMIC_CREATIVE_TYPE_COMMON' | 'DYNAMIC_CREATIVE_TYPE_PROGRAM';
   combinationMode: 'CARTESIAN' | 'RANDOM_LIMITED' | 'SEQUENTIAL';
@@ -721,6 +722,10 @@ export interface PackageItem extends ManagedContent {
 
 export function adminLogin(data: { username: string; password: string }) {
   return http.post<unknown, { token: string; user: AdminProfile }>('/api/admin/auth/login', data);
+}
+
+export function changeOwnPassword(data: { currentPassword: string; newPassword: string }) {
+  return http.post<unknown, { changed: boolean }>('/api/admin/account/change-password', data);
 }
 
 export function createAdminWechatLoginSession() {
@@ -1003,6 +1008,9 @@ export const deletePromotionAccount = (id: string) => http.delete<unknown, { id:
 export interface PromotionAccountCredentialStatus { accountId?: string; clientId?: string; authorizedAccountId?: string | null; hasAccessToken: boolean; hasClientSecret: boolean; hasRefreshToken: boolean; hasUserToken: boolean; userTokenExpiresAt?: string | null; accessTokenExpiresAt?: string | null; refreshTokenExpiresAt?: string | null; lastValidatedAt?: string | null; }
 export const getPromotionAccountCredential = (id: string) => http.get<unknown, PromotionAccountCredentialStatus>(`${operationsBase}/accounts/${id}/credentials`);
 export const savePromotionAccountCredential = (id: string, data: { accessToken?: string; clientId?: string; clientSecret?: string; refreshToken?: string; userToken?: string; userTokenExpiresAt?: string; clearAccessToken?: boolean; clearClientSecret?: boolean; clearRefreshToken?: boolean; clearUserToken?: boolean }) => http.put<unknown, PromotionAccountCredentialStatus>(`${operationsBase}/accounts/${id}/credentials`, data);
+export interface TencentUserTokenStatus { hasUserToken: boolean; userTokenExpiresAt: string | null; }
+export const getMyTencentUserToken = () => http.get<unknown, TencentUserTokenStatus>(`${operationsBase}/my-tencent-user-token`);
+export const saveMyTencentUserToken = (data: { userToken?: string; userTokenExpiresAt?: string; clearUserToken?: boolean }) => http.put<unknown, TencentUserTokenStatus>(`${operationsBase}/my-tencent-user-token`, data);
 export interface PromotionAccountAccessGrantItem { adminUserId: string; username?: string; nickname?: string; role?: string; grant?: { canViewData: boolean; canViewMaterials: boolean; canViewCreatives: boolean; canCreateCreatives: boolean }; canViewData?: boolean; canViewMaterials?: boolean; canViewCreatives?: boolean; canCreateCreatives?: boolean; }
 export const getPromotionAccountAccessGrants = (id: string) => http.get<unknown, PromotionAccountAccessGrantItem[]>(`${operationsBase}/accounts/${id}/access-grants`);
 export const savePromotionAccountAccessGrants = (id: string, grants: Array<Pick<PromotionAccountAccessGrantItem, 'adminUserId' | 'canViewData' | 'canViewMaterials' | 'canViewCreatives' | 'canCreateCreatives'>>) => http.put<unknown, { accountId: string; grants: PromotionAccountAccessGrantItem[] }>(`${operationsBase}/accounts/${id}/access-grants`, { grants });

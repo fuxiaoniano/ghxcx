@@ -202,6 +202,140 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
       .not.toThrow();
   });
 
+  it('accepts a selected image-text link without auto-adding a mutually exclusive text link', async () => {
+    const localService = new PromotionCreativeBatchService({
+      promotionCreativeMaterialSnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+    } as any, {} as any, {} as any, {} as any) as any;
+    const page = { value: { jump_info: { page_spec: { official_spec: { page_id: '6532454271' } } } } };
+    const components = {
+      wechat_channels: [{ value: { username: 'dentist' } }],
+      brand: [{ value: { jump_info: { page_spec: { wechat_channels_profile_spec: { username: 'dentist' } } } } }],
+      main_jump_info: [{ value: { page_spec: { official_spec: { page_id: '6532454271' } } } }],
+      mini_card_link: [page], floating_zone: [{ value: { floating_zone_name: '活动' } }],
+    };
+    const template = { site_set: ['SITE_SET_CHANNELS'], creative_components: [{ name: 'video', required: true }] };
+    const result = await localService.upgradeLegacyChannelComponents({ creative_components: components },
+      { accountId: 'target', businessUnitKey: 'unit' }, [], template);
+    expect(result.payload.creative_components.mini_card_link).toEqual([page]);
+    expect(result.payload.creative_components.text_link).toBeUndefined();
+    expect(() => localService.validatePlacementDependencies(template, result.payload.creative_components)).not.toThrow();
+    expect(() => localService.validateTemplateComponents([], { ...components, text_link: [page] }, 'DYNAMIC_CREATIVE_TYPE_COMMON'))
+      .toThrow('不能同时使用');
+  });
+
+  it('reads a missing linked landing-page name from Tencent detail only for the matching page', async () => {
+    const api = jest.fn().mockResolvedValue({ data: { page_id: 6532454271, page_config: { page_name: '完整落地页名称' } } });
+    const localService = new PromotionCreativeBatchService({} as any, { tencentApi: api } as any, {} as any, {} as any) as any;
+    expect(await localService.landingPageNameFromTencent('123456', '6532454271')).toBe('完整落地页名称');
+    expect(await localService.landingPageNameFromTencent('123456', '6532454271')).toBe('完整落地页名称');
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(api).toHaveBeenCalledWith('GET', '/official_landing_page_detail/get', '123456', { page_id: 6532454271 });
+  });
+
+  it('shows only the current approved official landing page, not duplicate component snapshots', async () => {
+    const component = {
+      id: 'component-1', originAccountId: 'account-1', businessUnitKey: 'TENCENT_ACCOUNT:123456',
+      platformAssetId: '6532454271', platformAssetKind: 'REFERENCE', assetType: 'LANDING_PAGE',
+      componentField: 'main_jump_info', name: '完整落地页名称', isDeleted: false, status: 'LANDING_PAGE_STATUS_APPROVED', auditStatus: 'APPROVED',
+      platformCreatedAt: new Date('2026-09-29'), originAccount: { id: 'account-1', name: '测试账户', accountNo: '123456', project: '测试' },
+      payloadJson: { kind: 'COMPONENT', platformAssetScopes: ['ACCOUNT'], component: { value: { page_spec: { official_spec: { page_id: 6532454271 } } } } },
+    };
+    const reference = { platformAssetId: '6532454271', name: '完整落地页名称', payloadJson: { component: { value: { page_spec: { official_spec: { page_id: 6532454271 } } } } } };
+    const findMany = jest.fn().mockResolvedValueOnce([component]).mockResolvedValueOnce([reference]);
+    const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: { findMany } } as any, {} as any, {} as any, {} as any) as any;
+    jest.spyOn(localService, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456', project: '测试' });
+    jest.spyOn(localService, 'hasFreshAssetSnapshots').mockResolvedValue(true);
+    jest.spyOn(localService, 'syncAssets').mockResolvedValue(undefined);
+
+    const result = await localService.assets({ accountId: 'account-1', source: 'ACCOUNT', assetType: 'LANDING_PAGE' }, { role: 'SUPER_ADMIN' });
+    expect(result.list).toHaveLength(1);
+    expect(result.list[0]).toMatchObject({ name: '完整落地页名称', contentSummary: '完整落地页名称', linkedLandingPage: { pageId: '6532454271', name: '完整落地页名称' } });
+    expect(findMany.mock.calls[0][0].where).toMatchObject({ platformAssetKind: 'REFERENCE', status: 'LANDING_PAGE_STATUS_APPROVED' });
+    expect(findMany.mock.calls[1][0].where).toMatchObject({ originAccountId: 'account-1', platformAssetKind: 'REFERENCE' });
+  });
+
+  it('excludes obsolete component snapshots when Tencent no longer returns the page', async () => {
+    const component = {
+      id: 'component-1', originAccountId: 'account-1', businessUnitKey: 'TENCENT_ACCOUNT:123456',
+      platformAssetId: 'component-987', platformAssetKind: 'COMPONENT', assetType: 'LANDING_PAGE', componentField: 'main_jump_info',
+      name: '落地页_20260918', isDeleted: false, status: 'AVAILABLE', platformCreatedAt: new Date('2026-09-18'),
+      originAccount: { id: 'account-1', name: '测试账户', accountNo: '123456', project: '测试' },
+      payloadJson: { kind: 'COMPONENT', platformAssetScopes: ['ACCOUNT'], component: { value: { page_spec: { official_spec: { page_id: 6308377364 } } } } },
+    };
+    const findMany = jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: { findMany } } as any, {} as any, {} as any, {} as any) as any;
+    jest.spyOn(localService, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456', project: '测试' });
+    jest.spyOn(localService, 'hasFreshAssetSnapshots').mockResolvedValue(true);
+    jest.spyOn(localService, 'syncAssets').mockResolvedValue(undefined);
+    jest.spyOn(localService, 'landingPageNameFromTencent').mockResolvedValue(null);
+    const result = await localService.assets({ accountId: 'account-1', source: 'ACCOUNT', assetType: 'LANDING_PAGE' }, { role: 'SUPER_ADMIN' });
+    expect(result.list).toHaveLength(0);
+  });
+
+  it('reconciles stale account landing-page references only after a complete Tencent response', async () => {
+    const upsert = jest.fn(); const updateMany = jest.fn();
+    const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: {
+      findUnique: jest.fn().mockResolvedValue(null), upsert, updateMany,
+    } } as any, { tencentApi: jest.fn().mockResolvedValue({ data: { list: [{
+      page_id: 6577803211, page_name: '20261001-绵阳', page_status: 'LANDING_PAGE_STATUS_APPROVED',
+    }] } }) } as any, {} as any, {} as any) as any;
+    jest.spyOn(localService, 'tencentAssetRows').mockResolvedValue([]);
+    await localService.syncAssets({ id: 'account-1', accountNo: '123456', project: '测试' }, 'LANDING_PAGE');
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { originAccountId: 'account-1', platformAssetKind: 'REFERENCE', assetType: 'LANDING_PAGE', platformAssetId: { notIn: ['6577803211'] } },
+      data: { isDeleted: true },
+    });
+  });
+
+  it('returns real label copy even though Tencent groups labels as OTHER assets', async () => {
+    const label = {
+      id: 'label-1', originAccountId: 'account-1', businessUnitKey: 'TENCENT_ACCOUNT:123456',
+      platformAssetId: '987', platformAssetKind: 'COMPONENT', assetType: 'OTHER', componentField: 'label',
+      name: '标签组件', isDeleted: false, status: 'AVAILABLE', auditStatus: null,
+      platformCreatedAt: new Date('2026-09-29'),
+      originAccount: { id: 'account-1', name: '测试账户', accountNo: '123456', project: '测试' },
+      payloadJson: { kind: 'COMPONENT', platformAssetScopes: ['ACCOUNT'], component: { value: { list: [
+        { content: '品质种牙' }, { content: '免费查看优惠价' },
+      ] } } },
+    };
+    const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: {
+      findMany: jest.fn().mockResolvedValue([label]),
+    } } as any, {} as any, {} as any, {} as any) as any;
+    jest.spyOn(localService, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456', project: '测试' });
+    jest.spyOn(localService, 'hasFreshAssetSnapshots').mockResolvedValue(true);
+    jest.spyOn(localService, 'syncAssets').mockResolvedValue(new Set(['COMPONENT:987']));
+    const result = await localService.assets({ accountId: 'account-1', source: 'ACCOUNT', assetType: 'LABEL' }, { role: 'SUPER_ADMIN' });
+    expect(result.list[0]).toMatchObject({ componentField: 'label', labelTexts: ['品质种牙', '免费查看优惠价'], contentSummary: '品质种牙 · 免费查看优惠价' });
+  });
+
+  it('shows only live Tencent component IDs and removes duplicate component payloads', async () => {
+    const base = {
+      originAccountId: 'account-1', businessUnitKey: 'TENCENT_ACCOUNT:123456', platformAssetKind: 'COMPONENT', assetType: 'OTHER',
+      componentField: 'label', name: '标签文案', isDeleted: false, status: 'AVAILABLE', auditStatus: null,
+      platformCreatedAt: new Date('2026-09-29'), originAccount: { id: 'account-1', name: '测试账户', accountNo: '123456', project: '测试' },
+      payloadJson: { kind: 'COMPONENT', platformAssetScopes: ['ACCOUNT'], component: { value: { list: [{ content: '品质种牙' }] } } },
+    };
+    const rows = [
+      { ...base, id: 'current-1', platformAssetId: '101' },
+      { ...base, id: 'current-duplicate', platformAssetId: '102' },
+      { ...base, id: 'old-snapshot', platformAssetId: '103', name: '过期组件' },
+    ];
+    const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: {
+      findMany: jest.fn().mockResolvedValue(rows),
+    } } as any, {} as any, {} as any, {} as any) as any;
+    jest.spyOn(localService, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456', project: '测试' });
+    const sync = jest.spyOn(localService, 'syncAssets').mockResolvedValue(new Set(['COMPONENT:101', 'COMPONENT:102']));
+    const query = { accountId: 'account-1', source: 'ACCOUNT', assetType: 'LABEL' };
+    const first = await localService.assets(query, { role: 'SUPER_ADMIN' });
+    expect(first.pageInfo.totalNumber).toBe(1);
+    expect(first.list.map((item: any) => item.platformAssetId)).toEqual(['101']);
+    await localService.assets(query, { role: 'SUPER_ADMIN' });
+    expect(sync).toHaveBeenCalledTimes(1);
+    await localService.assets({ ...query, refresh: true }, { role: 'SUPER_ADMIN' });
+    expect(sync).toHaveBeenCalledTimes(2);
+  });
+
   it('does not require video-only floating cards for channel-branded large-image specifications', () => {
     const template = {
       site_set: ['SITE_SET_CHANNELS'],
@@ -367,6 +501,15 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
     expect(service.componentContent('text_link', { value: { link_name_type: 'VIEW_DETAILS' } }, '文字链组件')).toBe('查看详情');
     expect(service.componentContent('text_link', { value: { link_name_type: 'MORE_INFO' } }, '文字链组件')).toBe('了解更多');
     expect(service.componentContent('mini_card_link', { value: { mini_card_link_description: '在线查询种牙价格', mini_card_link_button_text: '查看详情' } }, '图文链接')).toBe('在线查询种牙价格 · 查看详情');
+    const label = { value: { list: [
+      { type: 'LABEL_TYPE_CUSTOMIZETEXT', content: '品质种牙' },
+      { type: 'LABEL_TYPE_CUSTOMIZETEXT', content: '大额补贴', display_content: '补贴活动' },
+      { type: 'LABEL_TYPE_CUSTOMIZETEXT', content: '报名享优惠价' },
+    ] } };
+    expect(service.labelTexts(label)).toEqual(['品质种牙', '补贴活动', '报名享优惠价']);
+    expect(service.componentContent('label', label, '标签_20260919')).toBe('品质种牙 · 补贴活动 · 报名享优惠价');
+    expect(service.labelTexts({ value: { label_list: [{ label_content: '当天种牙' }, { label_text: '医保咨询' }] } }))
+      .toEqual(['当天种牙', '医保咨询']);
   });
 
   it('labels authorized video-channel and official-account brand components distinctly', () => {

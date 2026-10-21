@@ -289,7 +289,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** 腾讯 Marketing API v3 统一服务端调用。凭证只在本服务内解密，11002 仅刷新一次。 */
-  async tencentApi(method: 'GET' | 'POST', path: string, accountNo: string, input: Record<string, unknown> = {}, injectAccountId = true) {
+  async tencentApi(method: 'GET' | 'POST', path: string, accountNo: string, input: Record<string, unknown> = {}, injectAccountId = true, actorAdminId?: string) {
     if (!/^\/[a-z0-9_/-]+$/i.test(path)) throw new TencentMarketingApiError('INVALID_PATH', '腾讯广告接口路径不合法');
     if (!/^\d+$/.test(accountNo)) throw new TencentMarketingApiError('INVALID_ACCOUNT_ID', '腾讯广告账户 ID 格式不正确');
     const accountId = Number(accountNo);
@@ -299,10 +299,15 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
     const { account, credential } = await this.accountCredentialByNo(accountNo, 'TENCENT_ADS');
     const auth = this.resolveTencentAuth(credential, config);
     const extra = auth.extra;
-    const userTokenExpired = Boolean(auth.userTokenExpiresAt && new Date(auth.userTokenExpiresAt).getTime() <= Date.now());
-    const userToken = auth.userTokenCipher && !userTokenExpired ? this.crypto.decryptText(auth.userTokenCipher) : '';
+    // An explicit task/request actor selects their own real-name token. Account
+    // ownership or administrator visibility must never select another user's token.
+    const sharedUserToken = actorAdminId ? await this.prisma.tencentUserToken.findUnique({ where: { adminUserId: actorAdminId } }) : null;
+    const userTokenCipher = sharedUserToken?.tokenCipher || auth.userTokenCipher;
+    const userTokenExpiresAt = sharedUserToken ? sharedUserToken.expiresAt : auth.userTokenExpiresAt;
+    const userTokenExpired = Boolean(userTokenExpiresAt && new Date(userTokenExpiresAt).getTime() <= Date.now());
+    const userToken = userTokenCipher && !userTokenExpired ? this.crypto.decryptText(userTokenCipher) : '';
     if (method === 'POST' && path === '/dynamic_creatives/add' && !userToken) {
-      throw new TencentMarketingApiError(userTokenExpired ? '11102' : '11101', userTokenExpired ? `账户 ${account.name} 的腾讯实名认证令牌（User Token）已过期，请在推广账户凭证中重新获取` : `账户 ${account.name} 缺少腾讯实名认证令牌（User Token），请在推广账户凭证中获取并保存`);
+      throw new TencentMarketingApiError(userTokenExpired ? '11102' : '11101', userTokenExpired ? '当前登录账号的腾讯 User Token 已过期，请重新扫码获取' : '当前登录账号缺少腾讯 User Token，请在推广账户页面扫码获取');
     }
     let token = auth.tokenCipher ? this.crypto.decryptText(auth.tokenCipher) : '';
     if (!token && extra.clientId && extra.clientSecretCipher && extra.refreshTokenCipher) token = await this.refreshTencentToken(extra, auth.target);
@@ -353,11 +358,22 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Safe status only: this method never returns ciphertext or plaintext credential values. */
-  credentialStatus(credential: any, config: any) {
+  async tencentAccountCredentialStatus(accountId: string, actorAdminId: string) {
+    const [credential, config, sharedUserToken] = await Promise.all([
+      this.prisma.promotionAccountCredential.findUnique({ where: { accountId } }),
+      this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } }),
+      this.prisma.tencentUserToken.findUnique({ where: { adminUserId: actorAdminId } }),
+    ]);
+    return { enabled: Boolean(config?.enabled), ...this.credentialStatus(credential, config, sharedUserToken) };
+  }
+
+  credentialStatus(credential: any, config: any, sharedUserToken?: { tokenCipher: string; expiresAt: Date | null } | null) {
     const auth = this.resolveTencentAuth(credential, config);
     const hasRefresh = Boolean(auth.extra.clientId && auth.extra.clientSecretCipher && auth.extra.refreshTokenCipher);
-    const userTokenExpired = Boolean(auth.userTokenExpiresAt && new Date(auth.userTokenExpiresAt).getTime() <= Date.now());
-    return { authorized: Boolean(auth.tokenCipher || hasRefresh), hasUserToken: Boolean(auth.userTokenCipher && !userTokenExpired), userTokenExpiresAt: auth.userTokenExpiresAt };
+    const tokenCipher = sharedUserToken?.tokenCipher || auth.userTokenCipher;
+    const expiresAt = sharedUserToken ? sharedUserToken.expiresAt : auth.userTokenExpiresAt;
+    const userTokenExpired = Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
+    return { authorized: Boolean(auth.tokenCipher || hasRefresh), hasUserToken: Boolean(tokenCipher && !userTokenExpired), userTokenExpiresAt: expiresAt };
   }
 
   private async rawTencentApi(method: 'GET' | 'POST', path: string, token: string, input: Record<string, unknown>, userToken = '') {
@@ -401,15 +417,26 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
       { type: 'IMAGE' as const, level: 'REPORT_LEVEL_MATERIAL_IMAGE' },
     ]) {
       try {
-        const payload = await this.platformGet('https://api.e.qq.com/v3.0/daily_reports/get', token, {
+        const reportQuery = {
           account_id: accountNo,
           level: definition.level,
           date_range: JSON.stringify({ start_date: dateFrom, end_date: dateTo }),
           group_by: JSON.stringify(['material_id']),
-          fields: JSON.stringify(['material_id', 'cost', 'view_count', 'valid_click_count', 'conversions_count']),
+          fields: JSON.stringify(['material_id', 'cost', 'view_count', 'valid_click_count', 'conversions_count', 'conversions_cost']),
           page: 1,
           page_size: 1000,
-        }, 'TENCENT_ADS');
+        };
+        let payload;
+        try {
+          payload = await this.platformGet('https://api.e.qq.com/v3.0/daily_reports/get', token, reportQuery, 'TENCENT_ADS');
+        } catch (error) {
+          if (error instanceof TencentMarketingApiError && error.code === '11002') throw error;
+          // Some Tencent account/report-level combinations reject this optional metric.
+          // Preserve the existing spend view; an unavailable conversion cost remains null.
+          payload = await this.platformGet('https://api.e.qq.com/v3.0/daily_reports/get', token, {
+            ...reportQuery, fields: JSON.stringify(['material_id', 'cost', 'view_count', 'valid_click_count', 'conversions_count']),
+          }, 'TENCENT_ADS');
+        }
         const rows = this.responseRows(payload);
         for (const row of rows) {
           const flat = this.flattenMetricRow(row);
@@ -424,6 +451,8 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
               impressions: Number(flat.view_count || 0),
               clicks: Number(flat.valid_click_count || 0),
               conversions: Number(flat.conversions_count || 0),
+              targetConversionCost: flat.conversions_cost === undefined || flat.conversions_cost === null || flat.conversions_cost === '' || !Number.isFinite(Number(flat.conversions_cost))
+                ? null : Number(flat.conversions_cost) / 100,
             },
           });
         }

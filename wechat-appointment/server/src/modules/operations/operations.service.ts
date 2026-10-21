@@ -10,6 +10,7 @@ import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountCred
 import { PromotionDataSyncService } from './promotion-data-sync.service';
 import { DataScopeService } from '../../common/data-scope/data-scope.service';
 import { PromotionAccountAccessService, PromotionAccountCapability } from '../../common/data-scope/promotion-account-access.service';
+import { TencentUserTokenDto } from './dto';
 import { aggregatePromotionHealth, diagnosePromotionHealth } from './promotion-health';
 import { diagnosePromotionMaterial, PromotionMaterialType } from './promotion-material-health';
 
@@ -58,7 +59,11 @@ export class OperationsService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditLogsService, private readonly crypto: CryptoService, private readonly syncService: PromotionDataSyncService, @Optional() private readonly dataScopes?: DataScopeService, @Optional() private readonly promotionAccess?: PromotionAccountAccessService) {}
 
   async accounts(user?: AdminCurrentUser) {
-    const rows = await this.prisma.promotionAccount.findMany({ where: await this.accountScope(user), orderBy: [{ status: 'asc' }, { platform: 'asc' }, { name: 'asc' }] });
+    const rows = await this.prisma.promotionAccount.findMany({
+      where: await this.accountScope(user),
+      include: { owner: { select: { id: true, username: true, nickname: true } } },
+      orderBy: [{ status: 'asc' }, { platform: 'asc' }, { name: 'asc' }],
+    });
     return rows.map((row) => ({ ...row, canManageCredentials: Boolean(user && (user.role === 'SUPER_ADMIN' || user.role === 'MANAGER' || row.ownerAdminId === user.adminUserId || row.createdByAdminId === user.adminUserId)) }));
   }
 
@@ -266,6 +271,27 @@ export class OperationsService {
     return this.safeAccountCredential(await this.prisma.promotionAccountCredential.findUnique({ where: { accountId } }));
   }
 
+  async myTencentUserToken(user: AdminCurrentUser) {
+    const row = await this.prisma.tencentUserToken.findUnique({ where: { adminUserId: user.adminUserId } });
+    return { hasUserToken: Boolean(row?.tokenCipher && (!row.expiresAt || row.expiresAt > new Date())), userTokenExpiresAt: row?.expiresAt || null };
+  }
+
+  async saveMyTencentUserToken(dto: TencentUserTokenDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    if (dto.clearUserToken && dto.userToken?.trim()) throw new BusinessException(400908, '不能同时保存和清除 User Token', 400);
+    if (!dto.clearUserToken && !dto.userToken?.trim()) throw new BusinessException(400909, '请输入 User Token 或选择清除', 400);
+    const before = await this.myTencentUserToken(user);
+    if (dto.clearUserToken) await this.prisma.tencentUserToken.deleteMany({ where: { adminUserId: user.adminUserId } });
+    else {
+      const expiresAt = dto.userTokenExpiresAt ? new Date(dto.userTokenExpiresAt) : new Date(Date.now() + 15 * 86400_000);
+      if (!Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date()) throw new BusinessException(400910, 'User Token 已过期，请重新扫码获取', 400);
+      const data = { tokenCipher: this.crypto.encryptText(dto.userToken!.trim()), expiresAt };
+      await this.prisma.tencentUserToken.upsert({ where: { adminUserId: user.adminUserId }, create: { adminUserId: user.adminUserId, ...data }, update: data });
+    }
+    const after = await this.myTencentUserToken(user);
+    await this.log('UPDATE_TENCENT_USER_TOKEN', 'tencent_user_tokens', user.adminUserId, before, after, user, ip, userAgent);
+    return after;
+  }
+
   async savePromotionAccountCredential(accountId: string, dto: PromotionAccountCredentialDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
     const account = await this.accountOrThrow(accountId, user);
     await this.promotionAccess?.assertCredentialManager(user, account);
@@ -447,9 +473,10 @@ export class OperationsService {
     const credentials = await this.prisma.promotionAccountCredential.findMany({ where: { accountId: { in: accounts.map((account) => account.id) } }, select: { accountId: true, accessTokenCipher: true, clientId: true, clientSecretCipher: true, refreshTokenCipher: true, userTokenCipher: true, userTokenExpiresAt: true } });
     const credentialMap = new Map(credentials.map((credential) => [credential.accountId, credential]));
     const tencentConfig = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } });
+    const sharedUserToken = await this.prisma.tencentUserToken.findUnique({ where: { adminUserId: user.adminUserId } });
     const accountResults = await Promise.all(accounts.map(async (account) => {
       const credential = credentialMap.get(account.id);
-      const credentialStatus = account.platform.includes('腾讯') ? this.syncService.credentialStatus(credential, tencentConfig) : {
+      const credentialStatus = account.platform.includes('腾讯') ? this.syncService.credentialStatus(credential, tencentConfig, sharedUserToken) : {
         authorized: Boolean(credential?.accessTokenCipher || (credential?.clientId && credential?.clientSecretCipher && credential?.refreshTokenCipher)),
         hasUserToken: Boolean(credential?.userTokenCipher && (!credential.userTokenExpiresAt || credential.userTokenExpiresAt > new Date())),
       };

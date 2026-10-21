@@ -1,4 +1,4 @@
-import { matchesTencentCreativeRecord } from '../src/modules/operations/multi-account-creative-verification';
+import { matchesTencentCreativeRecord, normalizeTencentCreativeComponentsForVerification } from '../src/modules/operations/multi-account-creative-verification';
 
 const expected = {
   creativeId: '13561460171',
@@ -40,5 +40,22 @@ describe('multi-account Tencent creative verification', () => {
       dynamic_creative_type: expected.creativeType,
       creative_components: { video: [{ video_id: 'forged' }] },
     }, (left, right) => JSON.stringify(left) === JSON.stringify(right))).toBe(false);
+  });
+
+  it('compares Tencent-deduplicated component content even when the returned component ID changes', () => {
+    const submitted = { description: [{ component_id: 1951801530389, value: { content: '相同文案' } }] };
+    const returned = { description: [{ component_id: 1961120535130, value: { content: '相同文案' }, is_deleted: false }] };
+    const normalizedSubmitted = normalizeTencentCreativeComponentsForVerification(submitted);
+    const normalizedReturned = normalizeTencentCreativeComponentsForVerification(returned);
+    expect(normalizedSubmitted.description[0]).toEqual({ value: { content: '相同文案' } });
+    expect(normalizedReturned.description[0].value).toEqual(normalizedSubmitted.description[0].value);
+    expect(normalizeTencentCreativeComponentsForVerification({ description: [{ component_id: 1 }] })).toEqual({ description: [{ component_id: 1 }] });
+  });
+
+  it('uses image_id as the identity when Tencent omits image_url in its lookup result', () => {
+    const sent = normalizeTencentCreativeComponentsForVerification({ image_list: [{ value: { list: [{ image_id: '50750754803', image_url: 'https://example.test/image' }] } }] });
+    const returned = normalizeTencentCreativeComponentsForVerification({ image_list: [{ value: { list: [{ image_id: '50750754803' }] } }] });
+    expect(sent).toEqual(returned);
+    expect(normalizeTencentCreativeComponentsForVerification({ image_list: [{ value: { list: [{ image_id: 'another-image' }] } }] })).not.toEqual(returned);
   });
 });

@@ -4,11 +4,11 @@
       <span><strong>{{ visibleSeries.length }}</strong> 条趋势</span>
       <span><strong>{{ labels.length }}</strong> 天数据</span>
       <span>{{ valueType === 'rate' ? '百分比' : valueType === 'integer' ? '整数' : '数值' }}刻度</span>
-      <small>点击图例可显示或隐藏曲线</small>
+      <small>图例为所选时间汇总，曲线为每日数据；点击图例可切换显示</small>
     </div>
     <div v-if="series.length" class="legend" role="list" aria-label="趋势图图例">
       <button v-for="item in series" :key="item.name" type="button" :class="{ muted: hiddenNames.includes(item.name) }" :aria-pressed="!hiddenNames.includes(item.name)" @click="toggleSeries(item.name)">
-        <i :style="{ background: item.color }" /><span>{{ item.name }}</span><b>{{ formatValue(item.values[item.values.length - 1] || 0) }}</b>
+        <i :style="{ background: item.color }" /><span>{{ item.name }}</span><b>{{ formatValue(item.summaryValue ?? item.values[item.values.length - 1] ?? 0) }}</b>
       </button>
     </div>
     <div v-if="series.length" class="chart-stage" @pointerleave="hoveredIndex = null">
@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue';
-interface TrendSeries { name:string; color:string; values:number[] }
+interface TrendSeries { name:string; color:string; values:number[]; summaryValue?:number }
 const props=withDefaults(defineProps<{labels:string[];series:TrendSeries[];valueType?:'number'|'integer'|'rate'}>(),{valueType:'number'});
 const gradientId=`trend-area-${useId().replace(/:/g,'')}`;
 const chartWidth=1000,chartHeight=360,padding={top:22,right:28,bottom:48,left:78};
@@ -47,7 +47,21 @@ const x=(index:number)=>padding.left+(props.labels.length<=1?plotWidth/2:index*p
 const y=(value:number)=>padding.top+plotHeight*(1-Math.max(0,value)/niceMax.value);
 const yTicks=computed(()=>Array.from({length:6},(_,index)=>({value:niceMax.value*(5-index)/5,y:padding.top+index*plotHeight/5})));
 const xLabels=computed(()=>{const step=Math.max(1,Math.ceil(props.labels.length/8));return props.labels.map((label,index)=>({label,index})).filter(item=>item.index%step===0||item.index===props.labels.length-1);});
-function linePath(points:Array<{x:number;y:number}>){return points.map((point,index)=>`${index?'L':'M'} ${point.x} ${point.y}`).join(' ');}
+// 保形三次曲线：在相邻数据点之间平滑，但不越过局部极值，避免视觉上虚构峰谷。
+function linePath(points:Array<{x:number;y:number}>){
+  if(points.length<2)return points.length?`M ${points[0].x} ${points[0].y}`:'';
+  const slopes=points.slice(1).map((point,index)=>(point.y-points[index].y)/(point.x-points[index].x));
+  const tangents=points.map((_,index)=>{
+    if(index===0)return slopes[0];
+    if(index===points.length-1)return slopes[slopes.length-1];
+    const previous=slopes[index-1],next=slopes[index];
+    return previous*next<=0?0:2*previous*next/(previous+next);
+  });
+  return points.slice(1).reduce((path,point,index)=>{
+    const previous=points[index],width=point.x-previous.x;
+    return `${path} C ${previous.x+width/3} ${previous.y+tangents[index]*width/3}, ${point.x-width/3} ${point.y-tangents[index+1]*width/3}, ${point.x} ${point.y}`;
+  },`M ${points[0].x} ${points[0].y}`);
+}
 const plottedSeries=computed(()=>visibleSeries.value.map(item=>{const coordinates=item.values.map((value,index)=>({x:x(index),y:y(value)}));return{...item,coordinates,path:linePath(coordinates)};}));
 function areaPath(values:number[]){const points=values.map((value,index)=>({x:x(index),y:y(value)}));return points.length?`${linePath(points)} L ${points[points.length-1].x} ${chartHeight-padding.bottom} L ${points[0].x} ${chartHeight-padding.bottom} Z`:'';}
 const ariaLabel=computed(()=>`推广数据趋势图，共 ${props.labels.length} 天、${visibleSeries.value.length} 条趋势线`);
