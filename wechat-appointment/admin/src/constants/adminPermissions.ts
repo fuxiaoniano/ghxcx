@@ -74,7 +74,8 @@ export const adminPermissionGroups = [
     { value: 'SYSTEM_OFFICIAL_BINDING', label: '公众号绑定', pages: '微信运营 / 公众号绑定' },
   ] },
   { label: '系统管理', items: [
-    { value: 'SYSTEM_MEMBERS', label: '成员管理与预约通知', pages: '系统管理 / 成员管理、预约通知' },
+    { value: 'SYSTEM_MEMBERS', label: '成员管理', pages: '系统管理 / 成员管理' },
+    { value: 'SYSTEM_APPOINTMENT_NOTIFY', label: '预约通知', pages: '系统管理 / 预约通知（旧成员管理权限继续兼容）' },
     { value: 'SYSTEM_ROLES', label: '角色管理', pages: '系统管理 / 角色管理' },
     { value: 'SYSTEM_FOLLOWUP', label: '回访接口', pages: '系统管理 / 回访接口' },
     { value: 'SYSTEM_WEBSITE_ANALYTICS', label: '官网浏览统计', pages: '系统管理 / 官网浏览统计' },

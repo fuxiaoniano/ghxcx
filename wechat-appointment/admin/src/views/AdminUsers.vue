@@ -152,7 +152,7 @@
         <el-form-item label="导出完整手机号"><el-switch :model-value="hasMemberPermission('EXPORT_FULL_PHONE')" :disabled="Boolean(memberForm.customRoleId) || memberForm.role === 'SUPER_ADMIN'" @change="setMemberPermission('EXPORT_FULL_PHONE', $event)" /></el-form-item>
       </div>
       <el-form-item label="权限">
-        <p class="permission-hint">{{ memberForm.customRoleId ? '当前权限由所选自定义角色统一管理；请前往“角色管理”修改。' : '按左侧导航分类授权；勾选后该成员仅能看到并操作对应板块中的页面。' }}</p>
+        <p class="permission-hint">{{ memberForm.customRoleId ? '当前权限由所选自定义角色统一管理；请前往“角色管理”修改。' : '按左侧导航分类授权；预约通知可单独授权，原成员管理权限继续兼容。修改本人密码对所有已登录成员开放。' }}</p>
         <div class="permission-groups">
           <section v-for="group in permissionGroups" :key="group.label" class="permission-group">
             <div class="permission-group-title">{{ group.label }}</div>

@@ -488,13 +488,13 @@ export class AdminController {
   }
 
   @Get('/appointment-notify')
-  @Permissions('SYSTEM_MEMBERS')
+  @Permissions('SYSTEM_APPOINTMENT_NOTIFY')
   appointmentNotifyConfig() {
     return this.admin.appointmentNotifyConfig();
   }
 
   @Patch('/appointment-notify')
-  @Permissions('SYSTEM_MEMBERS')
+  @Permissions('SYSTEM_APPOINTMENT_NOTIFY')
   updateAppointmentNotifyConfig(
     @Body() dto: UpdateAppointmentNotifyConfigDto,
     @CurrentUser() user: AdminCurrentUser,

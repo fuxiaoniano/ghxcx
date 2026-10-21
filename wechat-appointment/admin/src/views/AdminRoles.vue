@@ -13,11 +13,15 @@
       <el-table-column prop="description" label="角色说明" min-width="210">
         <template #default="{ row }">{{ row.description || '—' }}</template>
       </el-table-column>
-      <el-table-column label="角色权限" min-width="420">
+      <el-table-column label="角色权限" min-width="240">
         <template #default="{ row }">
           <div class="permission-summary">
-            <el-tag v-for="permission in row.permissions.slice(0, 8)" :key="permission" size="small" effect="plain">{{ adminPermissionLabel(permission) }}</el-tag>
-            <el-tag v-if="row.permissions.length > 8" size="small" type="info">另有 {{ row.permissions.length - 8 }} 项</el-tag>
+            <el-tag v-for="permission in row.permissions.slice(0, 2)" :key="permission" size="small" effect="plain">{{ adminPermissionLabel(permission) }}</el-tag>
+            <el-popover v-if="row.permissions.length > 2" placement="bottom-start" trigger="click" :width="360">
+              <template #reference><el-button link type="primary" size="small">+{{ row.permissions.length - 2 }} 项</el-button></template>
+              <strong>{{ row.name }} · 全部权限（{{ row.permissions.length }}）</strong>
+              <div class="permission-popover-list"><el-tag v-for="permission in row.permissions" :key="permission" size="small" effect="plain">{{ adminPermissionLabel(permission) }}</el-tag></div>
+            </el-popover>
             <span v-if="!row.permissions.length" class="empty-text">暂无权限</span>
           </div>
         </template>
@@ -45,7 +49,7 @@
         <el-form-item v-if="form.dataScope==='ASSIGNED_MEMBERS'" label="指定成员"><el-select v-model="form.dataScopeMemberIds" multiple filterable><el-option v-for="member in members" :key="member.id" :label="member.nickname||member.username" :value="member.id"/></el-select></el-form-item>
       </div>
       <el-form-item label="角色权限" required>
-        <p class="permission-hint">权限与左侧导航及独立页面一一对应；未勾选的页面不会向该角色成员展示。</p>
+        <p class="permission-hint">按左侧导航与独立页面授权；修改本人密码对所有已登录成员开放，不需额外授权。旧成员管理权限继续包含预约通知。</p>
         <div class="permission-groups">
           <section v-for="group in adminPermissionGroups" :key="group.label" class="permission-group">
             <div class="permission-group-heading">
@@ -137,7 +141,8 @@ onMounted(load);
 .page-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
 .page-heading .page-title { margin-bottom:4px; }
 .page-heading p,.permission-hint,.empty-text { margin:0; color:var(--admin-text-muted); font-size:13px; }
-.permission-summary { display:flex; flex-wrap:wrap; gap:5px; }
+.permission-summary { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+.permission-popover-list { display:flex; max-height:280px; flex-wrap:wrap; gap:6px; margin-top:10px; overflow:auto; }
 .row-actions { display:flex; align-items:center; justify-content:center; gap:12px; white-space:nowrap; }
 .row-actions :deep(.el-button) { margin:0; padding:0 2px; }
 .role-dialog :deep(.el-dialog__body) { max-height:min(72vh,720px); overflow-y:auto; padding-right:22px; }

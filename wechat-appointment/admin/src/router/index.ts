@@ -98,7 +98,7 @@ export const router = createRouter({
         { path: 'official-menu', component: OfficialMenu, meta: { permission: 'WECHAT_MENU' } },
         { path: 'official-auto-reply', component: OfficialAutoReply, meta: { permission: 'WECHAT_AUTO_REPLY' } },
         { path: 'official-binding', component: OfficialAccountBinding, meta: { permission: 'SYSTEM_OFFICIAL_BINDING' } },
-        { path: 'appointment-notify', component: AppointmentNotifySettings, meta: { permission: 'SYSTEM_MEMBERS' } },
+        { path: 'appointment-notify', component: AppointmentNotifySettings, meta: { permission: 'SYSTEM_APPOINTMENT_NOTIFY' } },
         { path: 'followup-forward', component: FollowupForward, meta: { permission: 'SYSTEM_FOLLOWUP' } },
         { path: 'website-analytics', component: WebsiteAnalytics, meta: { permission: 'SYSTEM_WEBSITE_ANALYTICS' } },
         { path: 'admin-users', component: AdminUsers, meta: { permission: 'SYSTEM_MEMBERS' } },

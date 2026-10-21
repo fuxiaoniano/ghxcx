@@ -45,4 +45,11 @@ describe('enterprise admin permissions DTO compatibility', () => {
 
     await expect(validate(dto)).resolves.toHaveLength(0);
   });
+
+  it('accepts independently assignable appointment notification permission', async () => {
+    const dto = Object.assign(new CreateAdminWechatInviteDto(), {
+      nickname: '通知管理员', role: 'STAFF', permissions: ['SYSTEM_APPOINTMENT_NOTIFY'], notifyEnabled: false,
+    });
+    await expect(validate(dto)).resolves.toHaveLength(0);
+  });
 });

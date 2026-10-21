@@ -69,4 +69,16 @@ describe('PermissionsGuard', () => {
     expect(() => new PermissionsGuard(reflector).canActivate(context(['PROMOTION_DAILY'])))
       .toThrow(expect.objectContaining({ status: 403 }));
   });
+
+  it('keeps existing member managers able to configure appointment notices while allowing separate notice-only access', () => {
+    const reflector = { getAllAndOverride: jest.fn().mockReturnValue(['SYSTEM_APPOINTMENT_NOTIFY']) } as unknown as Reflector;
+    const guard = new PermissionsGuard(reflector);
+    expect(guard.canActivate(context(['SYSTEM_APPOINTMENT_NOTIFY']))).toBe(true);
+    expect(guard.canActivate(context(['SYSTEM_MEMBERS']))).toBe(true);
+    expect(guard.canActivate(context(['MANAGE_ADMINS']))).toBe(true);
+    expect(() => guard.canActivate(context(['SYSTEM_CONFIGS']))).toThrow(expect.objectContaining({ status: 403 }));
+    const memberReflector = { getAllAndOverride: jest.fn().mockReturnValue(['SYSTEM_MEMBERS']) } as unknown as Reflector;
+    expect(() => new PermissionsGuard(memberReflector).canActivate(context(['SYSTEM_APPOINTMENT_NOTIFY'])))
+      .toThrow(expect.objectContaining({ status: 403 }));
+  });
 });
