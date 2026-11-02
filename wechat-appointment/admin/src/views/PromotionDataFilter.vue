@@ -41,12 +41,12 @@
       <el-table-column prop="account.project" label="项目" width="90" />
       <el-table-column prop="account.platform" label="渠道" width="110" show-overflow-tooltip />
       <el-table-column label="账户" width="140" show-overflow-tooltip><template #default="{ row }">{{ row.account.name }}</template></el-table-column>
-      <el-table-column v-for="column in visibleSystemColumns" :key="column.key" :prop="column.direct ? column.key : undefined" :label="fieldLabel(column.key, column.label)" :width="column.width">
-        <template #default="{ row }">{{ display(row, column) }}</template>
+      <template v-for="item in orderedDisplayFields" :key="item.field.id"><el-table-column v-if="item.column" :key="item.field.id" :prop="item.column.direct ? item.column.key : undefined" :label="item.field.label" :width="item.column.width">
+        <template #default="{ row }">{{ display(row, item.column!) }}</template>
       </el-table-column>
-      <el-table-column v-for="field in visibleCustomFields" :key="field.id" :label="field.label" width="110" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.customMetrics?.[field.key] ?? '—' }}</template>
-      </el-table-column>
+      <el-table-column v-else :key="item.field.id" :label="item.field.label" width="110" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.customMetrics?.[item.field.key] ?? '—' }}</template>
+      </el-table-column></template>
     </el-table>
   </div>
 </template>
@@ -119,8 +119,9 @@ const aggregatedRows = computed<PromotionDailyMetricItem[]>(() => {
   return aggregatePromotionRows(filteredRows.value, fields.value, selectedPeriod.value)
     .sort((left, right) => left.account.project.localeCompare(right.account.project, 'zh-CN') || left.account.platform.localeCompare(right.account.platform, 'zh-CN') || left.account.name.localeCompare(right.account.name, 'zh-CN'));
 });
-const visibleSystemColumns = computed(() => columns.filter((column) => fields.value.find((field) => field.key === column.key)?.isVisible !== false));
-const visibleCustomFields = computed(() => fields.value.filter((field) => field.source === 'CUSTOM' && field.isVisible));
+const visibleSystemColumns = computed(() => columns.filter((column) => fields.value.find((field) => field.key === column.key)?.isVisible !== false).sort((a,b) => (fields.value.find((field) => field.key === a.key)?.sort ?? columns.indexOf(a)) - (fields.value.find((field) => field.key === b.key)?.sort ?? columns.indexOf(b))));
+const visibleCustomFields = computed(() => fields.value.filter((field) => field.source === 'CUSTOM' && field.isVisible).sort((a,b) => a.sort - b.sort || a.key.localeCompare(b.key)));
+const orderedDisplayFields = computed(() => fields.value.filter((field) => field.isVisible).sort((a,b) => a.sort - b.sort || a.key.localeCompare(b.key)).map((field) => ({ field, column: columns.find((column) => column.key === field.key) })).filter((item) => item.column || item.field.source === 'CUSTOM'));
 const fieldLabel = (key: string, fallback: string) => fields.value.find((field) => field.key === key)?.label || fallback;
 const periodParts = (value: string) => {
   const [start, end] = value.split(' 至 ');
@@ -192,16 +193,14 @@ load();
 .result-note { margin:8px 0 12px; color:var(--admin-text-muted); font-size:13px; }
 .mobile-scroll-hint { display:none; }
 .filter-table { width:100%; font-size:clamp(7px,.72vw,13px); }
-.filter-table :deep(.el-table__header),.filter-table :deep(.el-table__body),.filter-table :deep(.el-table__footer) { width:100%!important; table-layout:fixed!important; }
-.filter-table :deep(col) { width:auto!important; }
-.filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap) { overflow-x:hidden!important; }
-.filter-table :deep(.el-scrollbar__bar.is-horizontal) { display:none!important; }
+.filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap) { overflow-x:auto!important; }
+.filter-table :deep(.el-scrollbar__bar.is-horizontal) { display:block!important; }
 .filter-table :deep(.el-table__cell) { padding:clamp(3px,.4vw,7px) 1px; text-align:center; }
 .filter-table :deep(.cell) { padding:0 1px; white-space:normal; overflow-wrap:anywhere; word-break:break-word; text-align:center; }
 .period-value { display:inline-flex; max-width:100%; align-items:center; justify-content:center; gap:4px; white-space:nowrap; }
 .filter-table :deep(.period-cell .cell) { overflow:hidden; }
 @media(max-width:1450px){.page-heading{flex-direction:column}.filter-actions{width:100%;justify-content:flex-start}}
 @media(max-width:900px){.content-panel{padding:8px}.filter-table{font-size:7px}.filter-table :deep(.el-table__cell){padding:3px 0}.filter-table :deep(.cell){padding:0}}
-@media(min-width:761px){.filter-table :deep(col:nth-child(1)){width:15%!important}.filter-table :deep(col:nth-child(2)){width:5%!important}.filter-table :deep(col:nth-child(3)){width:6%!important}.filter-table :deep(col:nth-child(4)){width:7%!important}.filter-table :deep(.period-cell .cell){white-space:nowrap}}
+
 @media(max-width:760px){.mobile-scroll-hint{display:block;margin:0 0 8px;color:var(--admin-text-muted);font-size:12px}.filter-actions{display:grid;width:100%;grid-template-columns:1fr 1fr}.project-picker,.channel-picker,.account-picker,.day-range-picker{width:100%!important;grid-column:1/-1;flex:auto}.filter-actions :deep(.el-button){width:100%;margin:0}.filter-table{min-width:1980px;font-size:12px}.filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap){overflow-x:auto!important}.filter-table :deep(.el-scrollbar__bar.is-horizontal){display:block!important}.filter-table :deep(.cell){padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.period-value{display:flex;flex-direction:column;gap:0;line-height:1.45}.filter-table :deep(.period-cell .cell){white-space:normal}}
 </style>
