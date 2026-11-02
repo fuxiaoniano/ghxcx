@@ -8,6 +8,7 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -49,6 +50,8 @@ export class CreateConsultationDto {
   @IsString() @IsNotEmpty() @MaxLength(40) projectId!: string;
   @IsString() @IsNotEmpty() @MaxLength(120) channelSource!: string;
   @IsString() @IsNotEmpty() @MaxLength(32) promotionAccountId!: string;
+  @IsOptional() @IsBoolean() appointmentScheduled?: boolean;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(1000000000) paymentAmount?: number;
   @IsOptional() @IsString() @MaxLength(32) statusId?: string;
   @IsOptional() @IsString() @MaxLength(32) ownerAdminId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) tagIds?: string[];
@@ -68,6 +71,8 @@ export class UpdateConsultationDto {
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(40) projectId?: string;
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(120) channelSource?: string;
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(32) promotionAccountId?: string;
+  @IsOptional() @IsBoolean() appointmentScheduled?: boolean;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(1000000000) paymentAmount?: number;
   @IsOptional() @IsString() @MaxLength(32) statusId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) tagIds?: string[];
   @IsOptional() @IsDateString() recordedAt?: string;

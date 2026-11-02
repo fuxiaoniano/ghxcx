@@ -5,6 +5,13 @@ export type MultiCreativeRules = {
   maxPerAccount: number; maxTotal: number; allowMaterialReuse?: boolean; randomLimit?: number;
 };
 
+export class MultiCreativeCombinationValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MultiCreativeCombinationValidationError';
+  }
+}
+
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))];
 
 function choose(values: string[], size: number): string[][] {
@@ -48,11 +55,11 @@ export function generateMultiCreativeCombinations(
   rules: MultiCreativeRules,
 ): MultiCreativeCombination[] {
   const groups = { titles: unique(input.titles), videos: unique(input.videos), images: unique(input.images) };
-  if (rules.videoCount === 0 && rules.imageCount === 0) throw new Error('每条创意必须至少包含图片或视频');
+  if (rules.videoCount === 0 && rules.imageCount === 0) throw new MultiCreativeCombinationValidationError('每条创意必须至少包含图片或视频');
   for (const [label, values, count] of [
     ['标题', groups.titles, rules.titleCount], ['视频', groups.videos, rules.videoCount], ['图片', groups.images, rules.imageCount],
   ] as Array<[string, string[], number]>) {
-    if (values.length < count) throw new Error(`${label}已选 ${values.length} 项，少于每条创意要求的 ${count} 项`);
+    if (values.length < count) throw new MultiCreativeCombinationValidationError(`${label}已选 ${values.length} 项，少于每条创意要求的 ${count} 项`);
   }
   const limit = rules.maxPerAdgroup;
   let result: MultiCreativeCombination[] = [];
@@ -60,7 +67,7 @@ export function generateMultiCreativeCombinations(
     const estimated = combinationCount(groups.titles.length, rules.titleCount, limit)
       * combinationCount(groups.videos.length, rules.videoCount, limit)
       * combinationCount(groups.images.length, rules.imageCount, limit);
-    if (estimated > limit) throw new Error(`单个营销单元预计生成超过 ${limit} 条，已在展开组合前阻断`);
+    if (estimated > limit) throw new MultiCreativeCombinationValidationError(`单个营销单元预计生成超过 ${limit} 条，已在展开组合前阻断`);
     for (const titleIds of choose(groups.titles, rules.titleCount))
       for (const videoIds of choose(groups.videos, rules.videoCount))
         for (const imageIds of choose(groups.images, rules.imageCount)) result.push({ titleIds, videoIds, imageIds });
@@ -87,7 +94,7 @@ export function generateMultiCreativeCombinations(
   }
   const seen = new Set<string>();
   result = result.filter((item) => { const key = JSON.stringify(item); if (seen.has(key)) return false; seen.add(key); return true; });
-  if (!result.length) throw new Error('没有生成任何有效创意组合');
-  if (result.length > limit) throw new Error(`单个营销单元预计生成 ${result.length} 条，超过上限 ${limit} 条`);
+  if (!result.length) throw new MultiCreativeCombinationValidationError('没有生成任何有效创意组合');
+  if (result.length > limit) throw new MultiCreativeCombinationValidationError(`单个营销单元预计生成 ${result.length} 条，超过上限 ${limit} 条`);
   return result;
 }

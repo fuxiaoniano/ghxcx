@@ -6,6 +6,15 @@ export function promotionAccountKey(account: Pick<PromotionAccountItem, 'project
   return JSON.stringify([account.project, account.platform, account.name]);
 }
 
+export function customMetricDisplay(leads: number, metrics: Record<string, string | number> | undefined, field: PromotionMetricFieldItem, fields: PromotionMetricFieldItem[]) {
+  if (field.label.trim() === '咨询留资率') {
+    const consultation = fields.find((item) => item.label.trim() === '私信咨询数');
+    const count = Number(consultation ? metrics?.[consultation.key] : 0);
+    return Number.isFinite(count) && count > 0 ? `${(leads / count * 100).toFixed(0)}%` : '—';
+  }
+  return metrics?.[field.key] ?? '—';
+}
+
 export function aggregatePromotionRows(
   source: PromotionDailyMetricItem[],
   fields: PromotionMetricFieldItem[],

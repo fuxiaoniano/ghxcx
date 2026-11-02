@@ -20,7 +20,6 @@ mkdirSync(websiteCoverDir, { recursive: true });
 @ApiTags('管理后台-企业官网')
 @ApiBearerAuth()
 @UseGuards(AdminAuthGuard, PermissionsGuard)
-@Permissions('WEBSITE_MANAGE')
 @Controller('/api/admin/website')
 export class WebsiteAdminController {
   constructor(private readonly website: WebsiteService) {}
@@ -28,7 +27,7 @@ export class WebsiteAdminController {
   @Get('/settings') @Permissions('WEBSITE_SETTINGS') settings() { return this.website.settings(); }
   @Patch('/settings') @Permissions('WEBSITE_SETTINGS') updateSettings(@Body() dto: UpdateWebsiteSettingsDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.updateSettings(dto.settings, this.audit(user, req)); }
   @Get('/categories') @AnyPermissions('WEBSITE_CATEGORIES', 'WEBSITE_ARTICLES') categories() { return this.website.categories(true); }
-  @Post('/categories') @Permissions('WEBSITE_CATEGORIES') createCategory(@Body() dto: CreateWebsiteArticleCategoryDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.createCategory(dto, this.audit(user, req)); }
+  @Post('/categories') @AnyPermissions('WEBSITE_CATEGORIES', 'WEBSITE_ARTICLES') createCategory(@Body() dto: CreateWebsiteArticleCategoryDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.createCategory(dto, this.audit(user, req)); }
   @Patch('/categories/:id') @Permissions('WEBSITE_CATEGORIES') updateCategory(@Param('id') id: string, @Body() dto: UpdateWebsiteArticleCategoryDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.updateCategory(id, dto, this.audit(user, req)); }
   @Delete('/categories/:id') @Permissions('WEBSITE_CATEGORIES') deleteCategory(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.deleteCategory(id, this.audit(user, req)); }
   @Get('/articles') @Permissions('WEBSITE_ARTICLES') articles(@Query() query: WebsiteArticleQueryDto) { return this.website.articles(query, true); }

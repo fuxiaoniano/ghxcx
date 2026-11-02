@@ -3,6 +3,56 @@ import { PromotionCreativeBatchService } from '../src/modules/operations/promoti
 describe('PromotionCreativeBatchService platform safety policies', () => {
   const service = new PromotionCreativeBatchService({} as any, {} as any, {} as any, {} as any) as any;
 
+  it('reads Tencent video dimensions and blocks landscape videos for a portrait-only template', () => {
+    const requirements = service.templateRequirements({ creative_permissions: { creative_components: [{
+      name: 'video', valid: { required: true, min_occurs: 1, max_occurs: 15 },
+      component_sub_type_options: [{ value_field: [{ name: 'video_id', valid: { width: 720, height: 1280, min_width: 720, min_height: 1280, ratio_width: 9, ratio_height: 16 } }] }],
+    }] } });
+    expect(requirements[0].mediaRules).toEqual([{ width: 720, height: 1280, minWidth: 720, minHeight: 1280, ratioWidth: 9, ratioHeight: 16 }]);
+    expect(service.assetMatchesTemplateDimensions({ payloadJson: { width: 1280, height: 960 } }, 'video', requirements)).toBe(false);
+    expect(service.assetMatchesTemplateDimensions({ payloadJson: { width: 720, height: 1280 } }, 'video', requirements)).toBe(true);
+    expect(service.assetMatchesTemplateDimensions({ payloadJson: { width: 1080, height: 1920 } }, 'video', requirements)).toBe(true);
+  });
+
+  it('matches Tencent-returned creative components, including nested image lists, without counting unrelated IDs', () => {
+    const creative = { creative_components: { video: [{ value: { video_id: '101', cover_id: '202' } }], image_list: [{ value: { list: [{ image_id: '303' }] } }], description: [{ component_id: '404', value: { content: '文案' } }] } };
+    expect(service.tencentCreativeUsesAsset(creative, { platformAssetId: '101', platformAssetKind: 'VIDEO' })).toBe(true);
+    expect(service.tencentCreativeUsesAsset(creative, { platformAssetId: '303', platformAssetKind: 'IMAGE' })).toBe(true);
+    expect(service.tencentCreativeUsesAsset(creative, { platformAssetId: '404', platformAssetKind: 'COMPONENT' })).toBe(true);
+    expect(service.tencentCreativeUsesAsset(creative, { platformAssetId: '999', platformAssetKind: 'VIDEO' })).toBe(false);
+  });
+
+  it('refuses partial Tencent pagination instead of presenting a false count', async () => {
+    const api = jest.fn().mockResolvedValue({ data: { list: Array.from({ length: 100 }, (_, index) => ({ dynamic_creative_id: index + 1, creative_components: {} })) } });
+    const scopedService = new PromotionCreativeBatchService({} as any, { tencentApi: api } as any, {} as any, {} as any) as any;
+    await expect(scopedService.tencentCreativeUsageRows('account-1', 'admin-1')).rejects.toThrow('安全分页上限');
+    expect(api).toHaveBeenCalledTimes(100);
+  });
+
+  it('bypasses the creative-count cache on an explicit platform refresh', async () => {
+    const api = jest.fn().mockResolvedValue({ data: { list: [{ dynamic_creative_id: 1, creative_components: {} }] } });
+    const scopedService = new PromotionCreativeBatchService({} as any, { tencentApi: api } as any, {} as any, {} as any) as any;
+    await scopedService.tencentCreativeUsageRows('123456', 'admin-1');
+    await scopedService.tencentCreativeUsageRows('123456', 'admin-1');
+    expect(api).toHaveBeenCalledTimes(1);
+    await scopedService.tencentCreativeUsageRows('123456', 'admin-1', true);
+    expect(api).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts real Tencent creatives for only the requested account assets', async () => {
+    const assets = [{ id: 'asset-1', platformAssetId: '101', platformAssetKind: 'VIDEO', componentField: 'video' }];
+    const prisma = { promotionCreativeMaterialSnapshot: { findMany: jest.fn().mockResolvedValue(assets) } };
+    const api = jest.fn().mockResolvedValue({ data: { list: [
+      { dynamic_creative_id: 1, dynamic_creative_name: '腾讯后台创意', adgroup_id: 2, creative_components: { video: [{ value: { video_id: '101' } }] } },
+      { dynamic_creative_id: 3, creative_components: { video: [{ value: { video_id: '999' } }] } },
+    ] } });
+    const scopedService = new PromotionCreativeBatchService(prisma as any, { tencentApi: api } as any, {} as any, {} as any) as any;
+    jest.spyOn(scopedService, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456' });
+    expect(await scopedService.assetCreativeUsageCounts('account-1', 'asset-1', { adminUserId: 'admin-1' })).toEqual({ scope: 'TENCENT_PLATFORM', counts: { 'asset-1': 1 } });
+    expect(prisma.promotionCreativeMaterialSnapshot.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ originAccountId: 'account-1' }) }));
+    expect(api).toHaveBeenCalledWith('GET', '/dynamic_creatives/get', '123456', expect.any(Object), true, 'admin-1');
+  });
+
   it('allows multiple copy, video, image and landing-page values for an ordinary creative within template limits', () => {
     const requirements = [
       { path: 'title', required: true, min: 1, max: 3, description: '文案' },
@@ -101,6 +151,12 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
     }] })).toEqual([expect.objectContaining({ name: 'floating_zone', elementType: 'FLOATING_ZONE', required: true })]);
   });
 
+  it('does not invent a one-item maximum when Tencent omits max_occurs', () => {
+    const requirements = service.templateRequirements({ creative_components: [{ name: 'form', valid: { required: false } }] });
+    expect(requirements[0].max).toBeNull();
+    expect(() => service.validateTemplateComponents(requirements, { form: [{}, {}] }, 'DYNAMIC_CREATIVE_TYPE_COMMON')).not.toThrow();
+  });
+
   it('maps the new operator-facing asset categories to exact Tencent component fields', () => {
     expect(service.assetQueryScope('MEDIA')).toEqual({ assetType: { in: ['VIDEO', 'IMAGE'] } });
     expect(service.assetQueryScope('BRAND')).toEqual({ componentField: { in: ['brand', 'channels_brand'] } });
@@ -166,6 +222,40 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
     expect(service.componentSubmissionValue('video', { value: { video_id: '123', cover_id: '456' } })).toEqual({
       value: { video_id: '123' },
     });
+    expect(service.componentSubmissionValue('short_video', { value: { video_id: '123', cover_id: '456' } })).toEqual({
+      value: { video_id: '123' },
+    });
+  });
+
+  it('keeps Tencent ratio and minimum-size rules when width and height are zero', () => {
+    const requirements = service.templateRequirements({ creative_components: [{ name: 'video', required: true,
+      component_sub_type_options: [{ value_field: [{ name: 'video_id', valid: {
+        width: 0, height: 0, min_width: 720, min_height: 1280, ratio_width: 9, ratio_height: 16,
+      } }, { name: 'cover_id', valid: { width: 720, height: 1280, required: true } }] }],
+    }] });
+    expect(requirements[0].mediaRules).toHaveLength(1);
+    expect(requirements[0].coverRules).toEqual([{ width: 720, height: 1280 }]);
+    expect(service.assetMatchesTemplateDimensions({ payloadJson: { width: 1280, height: 960 } }, 'video', requirements)).toBe(false);
+    expect(service.assetMatchesTemplateDimensions({ payloadJson: { width: 720, height: 1280 } }, 'video', requirements)).toBe(true);
+    expect(service.assetMatchesTemplateDimensions({ payloadJson: { width: 1080, height: 1920 } }, 'video', requirements)).toBe(true);
+    expect(service.assetMatchesTemplateDimensions({ payloadJson: { width: 540, height: 960 } }, 'video', requirements)).toBe(false);
+  });
+
+  it('checks the existing Tencent default video cover without adding a cover to the creative payload', async () => {
+    const tencentApi = jest.fn().mockResolvedValue({ data: { list: [{ image_id: '456', width: 1280, height: 960 }] } });
+    const localService = new PromotionCreativeBatchService({} as any, { tencentApi } as any, {} as any, {} as any) as any;
+    const asset = { name: '测试视频', payloadJson: { component: { value: { video_id: '123', cover_id: '456' } } } };
+    const requirements = [{ name: 'video', coverRules: [{ width: 720, height: 1280 }], mediaRules: [{ ratioWidth: 9, ratioHeight: 16, minWidth: 720, minHeight: 1280 }] }];
+    await expect(localService.videoDefaultCoverIssue(asset, '90913514', 'video', requirements, 'operator')).resolves.toContain('默认封面尺寸为 1280×960');
+    expect(tencentApi).toHaveBeenCalledWith('GET', '/images/get', '90913514', expect.any(Object), true, 'operator');
+    tencentApi.mockResolvedValueOnce({ data: { list: [{ image_id: '456', width: 720, height: 1280 }] } });
+    await expect(localService.videoDefaultCoverIssue(asset, '90913514', 'video', requirements, 'operator')).resolves.toBeNull();
+    tencentApi.mockResolvedValueOnce({ data: { list: [{ image_id: '456', width: 1080, height: 1920 }] } });
+    await expect(localService.videoDefaultCoverIssue(asset, '90913514', 'video', requirements, 'operator')).resolves.toBeNull();
+    tencentApi.mockResolvedValueOnce({ data: { list: [{ image_id: '456', width: 540, height: 960 }] } });
+    await expect(localService.videoDefaultCoverIssue(asset, '90913514', 'video', requirements, 'operator')).resolves.toContain('不小于 720×1280');
+    tencentApi.mockResolvedValueOnce({ data: { list: [{ image_id: '456', width: 1080, height: 1920 }] } });
+    await expect(localService.videoDefaultCoverIssue(asset, '90913514', 'video', [{ name: 'video', coverRules: [{ width: 720, height: 1280 }] }], 'operator')).resolves.toContain('当前规格要求 720×1280');
   });
 
   it('matches the same video-channel new brand and prefers the original account', () => {
@@ -295,8 +385,8 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
       name: '标签组件', isDeleted: false, status: 'AVAILABLE', auditStatus: null,
       platformCreatedAt: new Date('2026-09-29'),
       originAccount: { id: 'account-1', name: '测试账户', accountNo: '123456', project: '测试' },
-      payloadJson: { kind: 'COMPONENT', platformAssetScopes: ['ACCOUNT'], component: { value: { list: [
-        { content: '品质种牙' }, { content: '免费查看优惠价' },
+      payloadJson: { kind: 'COMPONENT', componentField: 'label', platformAssetScopes: ['ACCOUNT'], component: { value: { list: [
+        { image_id: '1001', content: '品质种牙' }, { image_id: '1002', content: '免费查看优惠价' },
       ] } } },
     };
     const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: {
@@ -306,7 +396,29 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
     jest.spyOn(localService, 'hasFreshAssetSnapshots').mockResolvedValue(true);
     jest.spyOn(localService, 'syncAssets').mockResolvedValue(new Set(['COMPONENT:987']));
     const result = await localService.assets({ accountId: 'account-1', source: 'ACCOUNT', assetType: 'LABEL' }, { role: 'SUPER_ADMIN' });
-    expect(result.list[0]).toMatchObject({ componentField: 'label', labelTexts: ['品质种牙', '免费查看优惠价'], contentSummary: '品质种牙 · 免费查看优惠价' });
+    expect(result.list[0]).toMatchObject({ type: 'LABEL', componentField: 'label', labelTexts: ['品质种牙', '免费查看优惠价'], contentSummary: '品质种牙 · 免费查看优惠价', bundleItemCount: null, usable: true });
+    expect(localService.imageListItemCount(label.payloadJson, 'label')).toBe(0);
+  });
+
+  it('does not let a label without Tencent copy masquerade as an image bundle', async () => {
+    const label = {
+      id: 'label-without-copy', originAccountId: 'account-1', businessUnitKey: 'TENCENT_ACCOUNT:123456',
+      platformAssetId: '988', platformAssetKind: 'COMPONENT', assetType: 'OTHER', componentField: 'label',
+      name: '标签_20260919', isDeleted: false, status: 'AVAILABLE', auditStatus: null,
+      platformCreatedAt: new Date('2026-09-29'),
+      originAccount: { id: 'account-1', name: '测试账户', accountNo: '123456', project: '测试' },
+      payloadJson: { kind: 'COMPONENT', componentField: 'label', platformAssetScopes: ['ACCOUNT'], component: { value: { list: [
+        { image_id: '1001' }, { image_id: '1002' }, { image_id: '1003' },
+      ] } } },
+    };
+    const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: {
+      findMany: jest.fn().mockResolvedValue([label]),
+    } } as any, {} as any, {} as any, {} as any) as any;
+    jest.spyOn(localService, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456', project: '测试' });
+    jest.spyOn(localService, 'syncAssets').mockResolvedValue(new Set(['COMPONENT:988']));
+    const result = await localService.assets({ accountId: 'account-1', source: 'ACCOUNT', assetType: 'LABEL' }, { role: 'SUPER_ADMIN' });
+    expect(result.list[0]).toMatchObject({ type: 'LABEL', bundleItemCount: null, usable: false, unavailableReason: expect.stringContaining('未返回具体文案') });
+    expect(result.list[0].contentSummary).not.toContain('九图组件');
   });
 
   it('shows only live Tencent component IDs and removes duplicate component payloads', async () => {
@@ -334,6 +446,7 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
     expect(sync).toHaveBeenCalledTimes(1);
     await localService.assets({ ...query, refresh: true }, { role: 'SUPER_ADMIN' });
     expect(sync).toHaveBeenCalledTimes(2);
+    expect(sync).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'account-1' }), undefined, 1, 100, 'ACCOUNT');
   });
 
   it('does not require video-only floating cards for channel-branded large-image specifications', () => {
@@ -348,6 +461,40 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
       brand: [{ value: { jump_info: { page_spec: { wechat_channels_profile_spec: { username: 'dentist' } } } } }],
       image: [{ value: { image_id: '1' } }],
     })).not.toThrow();
+  });
+
+  it.each(['常规大图 1:1', '九图 1:1'])('requires a floating card for channel placement %s', (name) => {
+    const template = {
+      site_set: ['SITE_SET_CHANNELS'], creative_template_appellation: name,
+      creative_components: [{ name: 'image_list', required: true }],
+    };
+    const components = { wechat_channels: [{ value: { username: 'dentist' } }], image_list: [{}] };
+    expect(service.templateRequiresChannelImageFloatingZone(template)).toBe(true);
+    expect(service.templateRequirementsForContext(template, 'test', 'DYNAMIC_CREATIVE_TYPE_COMMON'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ path: 'floating_zone', required: true })]));
+    expect(() => service.validatePlacementDependencies(template, components)).toThrow('浮层卡片');
+    expect(() => service.validatePlacementDependencies(template, { ...components, floating_zone: [{}] })).not.toThrow();
+  });
+
+  it('adds the selected floating card to a 1:1 channel image creative without adding a text link', async () => {
+    const scoped = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: {
+      findMany: jest.fn().mockResolvedValue([]),
+    } } as any, {} as any, {} as any, {} as any) as any;
+    const components = {
+      wechat_channels: [{ value: { username: 'dentist' } }],
+      brand: [{ value: { jump_info: { page_spec: { wechat_channels_profile_spec: { username: 'dentist' } } } } }],
+      image_list: [{}],
+    };
+    const card = { id: 'card-1', name: '浮层卡片', componentField: 'floating_zone', originAccountId: 'target',
+      businessUnitKey: 'unit', platformAssetId: '123', status: 'ACTIVE', isDeleted: false,
+      payloadJson: { component: { component_id: 123, value: { floating_zone_name: '活动' } } } };
+    const result = await scoped.upgradeLegacyChannelComponents({ creative_components: components },
+      { accountId: 'target', businessUnitKey: 'unit' }, [card], {
+        site_set: ['SITE_SET_CHANNELS'], creative_template_appellation: '常规大图 1:1',
+        creative_components: [{ name: 'image_list', required: true }],
+      });
+    expect(result.payload.creative_components.floating_zone).toEqual([card.payloadJson.component]);
+    expect(result.payload.creative_components.text_link).toBeUndefined();
   });
 
   it('does not auto-add text-link or floating-zone components to large-image creatives', async () => {
@@ -462,6 +609,19 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
       { assetType: 'IMAGE', name: '横版大图A' },
     ], '腾讯03');
     expect(name).toBe('腾讯03+种牙优惠+视频A+横版大图A+001');
+  });
+
+  it('expands the selected Tencent specification in a creative name', () => {
+    expect(service.creativeName('{账户}+{规格}+{序号}', 1, [], '腾讯04', '卡片广告 横版大图 16:9'))
+      .toBe('腾讯04+卡片广告 横版大图 16:9+001');
+  });
+
+  it('reports the actual specification instead of calling every image_list a nine-image creative', () => {
+    const components = { image_list: [{ value: { list: Array.from({ length: 5 }, (_, index) => ({ image_id: String(index + 1) })) } }] };
+    expect(() => service.validateTemplateComponents(
+      [{ name: 'image_list', required: true, min: 1, max: 1, itemMin: 1, itemMax: 1 }],
+      components, 'DYNAMIC_CREATIVE_TYPE_COMMON', '卡片广告 横版大图 16:9',
+    )).toThrow('创意规格“卡片广告 横版大图 16:9”每个图片组件只允许 1 张图片');
   });
 
   it('keeps video-channel authorization results independent from official-account APIs', async () => {
@@ -608,7 +768,7 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
     const components: Record<string, unknown[]> = {
       image_list: Array.from({ length: 9 }, (_, index) => ({ value: { list: [{ image_id: String(index + 1) }] } })),
     };
-    service.aggregateImageListComponents(components);
+    service.aggregateImageListComponents(components, requirements);
     expect(components.image_list).toHaveLength(1);
     expect((components.image_list[0] as any).value.list).toHaveLength(9);
     expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).not.toThrow();
@@ -617,7 +777,7 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
   it('rejects an incomplete nine-image component before calling Tencent', () => {
     const requirements = [{ name: 'image_list', path: 'image_list', required: true, min: 1, max: 15, itemMin: 9, itemMax: 9 }];
     const components = { image_list: [{ value: { list: [{ image_id: '1' }] } }] };
-    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('至少需要 9 张图片');
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('只允许 9 张图片');
   });
 
   it('accepts a matching Tencent nine-image component without top-level dimensions', () => {
@@ -630,11 +790,95 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
       component: { component_id: '90001', value: { list: Array.from({ length: 9 }, (_, index) => ({ image_id: String(index + 1) })) } },
     };
     expect(service.assetMatchesTemplateDimensions({ payloadJson }, 'image_list', requirements)).toBe(true);
-    expect(service.imageListItemCount(payloadJson)).toBe(9);
+    expect(service.imageListItemCount(payloadJson, 'image_list')).toBe(9);
+    expect(service.imageListItemCount({ ...payloadJson, componentField: 'label' })).toBe(0);
   });
 
-  it('does not merge multiple prebuilt nine-image components into an invalid eighteen-image component', () => {
+  it('rejects a bundle whose own Tencent subtype disagrees with its image count', () => {
+    const requirement = { name: 'image_list', itemMin: 3, itemMax: 9, itemRules: [
+      { componentSubType: 'IMAGE_LIST_1X1_3', min: 3, max: 3 },
+      { componentSubType: 'IMAGE_LIST_1X1_9', min: 9, max: 9 },
+    ] };
+    const asset = { componentField: 'image_list', payloadJson: { componentSubType: 'IMAGE_LIST_1X1_3', component: { value: { list: Array.from({ length: 9 }, (_, index) => ({ image_id: String(index + 1) })) } } } };
+    expect(service.assetMatchesTemplateDimensions(asset, 'image_list', [requirement])).toBe(false);
+  });
+
+  it('keeps multiple complete nine-image components separate when Tencent allows them', () => {
     const bundle = (prefix: string) => ({ value: { list: Array.from({ length: 9 }, (_, index) => ({ image_id: `${prefix}-${index}` })) } });
-    expect(() => service.aggregateImageListComponents({ image_list: [bundle('a'), bundle('b')] })).toThrow('只能使用一个腾讯九图组件');
+    const requirements = [{ name: 'image_list', min: 1, max: 15, itemMin: 9, itemMax: 9 }];
+    const components = { image_list: [bundle('a'), bundle('b')] };
+    service.aggregateImageListComponents(components, requirements);
+    expect(components.image_list).toHaveLength(2);
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).not.toThrow();
+  });
+
+  it('groups six single images into two three-image components instead of one invalid six-image component', () => {
+    const requirements = [{ name: 'image_list', min: 1, max: 15, itemMin: 3, itemMax: 3, itemRules: [{ min: 3, max: 3 }] }];
+    const components: Record<string, unknown[]> = { image_list: Array.from({ length: 6 }, (_, index) => ({ value: { list: [{ image_id: String(index + 1) }] } })) };
+    service.aggregateImageListComponents(components, requirements);
+    expect(components.image_list).toHaveLength(2);
+    expect((components.image_list[0] as any).value.list).toHaveLength(3);
+    expect((components.image_list[1] as any).value.list).toHaveLength(3);
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).not.toThrow();
+  });
+
+  it('checks actual image-list subtypes rather than accepting every count between the smallest and largest', () => {
+    const requirement = { name: 'image_list', min: 1, max: 15, itemMin: 3, itemMax: 9, itemRules: [{ min: 3, max: 3 }, { min: 4, max: 4 }, { min: 6, max: 6 }, { min: 9, max: 9 }] };
+    const components = { image_list: [{ value: { list: Array.from({ length: 5 }, (_, index) => ({ image_id: String(index + 1) })) } }] };
+    expect(() => service.validateTemplateComponents([requirement], components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('只允许 3、4、6、9 张图片');
+  });
+
+  it('enforces a selected conditional component minimum without requiring the component when absent', () => {
+    const requirements = [{ name: 'floating_zone_list', required: false, min: 3, max: 5 }];
+    expect(() => service.validateTemplateComponents(requirements, {}, 'DYNAMIC_CREATIVE_TYPE_COMMON')).not.toThrow();
+    expect(() => service.validateTemplateComponents(requirements, { floating_zone_list: [{}] }, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('至少需要 3 项');
+  });
+
+  it('reports an unsupported required field explicitly rather than silently omitting it', () => {
+    expect(() => service.validateTemplateComponents([{ name: 'future_component', required: true, min: 1, max: 1 }], {}, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('当前系统尚未支持');
+  });
+
+  it.each([
+    ['641 三图', 3], ['642 四图', 4], ['643 六图', 6], ['2277 九图', 9],
+  ])('follows the Tencent nested image-list size for %s', (_name, imageCount) => {
+    const requirements = [{ name: 'image_list', required: true, min: 1, max: 15,
+      itemMin: imageCount, itemMax: imageCount, itemRules: [{ min: imageCount, max: imageCount }] }];
+    const components = { image_list: [{ value: { list: Array.from({ length: imageCount }, (_, index) => ({ image_id: String(index + 1) })) } }] };
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).not.toThrow();
+    components.image_list[0].value.list.pop();
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow(`只允许 ${imageCount} 张图片`);
+  });
+
+  it.each([
+    ['618 视频', 'floating_zone'], ['643 六图', 'action_button'], ['1707 卡片横图', 'image_list'],
+  ])('requires the Tencent-declared field for %s', (_name, field) => {
+    expect(() => service.validateTemplateComponents([{ name: field, required: true, min: 1, max: 1 }], {}, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('缺少必填组件');
+  });
+
+  it('keeps component-mode card images separate and permits Tencent-returned 3 copies and 15 image components', () => {
+    const requirements = service.templateRequirements({ creative_components: [
+      { name: 'description', valid: { required: true, min_occurs: 1, max_occurs: 3 } },
+      { name: 'image_list', valid: { required: true, min_occurs: 1, max_occurs: 15 },
+        component_sub_type_options: [{ component_sub_type: 'IMAGE_LIST_16X9_1', value_field: [{ name: 'list', valid: { min_occurs: 1, max_occurs: 1 } }] }] },
+    ] });
+    const components: Record<string, unknown[]> = {
+      description: Array.from({ length: 3 }, (_, index) => ({ value: { description: `文案${index}` } })),
+      image_list: Array.from({ length: 15 }, (_, index) => ({ value: { list: [{ image_id: String(index + 1) }] } })),
+    };
+    service.aggregateImageListComponents(components, requirements);
+    expect(components.image_list).toHaveLength(15);
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON', '卡片广告 横版大图 16:9')).not.toThrow();
+    components.image_list.push({ value: { list: [{ image_id: '16' }] } });
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('最多允许 15 项');
+  });
+
+  it('respects the custom-mode Tencent limit of one copy and one card image component', () => {
+    const requirements = service.templateRequirements({ creative_components: [
+      { name: 'description', valid: { required: true, min_occurs: 1, max_occurs: 1 } },
+      { name: 'image_list', valid: { required: true, min_occurs: 1, max_occurs: 1 },
+        component_sub_type_options: [{ component_sub_type: 'IMAGE_LIST_16X9_1', value_field: [{ name: 'list', valid: { min_occurs: 1, max_occurs: 1 } }] }] },
+    ] });
+    const components = { description: [{}, {}, {}], image_list: [{ value: { list: [{ image_id: '1' }] } }] };
+    expect(() => service.validateTemplateComponents(requirements, components, 'DYNAMIC_CREATIVE_TYPE_COMMON')).toThrow('最多允许 1 项');
   });
 });

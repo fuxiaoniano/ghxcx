@@ -1,6 +1,6 @@
 import { PromotionDataSyncService } from '../src/modules/operations/promotion-data-sync.service';
 
-describe('Tencent creative asset target conversion cost', () => {
+describe('Tencent creative asset actual conversion cost', () => {
   it('uses the returned conversions_cost in cents and keeps missing values empty', async () => {
     const service = new PromotionDataSyncService({} as any, {} as any) as any;
     service.platformGet = jest.fn(async (url: string, _token: string, query: Record<string, string>) => {
@@ -12,8 +12,8 @@ describe('Tencent creative asset target conversion cost', () => {
     });
 
     const result = await service.fetchTencentMaterials('token-for-test', '123', '2026-10-14', '2026-10-20');
-    expect(result.items.find((item: any) => item.id === '101')?.metrics?.targetConversionCost).toBe(30);
-    expect(result.items.find((item: any) => item.id === '202')?.metrics?.targetConversionCost).toBeNull();
+    expect(result.items.find((item: any) => item.id === '101')?.metrics?.actualCpa).toBe(30);
+    expect(result.items.find((item: any) => item.id === '202')?.metrics?.actualCpa).toBeNull();
     expect(service.platformGet).toHaveBeenCalledWith(expect.stringContaining('/daily_reports/get'), 'token-for-test',
       expect.objectContaining({ fields: expect.stringContaining('conversions_cost') }), 'TENCENT_ADS');
   });

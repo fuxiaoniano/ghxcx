@@ -1,18 +1,18 @@
 :root {
-  color: #23312d;
-  background: #f7f5ef;
+  color: #1d1d1f;
+  background: #f5f5f7;
   font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-synthesis: none;
-  --ink: #23312d;
-  --muted: #66736e;
-  --paper: #fffdf8;
-  --canvas: #f7f5ef;
-  --green: #285d4b;
-  --green-dark: #173d32;
-  --mint: #dce8df;
-  --line: #d9ded8;
-  --orange: #d7673f;
-  --serif: "Songti SC", "STSong", "SimSun", serif;
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --paper: #ffffff;
+  --canvas: #f5f5f7;
+  --green: #0071e3;
+  --green-dark: #005bb8;
+  --mint: #e8f2ff;
+  --line: #e5e5ea;
+  --orange: #e86542;
+  --serif: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -164,4 +164,40 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .archive-item { grid-template-columns: 112px 1fr; gap: 16px; padding: 24px 0; }.archive-item h2 { font-size: 19px; }.archive-item p { display: none; }.archive-item b { margin-top: 8px; }
   .article-header { padding: 44px 0 34px; }.article-header h1 { font-size: 34px; }.article-layout { padding-top: 32px; }.wechat-content { font-size: 16px; }
   .footer-main { grid-template-columns: 1fr; gap: 24px; }.footer-links { flex-wrap: wrap; }.footer-bottom { display: grid; justify-content: start; }
+}
+
+/* Bento visual system shared by the homepage, archive, article and legal pages. */
+.site-header { background: rgba(255,255,255,.9); border-bottom-color: var(--line); }
+.brand-mark { border-radius: 14px; background: var(--green); }
+.header-search, .home-search, .home-search button, .pagination button { border-radius: 999px; }
+.home-intro { background: var(--canvas); }
+.intro-grid { gap: clamp(28px, 5vw, 76px); }
+.intro-copy h1, .archive-hero h1, .article-header h1 { letter-spacing: -.045em; }
+.home-search { border-color: var(--line); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.lead-story, .story-card, .archive-item, .state-card, .article-disclaimer, .legal-highlight { border-radius: 18px; overflow: hidden; }
+.lead-story, .story-card, .state-card, .article-disclaimer { box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.lead-story { background: var(--green-dark); }
+.archive-item { padding: 20px; margin-bottom: 12px; border: 0; background: var(--paper); }
+.archive-cover, .archive-cover img, .story-cover, .story-cover img { border-radius: 12px; }
+.article-header { background: var(--canvas); border-bottom: 0; }
+.wechat-content blockquote { border-radius: 0 14px 14px 0; background: var(--mint); }
+.article-disclaimer { border-color: transparent; background: var(--paper); }
+.site-footer { background: #1d1d1f; }
+.main-nav a:focus-visible, .header-search:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+@media (max-width: 940px) { .main-nav { background: var(--paper); border-radius: 0 0 18px 18px; } }
+.story-grid > *, .intro-grid > *, .archive-item > *, .footer-main > * { min-width: 0; }
+.story-body h3, .archive-item h2, .article-header h1, .wechat-content { overflow-wrap: anywhere; }
+.button, .home-search button, .pagination button, .quick-topics button { min-height: 40px; white-space: normal; text-align: center; }
+.article-search > div { flex-wrap: wrap; }
+.article-search input { min-width: min(100%, 220px); }
+.archive-hero { background: var(--canvas); }
+.empty-news { border-radius: 18px; background: var(--paper); }
+@media (max-width: 640px) {
+  .archive-item { grid-template-columns: minmax(0, 1fr); }
+  .archive-cover { max-height: 230px; }
+  .archive-item p { display: block; }
+  .section-heading, .archive-meta, .article-meta { flex-wrap: wrap; }
+  .pagination { flex-wrap: wrap; }
+  .article-search > div > * { flex: 1 1 100%; }
+  .home-search { border-radius: 18px; }
 }

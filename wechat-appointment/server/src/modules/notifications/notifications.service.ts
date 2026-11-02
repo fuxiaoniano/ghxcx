@@ -19,6 +19,55 @@ export class NotificationsService {
     private readonly configs: ConfigsService
   ) {}
 
+  async sendConsultationAssignmentNotice(formId: string, ownerAdminId: string): Promise<void> {
+    const config = await this.configs.getAppointmentNotifyConfig();
+    if (!config.assignmentEnabled || !config.assignmentTemplateId) return;
+    const [form, owner] = await Promise.all([
+      this.prisma.consultationForm.findUnique({ where: { id: formId }, select: {
+        id: true, name: true, phoneMasked: true, ownerAdminId: true, channelSource: true,
+        promotionAccount: { select: { name: true, project: true } }
+      } }),
+      this.prisma.adminUser.findUnique({ where: { id: ownerAdminId }, select: {
+        id: true, status: true, oaOpenId: true, nickname: true, username: true
+      } })
+    ]);
+    if (!form || form.ownerAdminId !== ownerAdminId || !owner || owner.status !== AdminStatus.ACTIVE || !owner.oaOpenId) return;
+    const payload = {
+      touser: owner.oaOpenId,
+      template_id: config.assignmentTemplateId,
+      data: {
+        first: { value: '您有一条新的网咨表单待跟进' },
+        keyword1: { value: form.id },
+        keyword2: { value: form.name },
+        keyword3: { value: form.promotionAccount?.project || '未填写' },
+        keyword4: { value: dayjs().format('YYYY-MM-DD HH:mm:ss') },
+        remark: { value: `电话：${form.phoneMasked}；来源：${form.channelSource || '未填写'}；账户：${form.promotionAccount?.name || '未填写'}` }
+      }
+    };
+    let result = 'FAILED';
+    let errorCode = '';
+    try {
+      if (this.isMock()) {
+        result = 'MOCK_SENT';
+      } else {
+        const accessToken = await this.official.getAccessToken();
+        const response = await axios.post(
+          `https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${accessToken}`,
+          payload, { timeout: 10000 }
+        );
+        errorCode = String(response.data?.errcode ?? 'NO_CODE');
+        if (response.data?.errcode === 0) result = 'SENT';
+      }
+    } catch {
+      errorCode = 'HTTP_ERROR';
+    }
+    await this.prisma.auditLog.create({ data: {
+      adminUserId: ownerAdminId,
+      action: 'CONSULTATION_ASSIGN_NOTICE', resourceType: 'consultation_forms', resourceId: formId,
+      afterJson: { result, errorCode, templateId: config.assignmentTemplateId } as Prisma.InputJsonValue
+    } }).catch(() => undefined);
+  }
+
   async sendAppointmentSuccess(appointmentId: string) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },

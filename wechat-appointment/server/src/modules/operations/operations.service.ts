@@ -6,7 +6,7 @@ import { BusinessException } from '../../common/utils/business-exception';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CryptoService } from '../crypto/crypto.service';
-import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountCredentialDto, PromotionAccountDto, PromotionAccountGrantsDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, PromotionHealthAnalyzeDto, PromotionMaterialAnalyzeDto, PromotionMetricFieldDto, PromotionSalaryConfigDto, SyncPromotionDailyMetricsDto } from './dto';
+import { ArchivePromotionDailyMetricDto, DateRangeQueryDto, PromotionAccountCredentialDto, PromotionAccountDto, PromotionAccountGrantsDto, PromotionDailyMetricDto, PromotionDailyReportNoteDto, PromotionDataSyncConfigDto, TencentBusinessUnitCredentialDto, PromotionHealthAnalyzeDto, PromotionMaterialAnalyzeDto, PromotionMetricFieldDto, PromotionSalaryConfigDto, SyncPromotionDailyMetricsDto } from './dto';
 import { PromotionDataSyncService } from './promotion-data-sync.service';
 import { DataScopeService } from '../../common/data-scope/data-scope.service';
 import { PromotionAccountAccessService, PromotionAccountCapability } from '../../common/data-scope/promotion-account-access.service';
@@ -24,6 +24,7 @@ type SyncExtraConfig = {
   authorizedAccountId?: string;
   accessTokenExpiresAt?: string;
   refreshTokenExpiresAt?: string;
+  sharedAccountNos?: string[];
 };
 
 type SalaryProject = '重庆' | '绵阳';
@@ -452,6 +453,57 @@ export class OperationsService {
     return { ...safeConfig, hasAccessToken: false, clientId: '', hasClientSecret: false, hasRefreshToken: false, hasUserToken: false, userTokenExpiresAt: null };
   }
 
+  async tencentBusinessUnitCredential(user: AdminCurrentUser) {
+    this.promotionAccess?.assertGrantAdministrator(user);
+    if (!this.promotionAccess && !['SUPER_ADMIN', 'MANAGER'].includes(user.role)) throw new BusinessException(403903, '仅管理员可维护业务单元授权', 403);
+    const [config, accounts] = await Promise.all([
+      this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } }),
+      this.prisma.promotionAccount.findMany({ where: { status: 'ACTIVE', platform: { contains: '腾讯' }, accountNo: { not: null } }, select: { id: true, accountNo: true, name: true }, orderBy: { name: 'asc' } }),
+    ]);
+    const extra = (config?.extraConfig || {}) as SyncExtraConfig;
+    const covered = Array.isArray(extra.sharedAccountNos) ? new Set(extra.sharedAccountNos) : null;
+    return {
+      hasAccessToken: Boolean(config?.accessTokenCipher),
+      hasRefreshToken: Boolean(extra.refreshTokenCipher),
+      hasClientSecret: Boolean(extra.clientSecretCipher),
+      clientId: extra.clientId || '',
+      updatedAt: config?.updatedAt || null,
+      accounts: accounts.map((account) => ({ id: account.id, accountNo: account.accountNo, name: account.name, covered: covered ? covered.has(String(account.accountNo)) : Boolean(config?.accessTokenCipher) })),
+    };
+  }
+
+  async updateTencentBusinessUnitCredential(dto: TencentBusinessUnitCredentialDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    this.promotionAccess?.assertGrantAdministrator(user);
+    if (!this.promotionAccess && !['SUPER_ADMIN', 'MANAGER'].includes(user.role)) throw new BusinessException(403903, '仅管理员可维护业务单元授权', 403);
+    const clientId = dto.clientId?.trim();
+    const clientSecret = dto.clientSecret?.trim();
+    const accessToken = normalizeAccessToken(dto.accessToken);
+    const refreshToken = dto.refreshToken?.trim();
+    if (!clientId || !clientSecret || !accessToken || !refreshToken) throw new BusinessException(400926, '请完整填写应用 ID、Client Secret、Access Token 和 Refresh Token', 400);
+    const accounts = await this.prisma.promotionAccount.findMany({ where: { status: 'ACTIVE', platform: { contains: '腾讯' }, accountNo: { not: null } }, select: { accountNo: true, name: true }, orderBy: { name: 'asc' } });
+    if (!accounts.length) throw new BusinessException(400927, '没有可校验的腾讯推广账户', 400);
+    const validation = await this.syncService.validateTencentBusinessUnitAccess(accessToken, accounts.map((account) => ({ accountNo: String(account.accountNo), name: account.name })));
+    if (!validation.covered.length) throw new BusinessException(400928, '新令牌无法读取任何启用的腾讯账户，未保存授权', 400);
+    const before = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } });
+    const previousExtra = (before?.extraConfig || {}) as SyncExtraConfig;
+    const extra: SyncExtraConfig = {
+      ...previousExtra,
+      clientId,
+      clientSecretCipher: this.crypto.encryptText(clientSecret),
+      refreshTokenCipher: this.crypto.encryptText(refreshToken),
+      sharedAccountNos: validation.covered.map((item) => item.accountNo),
+    };
+    const saved = await this.prisma.promotionDataSyncConfig.upsert({
+      where: { provider: 'TENCENT_ADS' },
+      create: { provider: 'TENCENT_ADS', enabled: true, reportUrl: 'https://api.e.qq.com/v3.0/daily_reports/get', accessTokenCipher: this.crypto.encryptText(accessToken), extraConfig: extra as Prisma.InputJsonValue },
+      update: { enabled: true, accessTokenCipher: this.crypto.encryptText(accessToken), extraConfig: extra as Prisma.InputJsonValue },
+    });
+    await this.log('UPDATE_TENCENT_BUSINESS_UNIT_CREDENTIAL', 'promotion_data_sync_configs', saved.id,
+      { coveredAccountNos: ((before?.extraConfig || {}) as SyncExtraConfig).sharedAccountNos || [], hasAccessToken: Boolean(before?.accessTokenCipher) },
+      { coveredAccountNos: extra.sharedAccountNos, hasAccessToken: true, rejectedAccountNos: validation.rejected.map((item) => item.accountNo) }, user, ip, userAgent);
+    return { covered: validation.covered, rejected: validation.rejected, updatedAt: saved.updatedAt };
+  }
+
   async syncDaily(dto: SyncPromotionDailyMetricsDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
     const accessible = await this.prisma.promotionAccount.findMany({ where: await this.accountScope(user), select: { id: true } });
     const accessibleIds = new Set(accessible.map((item) => item.id));
@@ -476,7 +528,7 @@ export class OperationsService {
     const sharedUserToken = await this.prisma.tencentUserToken.findUnique({ where: { adminUserId: user.adminUserId } });
     const accountResults = await Promise.all(accounts.map(async (account) => {
       const credential = credentialMap.get(account.id);
-      const credentialStatus = account.platform.includes('腾讯') ? this.syncService.credentialStatus(credential, tencentConfig, sharedUserToken) : {
+      const credentialStatus = account.platform.includes('腾讯') ? this.syncService.credentialStatus(credential, tencentConfig, sharedUserToken, account.accountNo) : {
         authorized: Boolean(credential?.accessTokenCipher || (credential?.clientId && credential?.clientSecretCipher && credential?.refreshTokenCipher)),
         hasUserToken: Boolean(credential?.userTokenCipher && (!credential.userTokenExpiresAt || credential.userTokenExpiresAt > new Date())),
       };
@@ -820,10 +872,15 @@ export class OperationsService {
     return '优化定向、素材和落地页，提高有效表单占比';
   }
 
-  private addToSummary(target: ReturnType<OperationsService['newSummary']>, row: { statDate: Date; spend: Prisma.Decimal | number; impressions: number; clicks: number; leads: number; validLeads: number; appointments: number; transactions: number; revenue: Prisma.Decimal | number }) {
+  private addToSummary(target: ReturnType<OperationsService['newSummary']>, row: { statDate: Date; spend: Prisma.Decimal | number; impressions: number; clicks: number; leads: number; validLeads: number; appointments: number; transactions: number; revenue: Prisma.Decimal | number; customMetrics?: Prisma.JsonValue | null }) {
     target.spend += Number(row.spend); target.impressions += row.impressions; target.clicks += row.clicks; target.leads += row.leads; target.validLeads += row.validLeads; target.appointments += row.appointments; target.transactions += row.transactions; target.revenue += Number(row.revenue);
     target.recordedDates.add(dayjs(row.statDate).format('YYYY-MM-DD'));
     target.days = target.recordedDates.size;
+    const metrics = row.customMetrics && typeof row.customMetrics === 'object' && !Array.isArray(row.customMetrics) ? row.customMetrics : {};
+    for (const [key, value] of Object.entries(metrics)) {
+      if (typeof value === 'number' && Number.isFinite(value)) target.customMetrics[key] = Number(target.customMetrics[key] || 0) + value;
+      else if (typeof value === 'string' && value.trim()) target.customMetrics[key] = value;
+    }
   }
 
   private normalizedSummary<T extends { spend: number; revenue: number; recordedDates: Set<string> }>(row: T) {
@@ -870,10 +927,10 @@ export class OperationsService {
   private monday(value: string) { const date = dayjs(value); return date.subtract((date.day() + 6) % 7, 'day').format('YYYY-MM-DD'); }
   private newSummary(periodStart: string, unit: SummaryUnit, account: { id: string; name: string; project: string; platform: string; accountNo: string | null }) {
     const end = unit === 'week' ? dayjs(periodStart).add(6, 'day').format('YYYY-MM-DD') : dayjs(periodStart).endOf('month').format('YYYY-MM-DD');
-    return { periodStart, periodEnd: end, periodLabel: unit === 'week' ? `${periodStart} 至 ${end}` : dayjs(periodStart).format('YYYY年MM月'), account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0 };
+    return { periodStart, periodEnd: end, periodLabel: unit === 'week' ? `${periodStart} 至 ${end}` : dayjs(periodStart).format('YYYY年MM月'), account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0, customMetrics: {} as Record<string, string | number> };
   }
   private newRangeSummary(periodStart: string, periodEnd: string, account: { id: string; name: string; project: string; platform: string; accountNo: string | null }) {
-    return { periodStart, periodEnd, periodLabel: `${periodStart} 至 ${periodEnd}`, account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0 };
+    return { periodStart, periodEnd, periodLabel: `${periodStart} 至 ${periodEnd}`, account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0, customMetrics: {} as Record<string, string | number> };
   }
   private metricItem(row: any) {
     const item = { ...row, statDate: dayjs(row.statDate).format('YYYY-MM-DD'), spend: Number(row.spend), revenue: Number(row.revenue), customMetrics: row.customMetrics || {} };

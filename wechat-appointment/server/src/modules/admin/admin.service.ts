@@ -1027,6 +1027,31 @@ export class AdminService {
     };
   }
 
+  async adminLoginPreference() {
+    const [binding, row] = await Promise.all([
+      this.officialAccount.bindingStatus(),
+      this.prisma.systemConfig.findUnique({ where: { key: 'adminLoginPreference' } })
+    ]);
+    const bindingReady = binding.enabled && Boolean(binding.appId && binding.hasAppSecret && binding.hasToken);
+    const stored = row?.valueJson as { defaultWechatLogin?: boolean } | undefined;
+    return { defaultWechatLogin: bindingReady && stored?.defaultWechatLogin === true, bindingReady };
+  }
+
+  async updateAdminLoginPreference(defaultWechatLogin: boolean, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const before = await this.adminLoginPreference();
+    if (defaultWechatLogin && !before.bindingReady) {
+      throw new BusinessException(400551, '请先完成并启用公众号绑定，再开启默认扫码登录');
+    }
+    await this.prisma.systemConfig.upsert({
+      where: { key: 'adminLoginPreference' },
+      create: { key: 'adminLoginPreference', valueJson: { defaultWechatLogin }, description: '管理后台默认登录方式' },
+      update: { valueJson: { defaultWechatLogin } }
+    });
+    const after = await this.adminLoginPreference();
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'UPDATE_ADMIN_LOGIN_PREFERENCE', resourceType: 'system_configs', resourceId: 'adminLoginPreference', beforeJson: before as Prisma.InputJsonValue, afterJson: after as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
+    return after;
+  }
+
   officialAccountBinding() { return this.officialAccount.bindingStatus(); }
 
   async updateOfficialAccountBinding(dto: { enabled: boolean; appId: string; appSecret?: string; token?: string; encodingAesKey?: string }, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
@@ -1734,6 +1759,8 @@ export class AdminService {
     return {
       enabled: config.enabled,
       templateId: config.templateId,
+      assignmentEnabled: config.assignmentEnabled ?? false,
+      assignmentTemplateId: config.assignmentTemplateId ?? '',
       recipients: recipients.map((item) => ({
         id: item.id,
         name: item.nickname || item.username,
@@ -1749,7 +1776,7 @@ export class AdminService {
   }
 
   async updateAppointmentNotifyConfig(
-    dto: { enabled?: boolean; templateId?: string },
+    dto: { enabled?: boolean; templateId?: string; assignmentEnabled?: boolean; assignmentTemplateId?: string },
     user: AdminCurrentUser,
     ip?: string,
     userAgent?: string | string[]
@@ -1758,7 +1785,9 @@ export class AdminService {
     const next: AppointmentNotifyConfig = {
       ...before,
       enabled: dto.enabled ?? before.enabled,
-      templateId: dto.templateId === undefined ? before.templateId : dto.templateId
+      templateId: dto.templateId === undefined ? before.templateId : dto.templateId,
+      assignmentEnabled: dto.assignmentEnabled ?? before.assignmentEnabled,
+      assignmentTemplateId: dto.assignmentTemplateId === undefined ? before.assignmentTemplateId : dto.assignmentTemplateId
     };
     await this.saveAppointmentNotifyConfig(next);
     await this.audit.create({

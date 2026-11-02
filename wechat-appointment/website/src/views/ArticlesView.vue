@@ -1,5 +1,5 @@
 <template>
-  <section class="archive-hero"><div class="container"><p class="eyebrow">ORAL HEALTH LIBRARY</p><h1>口腔资讯库</h1><p>按分类浏览或搜索关键词，快速找到你关心的口腔健康内容。</p></div></section>
+  <section class="archive-hero"><div class="container"><h1>口腔资讯库</h1></div></section>
   <section class="section archive-section"><div class="container">
     <form class="article-search" @submit.prevent="search"><label for="article-keyword">搜索资讯</label><div><input id="article-keyword" v-model="keyword" type="search" placeholder="输入关键词" /><button class="button button-primary" type="submit">搜索</button></div></form>
     <div class="quick-topics"><button type="button" :class="{ active: !categoryId }" @click="pickCategory('')">全部资讯</button><button v-for="category in categories" :key="category.id" type="button" :class="{ active: categoryId === category.id }" @click="pickCategory(category.id)">{{ category.name }}</button></div>

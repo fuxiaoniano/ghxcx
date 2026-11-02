@@ -120,6 +120,8 @@ export interface OfficialAccountMenuConfig {
 export interface AppointmentNotifyConfig {
   enabled: boolean;
   templateId?: string;
+  assignmentEnabled?: boolean;
+  assignmentTemplateId?: string;
 }
 
 export interface FollowupForwardConfig {
@@ -485,7 +487,9 @@ export class ConfigsService {
     const value = row?.valueJson as unknown as Partial<AppointmentNotifyConfig> | undefined;
     return {
       enabled: value?.enabled ?? true,
-      templateId: value?.templateId || this.env.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS')
+        templateId: value?.templateId || this.env.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS'),
+        assignmentEnabled: value?.assignmentEnabled ?? false,
+        assignmentTemplateId: value?.assignmentTemplateId || ''
     };
   }
 

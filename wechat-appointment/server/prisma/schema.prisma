@@ -34,6 +34,16 @@ enum NotificationStatus {
   SKIPPED
 }
 
+enum WechatGroupDeliveryStatus {
+  PENDING
+  SENDING
+  SENT_BY_CLIENT
+  GROUP_CONFIRMED
+  FAILED
+  UNKNOWN
+  SKIPPED
+}
+
 enum FollowupForwardStatus {
   PENDING
   SUCCESS
@@ -205,6 +215,7 @@ model Appointment {
   assignedTo                  AdminUser?            @relation("AppointmentAssignedTo", fields: [assignedToAdminId], references: [id], onDelete: SetNull)
   createdByAdmin              AdminUser?            @relation("AppointmentCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   notifications               NotificationLog[]
+  wechatGroupDeliveries       WechatGroupDelivery[]
 
   @@index([userId])
   @@index([phoneHash])
@@ -533,10 +544,108 @@ model LandingPage {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   appointments Appointment[]
+  wechatGroupRoutes WechatGroupRoute[]
 
   @@index([status])
   @@index([isDefault])
   @@map("landing_pages")
+}
+
+// Sender integration remains fail-closed until a licensed adapter has been tested
+// against the actual desktop client and can identify groups without relying on names.
+model WechatGroupSender {
+  id                String   @id @default(cuid()) @db.VarChar(32)
+  status            String   @default("UNAVAILABLE") @db.VarChar(32)
+  nickname          String?  @db.VarChar(120)
+  accountIdentifier String?  @db.VarChar(191)
+  clientVersion     String?  @db.VarChar(80)
+  adapterVersion    String?  @db.VarChar(80)
+  lastHeartbeatAt   DateTime?
+  lastError         String?  @db.VarChar(500)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  groups            WechatTargetGroup[]
+
+  @@index([status, lastHeartbeatAt])
+  @@map("wechat_group_senders")
+}
+
+model WechatTargetGroup {
+  id                  String   @id @default(cuid()) @db.VarChar(32)
+  senderId            String   @db.VarChar(32)
+  remoteGroupId       String   @db.VarChar(191)
+  nameSnapshot        String   @db.VarChar(191)
+  verified            Boolean  @default(false)
+  lastVerifiedAt      DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  sender              WechatGroupSender @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  routes              WechatGroupRoute[]
+  deliveries          WechatGroupDelivery[]
+
+  @@unique([senderId, remoteGroupId])
+  @@index([verified, lastVerifiedAt])
+  @@map("wechat_target_groups")
+}
+
+model WechatGroupRoute {
+  id             String   @id @default(cuid()) @db.VarChar(32)
+  landingPageId  String   @db.VarChar(32)
+  groupId        String   @db.VarChar(32)
+  enabled        Boolean  @default(false)
+  includeFullPhone Boolean @default(false)
+  activatedAt    DateTime?
+  createdById    String?  @db.VarChar(32)
+  updatedById    String?  @db.VarChar(32)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  landingPage    LandingPage @relation(fields: [landingPageId], references: [id], onDelete: Restrict)
+  group          WechatTargetGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  deliveries     WechatGroupDelivery[]
+
+  @@unique([landingPageId, groupId])
+  @@index([enabled, landingPageId])
+  @@map("wechat_group_routes")
+}
+
+model WechatGroupDelivery {
+  id               String @id @default(cuid()) @db.VarChar(32)
+  appointmentId    String @db.VarChar(32)
+  groupId          String @db.VarChar(32)
+  routeId          String @db.VarChar(32)
+  notificationType String @default("NEW_APPOINTMENT") @db.VarChar(40)
+  status           WechatGroupDeliveryStatus @default(PENDING)
+  attemptCount     Int @default(0)
+  leaseUntil       DateTime?
+  firstSentAt      DateTime?
+  confirmedAt      DateTime?
+  lastErrorCode    String? @db.VarChar(80)
+  lastErrorMessage String? @db.VarChar(500)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  appointment      Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  group            WechatTargetGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  route            WechatGroupRoute @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  attempts         WechatGroupDeliveryAttempt[]
+
+  @@unique([appointmentId, groupId, notificationType], map: "wg_delivery_appt_group_type_key")
+  @@index([status, createdAt])
+  @@index([routeId, createdAt])
+  @@map("wechat_group_deliveries")
+}
+
+model WechatGroupDeliveryAttempt {
+  id            String @id @default(cuid()) @db.VarChar(32)
+  deliveryId    String @db.VarChar(32)
+  status        String @db.VarChar(40)
+  errorCode     String? @db.VarChar(80)
+  errorMessage  String? @db.VarChar(500)
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  delivery      WechatGroupDelivery @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+
+  @@index([deliveryId, startedAt])
+  @@map("wechat_group_delivery_attempts")
 }
 
 model Clinic {
@@ -768,6 +877,10 @@ model PromotionAccount {
   creativeDefaultComponents CreativeAccountDefaultComponent[]
   credentials               PromotionAccountCredential?
   accessGrants              PromotionAccountAccessGrant[]
+  smartMonitorSnapshots     SmartMonitorSnapshot[]
+  smartMonitorPolicies      SmartMonitorPolicy[]
+  smartMonitorActions       SmartMonitorAction[]
+  smartMonitorCapabilities  SmartMonitorCapability[]
   owner                     AdminUser?                          @relation("PromotionAccountOwner", fields: [ownerAdminId], references: [id], onDelete: SetNull)
   createdBy                 AdminUser?                          @relation("PromotionAccountCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
@@ -777,6 +890,126 @@ model PromotionAccount {
   @@index([ownerAdminId])
   @@index([createdByAdminId])
   @@map("promotion_accounts")
+}
+
+/// Hourly Tencent report rows are upserted as cumulative snapshots, never added together on every poll.
+model SmartMonitorSnapshot {
+  id                String           @id @default(cuid()) @db.VarChar(32)
+  accountId         String           @db.VarChar(32)
+  level             String           @db.VarChar(24)
+  platformObjectId  String           @db.VarChar(120)
+  adgroupId         String?          @db.VarChar(120)
+  periodStart       DateTime
+  periodEnd         DateTime
+  spend             Decimal          @default(0) @db.Decimal(14, 2)
+  impressions       Int              @default(0)
+  clicks            Int              @default(0)
+  conversions       Int              @default(0)
+  actualCpa         Decimal?         @db.Decimal(14, 2)
+  targetCpa         Decimal?         @db.Decimal(14, 2)
+  targetSource      String?          @db.VarChar(160)
+  targetStatus      String           @default("SOURCE_UNCONFIRMED") @db.VarChar(40)
+  configuredStatus  String?          @db.VarChar(80)
+  systemStatus      String?          @db.VarChar(80)
+  auditStatus       String?          @db.VarChar(80)
+  reportSource      String           @db.VarChar(80)
+  reportAt          DateTime?
+  fetchedAt         DateTime         @default(now())
+  backfillStatus    String           @default("PENDING") @db.VarChar(32)
+  account           PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "sms_account_fk")
+
+  @@unique([accountId, level, platformObjectId, periodStart], map: "sms_period_uq")
+  @@index([accountId, level, fetchedAt], map: "sms_account_level_fetched_ix")
+  @@index([adgroupId, periodStart], map: "sms_adgroup_period_ix")
+  @@map("smart_monitor_snapshots")
+}
+
+model SmartMonitorPolicy {
+  id                    String           @id @default(cuid()) @db.VarChar(32)
+  accountId             String           @db.VarChar(32)
+  scopeKey              String           @default("*") @db.VarChar(120)
+  enabled               Boolean          @default(false)
+  autoEnabled           Boolean          @default(false)
+  emergencyStop         Boolean          @default(true)
+  ratioThreshold        Decimal          @default(1.3) @db.Decimal(5, 2)
+  minSpend              Decimal          @default(200) @db.Decimal(12, 2)
+  minConversions        Int              @default(3)
+  observationHours      Int              @default(24)
+  cooldownHours         Int              @default(24)
+  maxReportAgeMinutes   Int              @default(360)
+  maxDailyActions       Int              @default(1)
+  updatedByAdminId      String?          @db.VarChar(32)
+  updatedAt             DateTime         @updatedAt
+  createdAt             DateTime         @default(now())
+  account               PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "smp_account_fk")
+
+  @@unique([accountId, scopeKey], map: "smp_scope_uq")
+  @@index([enabled, autoEnabled, emergencyStop], map: "smp_schedule_ix")
+  @@map("smart_monitor_policies")
+}
+
+/// A single read-only monitoring rule applies to every account on the same ad platform.
+model SmartMonitorChannelPolicy {
+  id                    String   @id @default(cuid()) @db.VarChar(32)
+  channelKey            String   @unique(map: "smcp_channel_uq") @db.VarChar(80)
+  enabled               Boolean  @default(false)
+  spendThreshold        Decimal  @default(1000) @db.Decimal(12, 2)
+  emptySpendThreshold   Decimal  @default(200) @db.Decimal(12, 2)
+  cpaThreshold          Decimal  @default(300) @db.Decimal(12, 2)
+  maxReportAgeMinutes   Int      @default(360)
+  autoEnabled           Boolean  @default(false)
+  emergencyStop         Boolean  @default(true)
+  updatedByAdminId      String?  @db.VarChar(32)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([enabled, channelKey], map: "smcp_poll_ix")
+  @@map("smart_monitor_channel_policies")
+}
+
+model SmartMonitorAction {
+  id                String           @id @default(cuid()) @db.VarChar(32)
+  accountId         String           @db.VarChar(32)
+  adgroupId         String           @db.VarChar(120)
+  creativeId        String           @db.VarChar(120)
+  action            String           @db.VarChar(40)
+  status            String           @default("PENDING") @db.VarChar(40)
+  idempotencyKey    String           @unique(map: "sma_idempotency_uq") @db.VarChar(160)
+  requestedByAdminId String          @db.VarChar(32)
+  confirmedAt       DateTime?
+  scheduledAt       DateTime?
+  attemptedAt       DateTime?
+  verifiedAt        DateTime?
+  platformRequestId String?          @db.VarChar(160)
+  replacementId     String?          @db.VarChar(120)
+  snapshotJson      Json?
+  responseSummary   Json?
+  errorCode         String?          @db.VarChar(100)
+  errorMessage      String?          @db.VarChar(1000)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  account           PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "sma_account_fk")
+
+  @@index([status, scheduledAt], map: "sma_schedule_ix")
+  @@index([accountId, creativeId, createdAt], map: "sma_creative_ix")
+  @@map("smart_monitor_actions")
+}
+
+model SmartMonitorCapability {
+  id                String           @id @default(cuid()) @db.VarChar(32)
+  accountId         String           @db.VarChar(32)
+  endpoint          String           @db.VarChar(120)
+  interfaceExists   Boolean          @default(false)
+  projectImplemented Boolean         @default(false)
+  accountVerified   Boolean          @default(false)
+  validationStatus  String           @default("UNVERIFIED") @db.VarChar(40)
+  requestId         String?          @db.VarChar(160)
+  verifiedAt        DateTime?
+  safeNote          String?          @db.VarChar(500)
+  account           PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Cascade, map: "smc_account_fk")
+
+  @@unique([accountId, endpoint], map: "smc_endpoint_uq")
+  @@map("smart_monitor_capabilities")
 }
 
 /// Per-account platform authorization material; values remain encrypted at rest.
@@ -1329,6 +1562,8 @@ model ConsultationForm {
   projectId             String?                @db.VarChar(32)
   promotionAccountId    String?                @db.VarChar(32)
   channelSource         String                 @db.VarChar(120)
+  appointmentScheduled  Boolean                @default(false)
+  paymentAmount         Decimal                @default(0) @db.Decimal(12, 2)
   statusId              String                 @db.VarChar(32)
   ownerAdminId          String                 @db.VarChar(32)
   createdByAdminId      String                 @db.VarChar(32)
@@ -1362,6 +1597,28 @@ model ConsultationForm {
   @@index([recordedAt])
   @@index([nextFollowUpAt])
   @@map("consultation_forms")
+}
+
+model AdminDashboardPreference {
+  adminUserId String   @id @db.VarChar(32)
+  modulesJson Json
+  updatedAt   DateTime @updatedAt
+
+  @@map("admin_dashboard_preferences")
+}
+
+model AdminDashboardTodo {
+  id          String   @id @default(cuid()) @db.VarChar(32)
+  adminUserId String   @db.VarChar(32)
+  title       String   @db.VarChar(200)
+  dueAt       DateTime
+  priority    String   @default("NORMAL") @db.VarChar(16)
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([adminUserId, completed, dueAt])
+  @@map("admin_dashboard_todos")
 }
 
 model ConsultationFollowUp {

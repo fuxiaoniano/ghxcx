@@ -20,7 +20,7 @@
 
     <section class="section latest-section">
       <div class="container">
-        <div class="section-heading"><div><p class="eyebrow">LATEST STORIES</p><h2>最新口腔资讯</h2></div><RouterLink to="/articles" class="text-link">查看全部 →</RouterLink></div>
+        <div class="section-heading"><div><h2>最新口腔资讯</h2></div><RouterLink to="/articles" class="text-link">查看全部 →</RouterLink></div>
         <div v-if="otherArticles.length" class="story-grid">
           <RouterLink v-for="(article, index) in otherArticles" :key="article.id" :to="`/articles/${article.slug}`" class="story-card">
             <div class="story-cover" :class="{ placeholder: !article.coverUrl }"><img v-if="article.coverUrl" :src="article.coverUrl" :alt="article.title" loading="lazy" /><span v-else>{{ String(index + 1).padStart(2, '0') }}</span></div>

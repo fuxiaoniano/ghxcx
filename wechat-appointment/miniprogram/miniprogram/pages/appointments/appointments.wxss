@@ -8,14 +8,16 @@
   margin-bottom: 22rpx;
   padding: 28rpx;
   background: #ffffff;
-  border-radius: 12rpx;
-  box-shadow: 0 8rpx 24rpx rgba(90, 60, 40, 0.08);
+  border-radius: 36rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, .04);
 }
 
 .top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
 }
 
 .no {
@@ -24,7 +26,7 @@
 }
 
 .status {
-  color: #e91510;
+  color: #d92d20;
   font-weight: 700;
 }
 
@@ -32,6 +34,7 @@
   margin-top: 14rpx;
   color: #4d4d4d;
   font-size: 28rpx;
+  overflow-wrap: anywhere;
 }
 
 .time {

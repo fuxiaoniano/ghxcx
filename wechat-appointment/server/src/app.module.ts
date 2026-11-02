@@ -22,6 +22,7 @@ import { TencentAdsLeadsModule } from './modules/tencent-ads-leads/tencent-ads-l
 import { OperationsModule } from './modules/operations/operations.module';
 import { DataScopeModule } from './common/data-scope/data-scope.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
+import { WechatGroupNotificationsModule } from './modules/wechat-group-notifications/wechat-group-notifications.module';
 
 @Module({
   imports: [
@@ -44,7 +45,8 @@ import { ConsultationModule } from './modules/consultation/consultation.module';
     WebsiteModule,
     TencentAdsLeadsModule,
     OperationsModule,
-    ConsultationModule
+    ConsultationModule,
+    WechatGroupNotificationsModule
   ],
   controllers: [PublicPageController],
   providers: [

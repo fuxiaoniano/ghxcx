@@ -78,6 +78,8 @@ export class WechatOfficialAccountService implements OnModuleInit {
     const value = { enabled: next.enabled, appId: next.appId, appSecretCipher: next.appSecret ? this.crypto.encryptText(next.appSecret) : '', tokenCipher: next.token ? this.crypto.encryptText(next.token) : '', encodingAesKeyCipher: next.encodingAesKey ? this.crypto.encryptText(next.encodingAesKey) : '' };
     await this.prisma.systemConfig.upsert({ where: { key: 'officialAccountBinding' }, create: { key: 'officialAccountBinding', valueJson: value, description: '微信公众号绑定配置（密钥加密保存）' }, update: { valueJson: value } });
     this.binding = next;
+    await this.redis.del('wechat:oa:access_token');
+    await this.redis.del('wechat:oa:jsapi_ticket');
     return this.bindingStatus();
   }
 

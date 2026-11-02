@@ -1,6 +1,6 @@
 <template>
   <div class="page-heading">
-    <div><h1 class="page-title">审计日志</h1><p>记录敏感数据访问和后台关键操作</p></div>
+    <div><h1 class="page-title">审计日志</h1></div>
     <span>共 {{ total }} 条记录</span>
   </div>
   <div class="content-panel">

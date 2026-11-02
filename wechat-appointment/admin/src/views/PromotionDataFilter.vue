@@ -29,8 +29,8 @@
   <div class="content-panel">
     <div class="result-note">所选周期共 {{ aggregatedRows.length }} 个账户汇总</div>
     <p class="mobile-scroll-hint">左右滑动查看完整筛选结果</p>
-    <el-table :data="aggregatedRows" v-loading="loading" border show-summary :summary-method="summary" class="filter-table">
-      <el-table-column prop="statDate" label="时间周期" width="190" class-name="period-cell">
+    <el-table :data="aggregatedRows" v-loading="loading" border fit show-summary :summary-method="summary" class="filter-table">
+      <el-table-column prop="statDate" label="时间周期" min-width="140" class-name="period-cell">
         <template #default="{ row }">
           <span class="period-value" :title="row.statDate">
             <span>{{ periodParts(row.statDate).start }}</span>
@@ -38,14 +38,14 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="account.project" label="项目" width="90" />
-      <el-table-column prop="account.platform" label="渠道" width="110" show-overflow-tooltip />
-      <el-table-column label="账户" width="140" show-overflow-tooltip><template #default="{ row }">{{ row.account.name }}</template></el-table-column>
-      <template v-for="item in orderedDisplayFields" :key="item.field.id"><el-table-column v-if="item.column" :key="item.field.id" :prop="item.column.direct ? item.column.key : undefined" :label="item.field.label" :width="item.column.width">
+      <el-table-column prop="account.project" label="项目" min-width="45" />
+      <el-table-column prop="account.platform" label="渠道" min-width="55" />
+      <el-table-column label="账户" min-width="65"><template #default="{ row }">{{ row.account.name }}</template></el-table-column>
+      <template v-for="item in orderedDisplayFields" :key="item.field.id"><el-table-column v-if="item.column" :key="item.field.id" :prop="item.column.direct ? item.column.key : undefined" :label="item.field.label" :min-width="item.column.width">
         <template #default="{ row }">{{ display(row, item.column!) }}</template>
       </el-table-column>
-      <el-table-column v-else :key="item.field.id" :label="item.field.label" width="110" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.customMetrics?.[item.field.key] ?? '—' }}</template>
+      <el-table-column v-else :key="item.field.id" :label="item.field.label" :min-width="Math.min(68, Math.max(44, item.field.label.length * 10))">
+        <template #default="{ row }">{{ customMetricDisplay(row.leads, row.customMetrics, item.field, fields) }}</template>
       </el-table-column></template>
     </el-table>
   </div>
@@ -55,27 +55,27 @@
 import { computed, ref } from 'vue';
 import { getPromotionFilterData, type PromotionAccountItem, type PromotionDailyMetricItem, type PromotionMetricFieldItem } from '../api/admin';
 import PromotionDateShortcuts from '../components/PromotionDateShortcuts.vue';
-import { aggregatePromotionRows, promotionAccountKey } from '../utils/promotionMetrics';
+import { aggregatePromotionRows, customMetricDisplay, promotionAccountKey } from '../utils/promotionMetrics';
 
 type Column = { key: string; label: string; type: 'integer' | 'number' | 'rate'; direct?: boolean; width: number };
 const columns: Column[] = [
-  { key: 'spend', label: '消费', type: 'number', direct: true, width: 100 },
-  { key: 'impressions', label: '展现', type: 'integer', direct: true, width: 100 },
-  { key: 'clicks', label: '点击', type: 'integer', direct: true, width: 85 },
-  { key: 'clickRate', label: '点击率', type: 'rate', width: 90 },
-  { key: 'leads', label: '总表单', type: 'integer', direct: true, width: 90 },
-  { key: 'validLeads', label: '有效表单', type: 'integer', direct: true, width: 100 },
-  { key: 'validRate', label: '有效率', type: 'rate', width: 90 },
-  { key: 'averageCost', label: '平均成本', type: 'number', width: 100 },
-  { key: 'validCost', label: '有效成本', type: 'number', width: 100 },
-  { key: 'appointments', label: '到院', type: 'integer', direct: true, width: 80 },
-  { key: 'transactions', label: '成交', type: 'integer', direct: true, width: 80 },
-  { key: 'conversionRate', label: '成交率', type: 'rate', width: 90 },
-  { key: 'arrivalRate', label: '到诊率', type: 'rate', width: 90 },
-  { key: 'validArrivalRate', label: '有效到诊率', type: 'rate', width: 110 },
-  { key: 'arrivalCost', label: '到院成本', type: 'number', width: 100 },
-  { key: 'revenue', label: '实收', type: 'number', direct: true, width: 100 },
-  { key: 'roi', label: '投产比', type: 'number', width: 90 },
+  { key: 'spend', label: '消费', type: 'number', direct: true, width: 58 },
+  { key: 'impressions', label: '展现', type: 'integer', direct: true, width: 44 },
+  { key: 'clicks', label: '点击', type: 'integer', direct: true, width: 44 },
+  { key: 'clickRate', label: '点击率', type: 'rate', width: 48 },
+  { key: 'leads', label: '总表单', type: 'integer', direct: true, width: 44 },
+  { key: 'validLeads', label: '有效表单', type: 'integer', direct: true, width: 44 },
+  { key: 'validRate', label: '有效率', type: 'rate', width: 48 },
+  { key: 'averageCost', label: '平均成本', type: 'number', width: 58 },
+  { key: 'validCost', label: '有效成本', type: 'number', width: 58 },
+  { key: 'appointments', label: '到院', type: 'integer', direct: true, width: 44 },
+  { key: 'transactions', label: '成交', type: 'integer', direct: true, width: 44 },
+  { key: 'conversionRate', label: '成交率', type: 'rate', width: 48 },
+  { key: 'arrivalRate', label: '到诊率', type: 'rate', width: 48 },
+  { key: 'validArrivalRate', label: '有效到诊率', type: 'rate', width: 48 },
+  { key: 'arrivalCost', label: '到院成本', type: 'number', width: 58 },
+  { key: 'revenue', label: '实收', type: 'number', direct: true, width: 58 },
+  { key: 'roi', label: '投产比', type: 'number', width: 58 },
 ];
 
 const dateText = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -133,7 +133,7 @@ function rawValue(row: PromotionDailyMetricItem, column: Column) {
 }
 function format(value: number | null, type: Column['type']) {
   if (value === null || !Number.isFinite(value)) return '—';
-  if (type === 'rate') return `${(value * 100).toFixed(2)}%`;
+  if (type === 'rate') return `${(value * 100).toFixed(0)}%`;
   if (type === 'integer') return String(value);
   return value.toFixed(2);
 }
@@ -192,15 +192,19 @@ load();
 .filter-actions :deep(.el-button) { margin:0; }
 .result-note { margin:8px 0 12px; color:var(--admin-text-muted); font-size:13px; }
 .mobile-scroll-hint { display:none; }
-.filter-table { width:100%; font-size:clamp(7px,.72vw,13px); }
+.filter-table { width:100%; font-size:11px; font-variant-numeric:tabular-nums; }
+.filter-table :deep(th.el-table__cell) { height:32px; padding-top:2px; padding-bottom:2px; }
+.filter-table :deep(td.el-table__cell) { height:34px; padding-top:2px; padding-bottom:2px; }
+.filter-table :deep(.el-table__footer-wrapper td.el-table__cell) { height:34px; }
+.filter-table :deep(.el-table__header .cell) { font-size:11px; }
 .filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap) { overflow-x:auto!important; }
 .filter-table :deep(.el-scrollbar__bar.is-horizontal) { display:block!important; }
 .filter-table :deep(.el-table__cell) { padding:clamp(3px,.4vw,7px) 1px; text-align:center; }
-.filter-table :deep(.cell) { padding:0 1px; white-space:normal; overflow-wrap:anywhere; word-break:break-word; text-align:center; }
-.period-value { display:inline-flex; max-width:100%; align-items:center; justify-content:center; gap:4px; white-space:nowrap; }
-.filter-table :deep(.period-cell .cell) { overflow:hidden; }
+.filter-table :deep(.cell) { padding:0 1px; white-space:normal; overflow-wrap:anywhere; word-break:break-word; text-align:center; line-height:1.2; }
+.period-value { display:flex; max-width:100%; flex-direction:column; align-items:center; justify-content:center; gap:0; white-space:normal; }
+.filter-table :deep(.period-cell .cell) { overflow:visible; }
 @media(max-width:1450px){.page-heading{flex-direction:column}.filter-actions{width:100%;justify-content:flex-start}}
-@media(max-width:900px){.content-panel{padding:8px}.filter-table{font-size:7px}.filter-table :deep(.el-table__cell){padding:3px 0}.filter-table :deep(.cell){padding:0}}
+@media(max-width:900px){.content-panel{padding:8px}.filter-table{font-size:11px}.filter-table :deep(.el-table__cell){padding:3px 0}.filter-table :deep(.cell){padding:0}}
 
-@media(max-width:760px){.mobile-scroll-hint{display:block;margin:0 0 8px;color:var(--admin-text-muted);font-size:12px}.filter-actions{display:grid;width:100%;grid-template-columns:1fr 1fr}.project-picker,.channel-picker,.account-picker,.day-range-picker{width:100%!important;grid-column:1/-1;flex:auto}.filter-actions :deep(.el-button){width:100%;margin:0}.filter-table{min-width:1980px;font-size:12px}.filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap){overflow-x:auto!important}.filter-table :deep(.el-scrollbar__bar.is-horizontal){display:block!important}.filter-table :deep(.cell){padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.period-value{display:flex;flex-direction:column;gap:0;line-height:1.45}.filter-table :deep(.period-cell .cell){white-space:normal}}
+@media(max-width:760px){.mobile-scroll-hint{display:block;margin:0 0 8px;color:var(--admin-text-muted);font-size:12px}.filter-actions{display:grid;width:100%;grid-template-columns:1fr 1fr}.project-picker,.channel-picker,.account-picker,.day-range-picker{width:100%!important;grid-column:1/-1;flex:auto}.filter-actions :deep(.el-button){width:100%;margin:0}.filter-table{font-size:11px}.filter-table :deep(.el-table__body-wrapper),.filter-table :deep(.el-scrollbar__wrap){overflow-x:auto!important}.filter-table :deep(.el-scrollbar__bar.is-horizontal){display:block!important}.filter-table :deep(.cell){padding:0 4px;white-space:normal;overflow:visible;text-overflow:clip}.period-value{display:flex;flex-direction:column;gap:0;line-height:1.45}.filter-table :deep(.period-cell .cell){white-space:normal}}
 </style>

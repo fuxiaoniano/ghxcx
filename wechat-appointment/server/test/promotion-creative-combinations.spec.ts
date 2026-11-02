@@ -32,6 +32,18 @@ describe('promotion creative combinations', () => {
     }
   });
 
+  it('uses ten selected image-list components in two creatives when five are requested per creative', () => {
+    const result = generateCreativeCombinations('BALANCED', {
+      titles: ['t1', 't2', 't3'], videos: [], landingPages: ['p1'], conversionComponents: [],
+      images: Array.from({ length: 10 }, (_, index) => `image-list-${index + 1}`), otherComponents: [],
+    }, { titleCount: 3, videoCount: 0, landingPageCount: 1, conversionCount: 0, imageCount: 5 });
+    expect(result).toHaveLength(2);
+    expect(result.map((item) => item.imageIds)).toEqual([
+      ['image-list-1', 'image-list-2', 'image-list-3', 'image-list-4', 'image-list-5'],
+      ['image-list-6', 'image-list-7', 'image-list-8', 'image-list-9', 'image-list-10'],
+    ]);
+  });
+
   it('calculates and builds the exact cartesian product', () => {
     expect(estimateCartesianCount(materials, rules)).toBe(12);
     expect(generateCreativeCombinations('CARTESIAN', materials, rules, [], 12)).toHaveLength(12);

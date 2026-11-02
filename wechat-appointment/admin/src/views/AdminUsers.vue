@@ -10,11 +10,6 @@
   </div>
 
   <section class="content-panel">
-    <div class="section-heading"><div><h2>团队管理</h2><p>团队层级用于 TEAM 数据范围；成员调岗后可见范围按当前主团队即时重新计算。</p></div><el-button type="primary" @click="openTeam()">新增团队</el-button></div>
-    <el-table :data="teams" row-key="id"><el-table-column prop="name" label="团队名称"/><el-table-column label="上级团队"><template #default="{row}">{{teams.find(item=>item.id===row.parentId)?.name||'—'}}</template></el-table-column><el-table-column label="负责人"><template #default="{row}">{{row.leader?.nickname||row.leader?.username||'—'}}</template></el-table-column><el-table-column label="成员/下级" width="120"><template #default="{row}">{{row._count?.members||0}} / {{row._count?.children||0}}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}"><el-tag :type="row.status==='ACTIVE'?'success':'info'">{{row.status==='ACTIVE'?'启用':'停用'}}</el-tag></template></el-table-column><el-table-column label="操作" width="140"><template #default="{row}"><el-button link type="primary" @click="openTeam(row)">编辑</el-button><el-button link type="danger" @click="removeTeam(row)">删除</el-button></template></el-table-column></el-table>
-  </section>
-
-  <section class="content-panel">
     <div class="section-heading members-heading">
       <div>
         <h2>后台成员</h2>
@@ -191,7 +186,6 @@
       <el-alert title="二维码关闭后不会再次显示；若尚未绑定，可取消该邀请后重新生成。" type="warning" :closable="false" show-icon />
     </div>
   </el-dialog>
-  <el-dialog v-model="teamDialogVisible" :title="teamForm.id?'编辑团队':'新增团队'" width="560px"><el-form label-position="top"><el-form-item label="团队名称" required><el-input v-model="teamForm.name"/></el-form-item><el-form-item label="上级团队"><el-select v-model="teamForm.parentId" clearable><el-option v-for="team in teams.filter(item=>item.id!==teamForm.id)" :key="team.id" :label="team.name" :value="team.id"/></el-select></el-form-item><el-form-item label="团队负责人"><el-select v-model="teamForm.leaderAdminId" clearable filterable><el-option v-for="member in memberOptions.filter(item=>item.status==='ACTIVE')" :key="member.id" :label="member.username" :value="member.id"/></el-select></el-form-item><el-form-item label="状态"><el-select v-model="teamForm.status"><el-option label="启用" value="ACTIVE"/><el-option label="停用" value="DISABLED"/></el-select></el-form-item></el-form><template #footer><el-button @click="teamDialogVisible=false">取消</el-button><el-button type="primary" @click="saveTeam">保存</el-button></template></el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -210,9 +204,6 @@ import {
   deleteAdminUser,
   getAdminUserHandoverSummary,
   getAdminTeams,
-  createAdminTeam,
-  updateAdminTeam,
-  deleteAdminTeam,
   getAdminUsers,
   getAdminRoles,
   getAdminWechatInvitations,
@@ -237,7 +228,6 @@ const loading = ref(false);
 const savingMember = ref(false);
 const memberDialogVisible = ref(false);
 const bindDialogVisible = ref(false);
-const teamDialogVisible = ref(false);
 const deleteDialogVisible = ref(false);
 const deleting = ref(false);
 const deletingMember = ref<AdminUserItem|null>(null);
@@ -257,7 +247,6 @@ const memberForm = reactive({
   notifyEnabled: true
   ,dataScope: 'SELF', dataScopeMemberIds: [] as string[], teamId: '', consultationReceivable: false
 });
-const teamForm=reactive({id:'',name:'',parentId:'',leaderAdminId:'',status:'ACTIVE'});
 
 async function loadMembers() {
   loading.value = true;
@@ -428,9 +417,6 @@ function roleLabel(value: string) {
   return ({ SUPER_ADMIN: '超级管理员', MANAGER: '经理', STAFF: '员工' } as Record<string, string>)[value] || value;
 }
 function scopeLabel(value:string){return ({SELF:'仅本人',ASSIGNED_MEMBERS:'本人和指定成员',TEAM:'团队及下级',ALL:'全部数据'} as Record<string,string>)[value]||value}
-function openTeam(row?:AdminTeamItem){Object.assign(teamForm,{id:'',name:'',parentId:'',leaderAdminId:'',status:'ACTIVE'},row?{id:row.id,name:row.name,parentId:row.parentId||'',leaderAdminId:row.leaderAdminId||'',status:row.status}:{});teamDialogVisible.value=true}
-async function saveTeam(){if(!teamForm.name.trim())return ElMessage.warning('请输入团队名称');const data:Partial<AdminTeamItem>={name:teamForm.name.trim(),parentId:teamForm.parentId||null,leaderAdminId:teamForm.leaderAdminId||null,status:teamForm.status as 'ACTIVE'|'DISABLED'};if(teamForm.id)await updateAdminTeam(teamForm.id,data);else await createAdminTeam(data);teamDialogVisible.value=false;ElMessage.success('团队设置已保存');teams.value=await getAdminTeams()}
-async function removeTeam(row:AdminTeamItem){await ElMessageBox.confirm('仅无成员且无下级的团队可以删除。','删除团队',{type:'warning'});await deleteAdminTeam(row.id);teams.value=await getAdminTeams()}
 
 function formatDate(value?: string) {
   if (!value) return '尚未登录';
@@ -478,7 +464,7 @@ onMounted(loadAll);
 .form-grid :deep(.el-select) { width: 100%; }
 .permission-hint { margin: 0 0 10px; color: var(--admin-text-muted); font-size: 12px; }
 .permission-groups { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
-.permission-group { padding: 10px 12px; border: 1px solid var(--admin-border); border-radius: 6px; background: #fafcff; }
+.permission-group { padding: 10px 12px; border: 1px solid var(--admin-border); border-radius: 6px; background: #ffffff; }
 .permission-group-title { margin-bottom: 7px; color: var(--admin-primary); font-size: 13px; font-weight: 700; }
 .member-form :deep(.el-checkbox-group) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; }
 .member-form :deep(.el-checkbox) { display: flex; height: auto; margin-right: 0; align-items: flex-start; white-space: normal; }

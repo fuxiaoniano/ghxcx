@@ -1,4 +1,4 @@
-import { generateMultiCreativeCombinations } from '../src/modules/operations/multi-account-creative-combinations';
+import { generateMultiCreativeCombinations, MultiCreativeCombinationValidationError } from '../src/modules/operations/multi-account-creative-combinations';
 
 const rules = {
   titleCount: 1,
@@ -19,6 +19,22 @@ describe('multi-account creative combinations', () => {
     expect(first).toHaveLength(2);
     expect(new Set(first.map((item) => JSON.stringify(item))).size).toBe(first.length);
     expect(first.every((item) => item.titleIds.length === 1 && item.videoIds.length === 1 && item.imageIds.length === 0)).toBe(true);
+  });
+
+  it('uses all 20 selected videos when one video and one reusable title are configured per creative', () => {
+    const videos = Array.from({ length: 20 }, (_, index) => `v${index + 1}`);
+    const result = generateMultiCreativeCombinations('SEQUENTIAL', { titles: ['t1'], videos, images: [] }, rules);
+    expect(result).toHaveLength(20);
+    expect(result.map((item) => item.videoIds[0])).toEqual(videos);
+    expect(result.every((item) => item.titleIds.length === 1 && item.videoIds.length === 1)).toBe(true);
+  });
+
+  it('applies the configured title and video counts to every generated creative', () => {
+    const videos = Array.from({ length: 20 }, (_, index) => `v${index + 1}`);
+    const result = generateMultiCreativeCombinations('SEQUENTIAL', { titles: ['t1', 't2', 't3'], videos, images: [] }, { ...rules, titleCount: 2, videoCount: 2 });
+    expect(result).toHaveLength(10);
+    expect(result.every((item) => item.titleIds.length === 2 && item.videoIds.length === 2)).toBe(true);
+    expect(new Set(result.flatMap((item) => item.videoIds)).size).toBe(20);
   });
 
   it('limits random combinations without expanding a large cartesian product', () => {
@@ -42,6 +58,8 @@ describe('multi-account creative combinations', () => {
   it('rejects insufficient required assets', () => {
     expect(() => generateMultiCreativeCombinations('SEQUENTIAL', { titles: [], videos: ['v1'], images: [] }, rules))
       .toThrow('标题已选 0 项');
+    expect(() => generateMultiCreativeCombinations('SEQUENTIAL', { titles: ['t1', 't2', 't3'], videos: ['v1'], images: [] }, { ...rules, titleCount: 4 }))
+      .toThrow(MultiCreativeCombinationValidationError);
   });
 
   it('creates image-only creatives without dividing by zero in sequential mode', () => {

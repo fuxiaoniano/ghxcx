@@ -4,25 +4,27 @@
       <div class="identity-panel">
         <div class="identity-brand">
           <span class="identity-mark">种</span>
-          <div><strong>傅小念的运营管理后台</strong><span>预约管理中心</span></div>
+          <div><strong>傅小念的运营工作台</strong></div>
         </div>
         <div class="identity-message">
           <span class="identity-label">运营工作台</span>
           <h1>让每一条预约<br />都被及时跟进</h1>
           <p>统一管理预约、用户、通知与公众号运营。</p>
         </div>
-        <div class="identity-footer"><el-icon><Lock /></el-icon><span>微信身份登录 · 操作全程留痕</span></div>
+        <div class="identity-footer"><el-icon><Lock /></el-icon><span>安全登录 · 操作全程留痕</span></div>
       </div>
 
       <div class="login-panel">
-        <div class="mobile-brand"><span class="identity-mark">管</span><strong>傅小念的运营管理后台</strong></div>
+        <div class="mobile-brand"><span class="identity-mark">管</span><strong>傅小念的运营工作台</strong></div>
         <div class="form-heading">
           <span>ADMIN CONSOLE</span>
-          <h2>微信扫码登录</h2>
-          <p>请使用已绑定后台账号的微信扫码确认</p>
+          <h2>{{ loginMode === 'wechat' ? '微信扫码登录' : '账号密码登录' }}</h2>
+          <p>{{ loginMode === 'wechat' ? '请使用已绑定后台账号的微信扫码确认' : '请输入管理后台账号和密码' }}</p>
         </div>
 
-        <div class="wechat-login">
+        <div class="login-mode-switch"><el-button :type="loginMode === 'password' ? 'primary' : 'default'" @click="selectMode('password')">账号密码</el-button><el-button :type="loginMode === 'wechat' ? 'primary' : 'default'" @click="selectMode('wechat')">微信扫码</el-button></div>
+
+        <div v-if="loginMode === 'wechat'" class="wechat-login">
           <div class="qr-frame" :class="{ 'is-disabled': qrStatus !== 'PENDING' }">
             <QrcodeVue v-if="session.oauthUrl" :value="session.oauthUrl" :size="206" level="M" />
             <div v-else class="qr-loading"><el-icon class="is-loading" size="28"><Loading /></el-icon><span>正在生成登录二维码</span></div>
@@ -43,8 +45,7 @@
           <small class="pc-tip">电脑浏览器无法直接读取微信账号；上方入口会打开微信官方授权页。</small>
         </div>
 
-        <el-collapse v-model="fallbackOpen" class="fallback-login">
-          <el-collapse-item title="账号密码应急登录" name="password">
+        <div v-else class="fallback-login">
             <el-form :model="form" label-position="top" @keyup.enter="submitPassword">
               <el-form-item label="管理员账号">
                 <el-input v-model="form.username" autocomplete="username" placeholder="请输入管理员账号"><template #prefix><el-icon><User /></el-icon></template></el-input>
@@ -54,8 +55,7 @@
               </el-form-item>
               <el-button type="primary" :loading="passwordLoading" class="password-button" @click="submitPassword">账号密码登录</el-button>
             </el-form>
-          </el-collapse-item>
-        </el-collapse>
+        </div>
         <p class="form-footer">仅限已授权的工作人员使用</p>
       </div>
     </section>
@@ -68,13 +68,13 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { CircleCheckFilled, FullScreen, Key, Loading, Lock, Monitor, User, WarningFilled } from '@element-plus/icons-vue';
 import QrcodeVue from 'qrcode.vue';
-import { createAdminWechatLoginSession, pollAdminWechatLoginSession } from '../api/admin';
+import { createAdminWechatLoginSession, getAdminLoginPreference, pollAdminWechatLoginSession } from '../api/admin';
 import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
 const auth = useAuthStore();
 const passwordLoading = ref(false);
-const fallbackOpen = ref<string[]>([]);
+const loginMode = ref<'password' | 'wechat'>('password');
 const qrStatus = ref<'PENDING' | 'CONFIRMED' | 'ERROR' | 'EXPIRED'>('PENDING');
 const qrMessage = ref('');
 const session = reactive({ sessionId: '', oauthUrl: '' });
@@ -137,6 +137,13 @@ function stopPolling() {
   }
 }
 
+function selectMode(mode: 'password' | 'wechat') {
+  if (loginMode.value === mode) return;
+  loginMode.value = mode;
+  if (mode === 'wechat') void createSession();
+  else stopPolling();
+}
+
 async function submitPassword() {
   if (!form.username || !form.password) {
     ElMessage.warning('请输入账号和密码');
@@ -151,32 +158,39 @@ async function submitPassword() {
   }
 }
 
-onMounted(createSession);
+onMounted(async () => {
+  try {
+    const preference = await getAdminLoginPreference();
+    if (preference.defaultWechatLogin) selectMode('wechat');
+  } catch {
+    // 配置不可用时保留账号密码登录入口。
+  }
+});
 onBeforeUnmount(stopPolling);
 </script>
 
 <style scoped>
-.login-page { display: grid; min-height: 100vh; padding: 32px; place-items: center; background: #f2f4f8; }
-.login-shell { display: grid; width: min(940px, 100%); min-height: 640px; grid-template-columns: minmax(340px, .9fr) minmax(420px, 1.1fr); overflow: hidden; background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; box-shadow: 0 24px 70px rgba(20, 31, 49, .12); }
-.identity-panel { position: relative; display: flex; flex-direction: column; justify-content: space-between; padding: 42px; overflow: hidden; color: #fff; background: var(--admin-sidebar); }
+.login-page { display: grid; min-height: 100vh; padding: 32px; place-items: center; background: #f5f5f7; }
+.login-shell { display: grid; width: min(940px, 100%); min-height: 640px; grid-template-columns: minmax(340px, .9fr) minmax(420px, 1.1fr); overflow: hidden; background: #fff; border: 1px solid #e5e5ea; border-radius: 18px; box-shadow: 0 12px 40px rgba(0, 0, 0, .06); }
+.identity-panel { position: relative; display: flex; flex-direction: column; justify-content: space-between; padding: 42px; overflow: hidden; color: var(--admin-text); background: #e8f2ff; }
 .identity-brand, .mobile-brand, .identity-footer, .scan-status, .pc-wechat-link { display: flex; align-items: center; }
 .identity-brand, .mobile-brand { gap: 12px; }
-.identity-mark { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; color: #fff; background: var(--admin-primary); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; font-size: 19px; font-weight: 750; }
+.identity-mark { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; color: #fff; background: var(--admin-primary); border: 0; border-radius: 14px; font-size: 19px; font-weight: 750; }
 .identity-brand > div { display: flex; flex-direction: column; }
 .identity-brand strong { font-size: 17px; }
-.identity-brand span:last-child { color: #a6b3c6; font-size: 12px; }
+.identity-brand span:last-child { color: var(--admin-text-muted); font-size: 12px; }
 .identity-message { position: relative; z-index: 1; }
-.identity-label, .form-heading > span { color: #8eb5ff; font-size: 11px; font-weight: 700; }
+.identity-label, .form-heading > span { color: var(--admin-primary); font-size: 11px; font-weight: 700; }
 .identity-message h1 { margin: 18px 0; font-size: 36px; font-weight: 680; line-height: 1.35; letter-spacing: 0; }
-.identity-message p { margin: 0; color: #b6c0cf; font-size: 14px; }
-.identity-footer { position: relative; z-index: 1; gap: 8px; color: #a6b3c6; font-size: 12px; }
+.identity-message p { margin: 0; color: var(--admin-text-secondary); font-size: 14px; }
+.identity-footer { position: relative; z-index: 1; gap: 8px; color: var(--admin-text-muted); font-size: 12px; }
 .login-panel { display: flex; flex-direction: column; justify-content: center; padding: 38px 72px; }
 .mobile-brand { display: none; }
 .form-heading { margin-bottom: 18px; text-align: center; }
 .form-heading h2 { margin: 7px 0 5px; color: var(--admin-text); font-size: 25px; letter-spacing: 0; }
 .form-heading p, .form-footer { margin: 0; color: var(--admin-text-muted); }
 .wechat-login { display: flex; flex-direction: column; align-items: center; }
-.qr-frame { position: relative; display: grid; width: 232px; height: 232px; padding: 12px; place-items: center; background: #fff; border: 1px solid var(--admin-border); border-radius: 7px; }
+.qr-frame { position: relative; display: grid; width: 232px; height: 232px; padding: 12px; place-items: center; background: #fff; border: 1px solid var(--admin-border); border-radius: 18px; }
 .qr-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--admin-text-muted); font-size: 12px; }
 .qr-frame.is-disabled > canvas { opacity: .14; }
 .qr-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; background: rgba(255,255,255,.86); }
@@ -185,6 +199,8 @@ onBeforeUnmount(stopPolling);
 .pc-wechat-link:hover { text-decoration: underline; }
 .pc-tip { margin-top: 5px; color: var(--admin-text-muted); font-size: 11px; text-align: center; }
 .fallback-login { width: 100%; margin-top: 13px; }
+.login-mode-switch { display: flex; justify-content: center; margin-bottom: 18px; }
+.login-mode-switch .el-button { min-width: 120px; }
 .fallback-login :deep(.el-collapse-item__header) { justify-content: center; color: var(--admin-text-muted); font-size: 12px; }
 .fallback-login :deep(.el-collapse-item__wrap) { border-bottom: 0; }
 .fallback-login :deep(.el-form-item) { margin-bottom: 14px; }

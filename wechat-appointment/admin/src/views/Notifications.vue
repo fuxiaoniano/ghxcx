@@ -1,6 +1,6 @@
 <template>
   <div class="page-heading">
-    <div><h1 class="page-title">通知记录</h1><p>查看消息发送结果、失败原因并执行重试</p></div>
+    <div><h1 class="page-title">通知记录</h1></div>
     <span>共 {{ total }} 条记录</span>
   </div>
   <div class="content-panel">

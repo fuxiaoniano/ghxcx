@@ -43,7 +43,7 @@
       <h2 class="form-section-title">文章内容</h2>
       <el-form-item label="资讯标题" required><el-input v-model="articleForm.title" maxlength="255" show-word-limit /></el-form-item>
       <div class="form-grid">
-        <el-form-item label="资讯分类" required><el-select v-model="articleForm.categoryId" placeholder="请选择分类" style="width: 100%"><el-option v-for="category in activeCategories" :key="category.id" :label="category.name" :value="category.id" /></el-select></el-form-item>
+        <el-form-item label="资讯分类" required><div class="category-picker"><el-select v-model="articleForm.categoryId" placeholder="请选择分类" style="width: 100%"><el-option v-for="category in activeCategories" :key="category.id" :label="category.name" :value="category.id" /></el-select><el-button @click="openCategoryDialog('article')">新增分类</el-button></div></el-form-item>
         <el-form-item label="作者"><el-input v-model="articleForm.author" maxlength="100" /></el-form-item>
       </div>
       <div class="form-grid">
@@ -87,12 +87,20 @@
   <el-dialog v-model="generatorVisible" title="交给 Codex 生成口腔资讯" width="min(680px, calc(100vw - 32px))">
     <el-alert title="这里会生成一段明确的任务要求。复制后发送到当前 Codex 对话，我会生成完整文章并直接同步为后台草稿，不会未经审核自动发布。" type="info" :closable="false" show-icon />
     <el-form class="generator-form" label-width="92px">
-      <el-form-item label="文章分类" required><el-select v-model="generatorForm.categoryId" placeholder="请选择分类" style="width: 100%"><el-option v-for="category in activeCategories" :key="category.id" :label="category.name" :value="category.id" /></el-select></el-form-item>
+      <el-form-item label="文章分类" required><div class="category-picker"><el-select v-model="generatorForm.categoryId" placeholder="请选择分类" style="width: 100%"><el-option v-for="category in activeCategories" :key="category.id" :label="category.name" :value="category.id" /></el-select><el-button @click="openCategoryDialog('generator')">新增分类</el-button></div></el-form-item>
       <el-form-item label="文章主题" required><el-input v-model="generatorForm.topic" placeholder="例如：儿童第一次看牙需要准备什么" /></el-form-item>
       <el-form-item label="目标读者"><el-input v-model="generatorForm.audience" placeholder="例如：3—8 岁儿童家长" /></el-form-item>
       <el-form-item label="补充要求"><el-input v-model="generatorForm.notes" type="textarea" :rows="3" placeholder="例如：1000 字左右、避免营销表达、列出就医提示" /></el-form-item>
     </el-form>
     <template #footer><el-button @click="generatorVisible = false">关闭</el-button><el-button type="primary" @click="copyGeneratorPrompt">复制生成任务</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="categoryDialogVisible" title="新增资讯分类" width="min(520px, calc(100vw - 32px))" append-to-body>
+    <el-form label-width="88px">
+      <el-form-item label="分类名称" required><el-input v-model="newCategory.name" maxlength="40" /></el-form-item>
+      <el-form-item label="分类路径" required><el-input v-model="newCategory.slug" maxlength="60" placeholder="例如：children-dentistry" /></el-form-item>
+    </el-form>
+    <template #footer><el-button @click="categoryDialogVisible = false">取消</el-button><el-button type="primary" :loading="categorySaving" @click="saveNewCategory">保存并选用</el-button></template>
   </el-dialog>
 </template>
 
@@ -102,12 +110,14 @@ import { Delete, Edit, Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import HtmlEditor from '../components/HtmlEditor.vue';
 import MediaPicker from '../components/MediaPicker.vue';
+import { useAuthStore } from '../stores/auth';
 import {
-  createWebsiteArticle, deleteWebsiteArticle, getWebsiteArticle, getWebsiteArticleCategories, getWebsiteArticles, getWebsiteSettings,
+  createWebsiteArticle, createWebsiteArticleCategory, deleteWebsiteArticle, getWebsiteArticle, getWebsiteArticleCategories, getWebsiteArticles, getWebsiteSettings,
   updateWebsiteArticle, type WebsiteArticleCategoryItem, type WebsiteArticleItem, type WebsiteArticlePayload
 } from '../api/admin';
 
 const articles = ref<WebsiteArticleItem[]>([]);
+const auth = useAuthStore();
 const statusFilter = ref<'ALL' | 'ACTIVE' | 'DISABLED'>('ALL');
 const defaultAuthor = ref('');
 const saving = ref(false);
@@ -116,6 +126,10 @@ const previewVisible = ref(false);
 const previewItem = ref<WebsiteArticleItem>();
 const generatorVisible = ref(false);
 const categories = ref<WebsiteArticleCategoryItem[]>([]);
+const categoryDialogVisible = ref(false);
+const categorySaving = ref(false);
+const categoryDestination = ref<'article' | 'generator'>('article');
+const newCategory = reactive({ name: '', slug: '' });
 const activeCategories = computed(() => categories.value.filter((item) => item.status === 'ACTIVE'));
 const articleForm = reactive({
   id: '', title: '', categoryId: '', author: '', digest: '', coverUrl: '', contentHtml: '', originalUrl: '', publishedAt: '',
@@ -124,10 +138,42 @@ const articleForm = reactive({
 const generatorForm = reactive({ categoryId: '', topic: '', audience: '', notes: '' });
 
 async function load() {
-  const [settings, categoryRows, result] = await Promise.all([getWebsiteSettings(), getWebsiteArticleCategories(), getWebsiteArticles()]);
-  defaultAuthor.value = settings.defaultAuthor || settings.brandName;
+  const [categoryRows, result] = await Promise.all([getWebsiteArticleCategories(), getWebsiteArticles()]);
   categories.value = categoryRows;
   articles.value = result.list;
+  // 文章权限不要求官网设置权限；设置读取失败不能隐藏已有分类和文章。
+  defaultAuthor.value = auth.user?.nickname || auth.user?.username || '';
+  if (auth.hasPermission('WEBSITE_SETTINGS')) {
+    try {
+      const settings = await getWebsiteSettings();
+      defaultAuthor.value = settings.defaultAuthor || settings.brandName || defaultAuthor.value;
+    } catch {
+      // 资讯权限与官网设置权限独立，设置读取失败不影响分类和文章。
+    }
+  }
+}
+
+function openCategoryDialog(destination: 'article' | 'generator') {
+  categoryDestination.value = destination;
+  Object.assign(newCategory, { name: '', slug: '' });
+  categoryDialogVisible.value = true;
+}
+
+async function saveNewCategory() {
+  const name = newCategory.name.trim();
+  const slug = newCategory.slug.trim();
+  if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return ElMessage.warning('请填写分类名称和正确的分类路径');
+  categorySaving.value = true;
+  try {
+    const category = await createWebsiteArticleCategory({ name, slug, sort: 0, status: 'ACTIVE' });
+    categories.value = await getWebsiteArticleCategories();
+    if (categoryDestination.value === 'article') articleForm.categoryId = category.id;
+    else generatorForm.categoryId = category.id;
+    categoryDialogVisible.value = false;
+    ElMessage.success('分类已添加，可用于创建文章');
+  } finally {
+    categorySaving.value = false;
+  }
 }
 
 async function loadArticles() {
@@ -196,7 +242,7 @@ function formatTime(value?: string) {
 async function copyGeneratorPrompt() {
   const category = categories.value.find((item) => item.id === generatorForm.categoryId);
   if (!category || !generatorForm.topic.trim()) return ElMessage.warning('请选择分类并填写文章主题');
-  const prompt = `请生成一篇口腔健康资讯并直接同步到傅小念运营管理后台的草稿箱。\n分类：${category.name}（categoryId: ${category.id}）\n主题：${generatorForm.topic.trim()}\n目标读者：${generatorForm.audience.trim() || '普通公众'}\n补充要求：${generatorForm.notes.trim() || '内容科学、清晰，不使用营销或保证疗效表述；包含摘要、SEO标题、关键词、SEO描述、分级正文和就医提示。'}\n封面要求：必须调用 imagegen 图片生成技能，生成与文章主题准确匹配的横版资讯封面；画面专业、自然、适合口腔健康科普，允许在图片中加入与主题相关、清晰易读的简短中文标题或提示文字，但不得添加 Logo、水印或夸张医疗效果。将封面保存为 jpg 或 webp，压缩到 500KB 以内，并通过 coverImagePath 随文章同步；封面只用于文章封面，不得插入资讯正文。\n同步要求：作者必须使用本次同步时登录管理后台的账号名称，不接受手工填写其他作者。\n生成后只保存为草稿，等待人工审核，不要直接发布。`;
+  const prompt = `请生成一篇口腔健康资讯并直接同步到“傅小念的运营工作台”草稿箱。\n分类：${category.name}（categoryId: ${category.id}）\n主题：${generatorForm.topic.trim()}\n目标读者：${generatorForm.audience.trim() || '普通公众'}\n补充要求：${generatorForm.notes.trim() || '内容科学、清晰，不使用营销或保证疗效表述；包含摘要、SEO标题、关键词、SEO描述、分级正文和就医提示。'}\n封面要求：必须调用 imagegen 图片生成技能，生成与文章主题准确匹配的横版资讯封面；画面专业、自然、适合口腔健康科普，允许在图片中加入与主题相关、清晰易读的简短中文标题或提示文字，但不得添加 Logo、水印或夸张医疗效果。将封面保存为 jpg 或 webp，压缩到 500KB 以内，并通过 coverImagePath 随文章同步；封面只用于文章封面，不得插入资讯正文。\n同步要求：作者必须使用本次同步时登录管理后台的账号名称，不接受手工填写其他作者。\n生成后只保存为草稿，等待人工审核，不要直接发布。`;
   await navigator.clipboard.writeText(prompt);
   ElMessage.success('生成任务已复制，请粘贴到当前 Codex 对话');
 }
@@ -212,6 +258,8 @@ onMounted(load);
 .operation-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .operation-actions :deep(.el-button) { min-width: 68px; margin: 0; padding: 8px 9px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+.category-picker { display: flex; width: 100%; min-width: 0; gap: 8px; }
+.category-picker .el-button { flex: none; margin: 0; }
 .form-section-title { margin: 0 0 18px; color: var(--admin-text); font-size: 16px; font-weight: 650; }
 .form-section-title--spaced { margin-top: 8px; padding-top: 22px; border-top: 1px solid var(--admin-border); }
 .field-tip { margin-top: 5px; color: var(--admin-text-muted); font-size: 12px; line-height: 1.5; }

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AdminAuthController } from './admin-auth.controller';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { DashboardWorkspaceController } from './dashboard-workspace.controller';
+import { DashboardWorkspaceService } from './dashboard-workspace.service';
 import { AuthModule } from '../auth/auth.module';
 import { CryptoModule } from '../crypto/crypto.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -20,8 +22,8 @@ import { FollowupForwarderModule } from '../followup-forwarder/followup-forwarde
     WechatOfficialAccountModule,
     FollowupForwarderModule
   ],
-  controllers: [AdminAuthController, AdminController],
-  providers: [AdminService],
+  controllers: [AdminAuthController, AdminController, DashboardWorkspaceController],
+  providers: [AdminService, DashboardWorkspaceService],
   exports: [AdminService]
 })
 export class AdminModule {}

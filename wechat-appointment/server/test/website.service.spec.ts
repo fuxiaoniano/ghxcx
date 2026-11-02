@@ -5,7 +5,8 @@ describe('WebsiteService article management', () => {
   function createService() {
     const prisma = {
       websiteArticleCategory: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'wac_implant', name: '种植修复' })
+        findUnique: jest.fn().mockResolvedValue({ id: 'wac_implant', name: '种植修复' }),
+        findMany: jest.fn().mockResolvedValue([{ id: 'wac_implant', name: '种植修复' }])
       },
       wechatArticle: {
         count: jest.fn().mockResolvedValue(0),
@@ -130,6 +131,14 @@ describe('WebsiteService article management', () => {
     expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { status: ContentStatus.DISABLED }
     }));
+  });
+
+  it('shares all historical categories and articles across authorized editors', async () => {
+    const { service, prisma } = createService();
+    await service.categories(true);
+    await service.articles({ page: 1, pageSize: 50 }, true);
+    expect(prisma.websiteArticleCategory.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+    expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
   });
 
   it('increments only the total read count when a published article is opened', async () => {

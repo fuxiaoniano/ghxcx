@@ -19,7 +19,7 @@ describe('ConsultationService promotion account selection', () => {
   const dataScopes = {
     ownershipWhere: jest.fn().mockResolvedValue({ OR: [{ ownerAdminId: { in: ['admin-1'] } }] })
   };
-  const service = new ConsultationService(prisma as never, {} as never, {} as never, dataScopes as never);
+  const service = new ConsultationService(prisma as never, {} as never, {} as never, dataScopes as never, {} as never);
   const user = { adminUserId: 'admin-1', role: 'STAFF', permissions: [], dataScope: 'SELF' } as any;
 
   beforeEach(() => jest.clearAllMocks());
@@ -39,7 +39,7 @@ describe('ConsultationService promotion account selection', () => {
 
   it('returns a full phone in the list serializer only for members with the phone permission', () => {
     const phoneCrypto = { decryptPhone: jest.fn().mockReturnValue('13812345678') };
-    const phoneService = new ConsultationService(prisma as never, phoneCrypto as never, {} as never, dataScopes as never);
+    const phoneService = new ConsultationService(prisma as never, phoneCrypto as never, {} as never, dataScopes as never, {} as never);
     const row = {
       phoneEncrypted: 'encrypted-phone', phoneMasked: '138****5678', customData: {}, tags: [],
       status: { category: 'IN_PROGRESS' }, nextFollowUpAt: null

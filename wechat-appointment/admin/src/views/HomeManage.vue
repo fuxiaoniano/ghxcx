@@ -1,5 +1,5 @@
 <template>
-  <div class="page-heading"><div><h1 class="page-title">首页管理</h1><p>配置企业首页品牌、轮播图和第二广告位</p></div></div>
+  <div class="page-heading"><div><h1 class="page-title">首页管理</h1></div></div>
   <el-tabs v-model="tab" class="content-panel">
     <el-tab-pane label="首页配置" name="config">
       <el-form label-width="110px" style="max-width: 720px">

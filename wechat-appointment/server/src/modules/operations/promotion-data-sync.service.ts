@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import dayjs from 'dayjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
+import { BusinessException } from '../../common/utils/business-exception';
 import { PromotionMaterialInput, PromotionMaterialType } from './promotion-material-health';
 
 export type PromotionSyncProvider = 'TENCENT_ADS' | 'OCEANENGINE';
@@ -19,7 +20,7 @@ export class TencentMarketingApiError extends Error {
 }
 
 type SyncResult = { provider: PromotionSyncProvider; synced: number; noData: number; skippedArchived: number; skipped: number; errors: string[] };
-type TencentSyncExtra = { clientId?: string; clientSecretCipher?: string; refreshTokenCipher?: string; userTokenCipher?: string; userTokenExpiresAt?: string; authorizedAccountId?: string; accessTokenExpiresAt?: string; refreshTokenExpiresAt?: string };
+type TencentSyncExtra = { clientId?: string; clientSecretCipher?: string; refreshTokenCipher?: string; userTokenCipher?: string; userTokenExpiresAt?: string; authorizedAccountId?: string; accessTokenExpiresAt?: string; refreshTokenExpiresAt?: string; sharedAccountNos?: string[] };
 export type PromotionMaterialFetchResult = {
   items: PromotionMaterialInput[];
   coverage: Array<{ type: PromotionMaterialType; available: boolean; metricsAvailable: boolean; message: string }>;
@@ -32,6 +33,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private running = false;
   private lastScheduledSlot = '';
+  private readonly refreshInFlight = new Map<string, Promise<string>>();
 
   constructor(private readonly prisma: PrismaService, private readonly crypto: CryptoService) {}
 
@@ -92,7 +94,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
       if (existing?.isArchived) { result.skippedArchived++; continue; }
       try {
         const credential = await this.prisma.promotionAccountCredential.findUnique({ where: { accountId: account.id } });
-        const tencentAuth = provider === 'TENCENT_ADS' ? this.resolveTencentAuth(credential, config) : null;
+        const tencentAuth = provider === 'TENCENT_ADS' ? this.resolveTencentAuth(credential, config, account.accountNo) : null;
         const extra: TencentSyncExtra = tencentAuth?.extra || legacyExtra;
         const canRefreshTencent = provider === 'TENCENT_ADS' && Boolean(extra.clientId && extra.clientSecretCipher && extra.refreshTokenCipher);
         let token = provider === 'TENCENT_ADS'
@@ -173,19 +175,50 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async refreshTencentToken(extra: TencentSyncExtra, target: { credentialId?: string; configId?: string }) {
-    if (!extra.clientId || !extra.clientSecretCipher || !extra.refreshTokenCipher) throw new Error('腾讯 Token 已失效，且未完整配置应用 ID、Client Secret 和 Refresh Token');
-    const response = await axios.get('https://api.e.qq.com/oauth/token', {
-      params: {
-        client_id: extra.clientId,
-        client_secret: this.crypto.decryptText(extra.clientSecretCipher),
-        grant_type: 'refresh_token',
-        refresh_token: this.crypto.decryptText(extra.refreshTokenCipher),
-      },
-      timeout: 25_000,
-    });
+    const key = target.configId ? `config:${target.configId}` : `credential:${target.credentialId || ''}`;
+    const running = this.refreshInFlight.get(key);
+    if (running) return running;
+    const pending = this.performTencentTokenRefresh(extra, target);
+    this.refreshInFlight.set(key, pending);
+    try { return await pending; } finally { this.refreshInFlight.delete(key); }
+  }
+
+  private async performTencentTokenRefresh(extra: TencentSyncExtra, target: { credentialId?: string; configId?: string }) {
+    if (!extra.clientId || !extra.clientSecretCipher || !extra.refreshTokenCipher) {
+      throw new BusinessException(400924, '腾讯授权凭证不完整，请在推广数据同步设置或推广账户中重新配置授权');
+    }
+    const latestConfig = target.configId ? await this.prisma.promotionDataSyncConfig.findUnique({ where: { id: target.configId } }) : null;
+    const latestCredential = target.credentialId ? await this.prisma.promotionAccountCredential.findUnique({ where: { id: target.credentialId } }) : null;
+    const latestRefreshCipher = target.configId
+      ? ((latestConfig?.extraConfig || {}) as TencentSyncExtra).refreshTokenCipher
+      : latestCredential?.refreshTokenCipher;
+    const latestAccessCipher = latestConfig?.accessTokenCipher || latestCredential?.accessTokenCipher;
+    if (latestAccessCipher && latestRefreshCipher && latestRefreshCipher !== extra.refreshTokenCipher) {
+      return this.crypto.decryptText(latestAccessCipher);
+    }
+    let response;
+    try {
+      response = await axios.get('https://api.e.qq.com/oauth/token', {
+        params: {
+          client_id: extra.clientId,
+          client_secret: this.crypto.decryptText(extra.clientSecretCipher),
+          grant_type: 'refresh_token',
+          refresh_token: this.crypto.decryptText(extra.refreshTokenCipher),
+        },
+        timeout: 25_000,
+      });
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        const code = String(error.response.data?.code ?? '');
+        if (code === '11101' || code === '11102' || code === '11002') {
+          throw new BusinessException(400925, '腾讯授权已失效，请在推广数据同步设置或推广账户中重新完成授权');
+        }
+      }
+      throw new BusinessException(502924, '腾讯授权刷新请求失败，请稍后重试；若持续失败请检查授权状态', 502);
+    }
     const payload = response.data;
     if (Number(payload?.code) !== 0 || !payload?.data?.access_token) {
-      throw new Error(payload?.message_cn || payload?.message || `腾讯刷新 Token 失败（${payload?.code ?? '未知错误'}）`);
+      throw new BusinessException(400925, '腾讯授权已失效，请在推广数据同步设置或推广账户中重新完成授权');
     }
     const data = payload.data;
     const updatedExtra: TencentSyncExtra = {
@@ -271,7 +304,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
     const config = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider } });
     if (!config?.enabled) throw new Error('对应平台尚未启用同步设置');
     const { account, credential } = await this.accountCredentialByNo(accountNo, provider);
-    const auth = provider === 'TENCENT_ADS' ? this.resolveTencentAuth(credential, config) : null;
+    const auth = provider === 'TENCENT_ADS' ? this.resolveTencentAuth(credential, config, accountNo) : null;
     const extra: TencentSyncExtra = auth?.extra || {};
     let token = provider === 'TENCENT_ADS'
       ? auth?.tokenCipher ? this.crypto.decryptText(auth.tokenCipher) : ''
@@ -297,7 +330,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
     const config = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } });
     if (!config?.enabled) throw new TencentMarketingApiError('TENCENT_NOT_ENABLED', '腾讯广告同步设置尚未启用');
     const { account, credential } = await this.accountCredentialByNo(accountNo, 'TENCENT_ADS');
-    const auth = this.resolveTencentAuth(credential, config);
+    const auth = this.resolveTencentAuth(credential, config, accountNo);
     const extra = auth.extra;
     // An explicit task/request actor selects their own real-name token. Account
     // ownership or administrator visibility must never select another user's token.
@@ -333,7 +366,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Resolve account-scoped credentials first, then the legacy Tencent business-unit authorization. */
-  private resolveTencentAuth(credential: any, config: any) {
+  private resolveTencentAuth(credential: any, config: any, accountNo?: string | null) {
     const sharedExtra = (config?.extraConfig || {}) as TencentSyncExtra;
     const accountExtra: TencentSyncExtra = {
       clientId: credential?.clientId || undefined,
@@ -344,8 +377,14 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
       authorizedAccountId: credential?.authorizedAccountId || undefined,
     };
     const accountHasAccess = Boolean(credential?.accessTokenCipher || (accountExtra.clientId && accountExtra.clientSecretCipher && accountExtra.refreshTokenCipher));
-    const extra = accountHasAccess ? accountExtra : sharedExtra;
-    const tokenCipher = accountHasAccess ? credential?.accessTokenCipher : config?.accessTokenCipher;
+    // A freshly validated business-unit authorization is a single rotating
+    // credential shared by its verified accounts. Older unscoped credentials
+    // retain their previous account-first behavior for compatibility.
+    const verifiedShared = Array.isArray(sharedExtra.sharedAccountNos) && Boolean(accountNo) && sharedExtra.sharedAccountNos.includes(String(accountNo));
+    const useAccount = accountHasAccess && !verifiedShared;
+    const legacySharedAllowed = !Array.isArray(sharedExtra.sharedAccountNos);
+    const extra = useAccount ? accountExtra : (verifiedShared || legacySharedAllowed ? sharedExtra : {});
+    const tokenCipher = useAccount ? credential?.accessTokenCipher : (verifiedShared || legacySharedAllowed ? config?.accessTokenCipher : null);
     const userTokenCipher = credential?.userTokenCipher || sharedExtra.userTokenCipher;
     const userTokenExpiresAt = credential?.userTokenCipher ? credential?.userTokenExpiresAt?.toISOString() : sharedExtra.userTokenExpiresAt;
     return {
@@ -353,27 +392,50 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
       extra,
       userTokenCipher: userTokenCipher || null,
       userTokenExpiresAt: userTokenExpiresAt || null,
-      target: accountHasAccess ? { credentialId: credential?.id } : { configId: config?.id },
+      target: useAccount ? { credentialId: credential?.id } : { configId: config?.id },
     };
   }
 
   /** Safe status only: this method never returns ciphertext or plaintext credential values. */
   async tencentAccountCredentialStatus(accountId: string, actorAdminId: string) {
-    const [credential, config, sharedUserToken] = await Promise.all([
+    const [account, credential, config, sharedUserToken] = await Promise.all([
+      this.prisma.promotionAccount.findUnique({ where: { id: accountId }, select: { accountNo: true } }),
       this.prisma.promotionAccountCredential.findUnique({ where: { accountId } }),
       this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } }),
       this.prisma.tencentUserToken.findUnique({ where: { adminUserId: actorAdminId } }),
     ]);
-    return { enabled: Boolean(config?.enabled), ...this.credentialStatus(credential, config, sharedUserToken) };
+    return { enabled: Boolean(config?.enabled), ...this.credentialStatus(credential, config, sharedUserToken, account?.accountNo) };
   }
 
-  credentialStatus(credential: any, config: any, sharedUserToken?: { tokenCipher: string; expiresAt: Date | null } | null) {
-    const auth = this.resolveTencentAuth(credential, config);
+  credentialStatus(credential: any, config: any, sharedUserToken?: { tokenCipher: string; expiresAt: Date | null } | null, accountNo?: string | null) {
+    const auth = this.resolveTencentAuth(credential, config, accountNo);
     const hasRefresh = Boolean(auth.extra.clientId && auth.extra.clientSecretCipher && auth.extra.refreshTokenCipher);
     const tokenCipher = sharedUserToken?.tokenCipher || auth.userTokenCipher;
     const expiresAt = sharedUserToken ? sharedUserToken.expiresAt : auth.userTokenExpiresAt;
     const userTokenExpired = Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
     return { authorized: Boolean(auth.tokenCipher || hasRefresh), hasUserToken: Boolean(tokenCipher && !userTokenExpired), userTokenExpiresAt: expiresAt };
+  }
+
+  async validateTencentBusinessUnitAccess(accessToken: string, accounts: Array<{ accountNo: string; name: string }>) {
+    const covered: Array<{ accountNo: string; name: string }> = [];
+    const rejected: Array<{ accountNo: string; name: string; reason: string }> = [];
+    for (const account of accounts) {
+      const accountId = Number(account.accountNo);
+      if (!/^\d+$/.test(account.accountNo) || !Number.isSafeInteger(accountId) || accountId <= 0) {
+        rejected.push({ ...account, reason: '账户户号不合法' });
+        continue;
+      }
+      try {
+        await this.rawTencentApi('GET', '/adgroups/get', accessToken, { account_id: accountId, page: 1, page_size: 1 });
+        covered.push(account);
+      } catch (error) {
+        if (error instanceof TencentMarketingApiError && (error.retryable || error.httpStatus >= 500 || error.code === '11002')) {
+          throw new BusinessException(502925, '腾讯账户权限校验暂不可用，业务单元授权未保存，请稍后重试', 502);
+        }
+        rejected.push({ ...account, reason: '腾讯接口未确认该账户可访问' });
+      }
+    }
+    return { covered, rejected };
   }
 
   private async rawTencentApi(method: 'GET' | 'POST', path: string, token: string, input: Record<string, unknown>, userToken = '') {
@@ -451,7 +513,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
               impressions: Number(flat.view_count || 0),
               clicks: Number(flat.valid_click_count || 0),
               conversions: Number(flat.conversions_count || 0),
-              targetConversionCost: flat.conversions_cost === undefined || flat.conversions_cost === null || flat.conversions_cost === '' || !Number.isFinite(Number(flat.conversions_cost))
+              actualCpa: flat.conversions_cost === undefined || flat.conversions_cost === null || flat.conversions_cost === '' || !Number.isFinite(Number(flat.conversions_cost))
                 ? null : Number(flat.conversions_cost) / 100,
             },
           });

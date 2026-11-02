@@ -1,5 +1,5 @@
 <template>
-  <div class="page-heading"><h1 class="page-title">公众号菜单</h1><p>生成业务入口并维护公众号自定义菜单</p></div>
+  <div class="page-heading"><h1 class="page-title">公众号菜单</h1></div>
   <div class="content-panel">
     <el-alert
       class="menu-tip"

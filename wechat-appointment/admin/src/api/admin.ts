@@ -155,7 +155,7 @@ export interface ConsultationStatusItem { id: string; name: string; code: string
 export interface ConsultationTagItem { id: string; name: string; color: string; sort: number; enabled: boolean; }
 export interface ConsultationFieldItem { id: string; name: string; code: string; source: 'FIXED' | 'CUSTOM'; type: string; required: boolean; enabled: boolean; showInForm: boolean; showInDetail: boolean; showInList: boolean; filterable: boolean; exportable: boolean; importable: boolean; listTitle?: string; listOrder: number; listWidth: number; options: string[]; }
 export interface ConsultationFormItem {
-  id: string; name: string; phone: string; phoneMasked: string; projectId: string; channelSource: string; promotionAccountId?: string | null; accountName?: string; lastFollowUpContent?: string; statusId: string;
+  id: string; name: string; phone: string; phoneMasked: string; projectId: string; channelSource: string; promotionAccountId?: string | null; accountName?: string; lastFollowUpContent?: string; appointmentScheduled: boolean; paymentAmount: number; statusId: string;
   ownerAdminId: string; createdByAdminId: string; recordedAt: string; lastFollowUpAt?: string; nextFollowUpAt?: string; invalidReason?: string;
   customData?: Record<string, any>; overdue: boolean; project: { id: string; name: string }; status: ConsultationStatusItem;
   owner: { id: string; username: string; nickname: string }; createdBy: { id: string; username: string; nickname: string };
@@ -217,6 +217,8 @@ export interface LandingPageDetail extends LandingPageItem {
 export interface AppointmentNotifyConfig {
   enabled: boolean;
   templateId?: string;
+  assignmentEnabled?: boolean;
+  assignmentTemplateId?: string;
 }
 
 export interface FollowupForwardConfig {
@@ -548,8 +550,9 @@ export interface PromotionCreativeAsset {
   businessUnitKey: string; platformAssetId: string; platformAssetKind: 'COMPONENT' | 'VIDEO' | 'IMAGE' | 'REFERENCE'; type: 'TITLE' | 'VIDEO' | 'IMAGE' | 'LANDING_PAGE' | 'MARKETING' | 'BRAND' | 'WECHAT_CHANNELS' | 'CONVERSION' | 'ACTION_BUTTON' | 'MINI_CARD_LINK' | 'TEXT_LINK' | 'FLOATING_ZONE' | 'LABEL' | 'SOCIAL_SKILL' | 'OTHER';
   componentField?: string | null; name: string; contentSummary?: string | null; labelTexts?: string[]; previewUrl?: string | null; status?: string | null; auditStatus?: string | null;
   componentSubType?: string | null; bundleItemCount?: number | null;
-  createdTime?: string | null; dimensions?: string | null; spend7Days?: number | null; spend15Days?: number | null; targetConversionCost7Days?: number | null; usable: boolean; unavailableReason?: string | null;
+  createdTime?: string | null; dimensions?: string | null; spend7Days?: number | null; spend15Days?: number | null; actualCpa7Days?: number | null; targetConversionCost7Days?: null; usable: boolean; unavailableReason?: string | null;
   linkedLandingPage?: { pageId: string; name: string; platformAssetId: string } | null;
+  linkedCreativeCount?: number | null;
 }
 
 export interface PromotionCreativeBatchPayload {
@@ -628,6 +631,7 @@ export interface PromotionDailyMetricPayload {
 }
 
 export interface PromotionSummaryItem extends Omit<PromotionDailyMetricItem, 'id' | 'statDate' | 'customMetrics' | 'remark'> {
+  customMetrics?: Record<string, string | number>;
   periodStart: string;
   periodEnd: string;
   periodLabel: string;
@@ -739,6 +743,14 @@ export function pollAdminWechatLoginSession(sessionId: string) {
 export function getDashboard() {
   return http.get<unknown, Record<string, unknown>>('/api/admin/dashboard');
 }
+export type DashboardModule = 'METRICS' | 'TREND' | 'RECENT' | `PAGE:${string}`;
+export interface DashboardTodo { id: string; title: string; dueAt: string; priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'; completed: boolean }
+export const getDashboardPreferences = () => http.get<unknown, { modules: DashboardModule[] }>('/api/admin/dashboard-workspace/preferences');
+export const saveDashboardPreferences = (modules: DashboardModule[]) => http.put<unknown, { modules: DashboardModule[] }>('/api/admin/dashboard-workspace/preferences', { modules });
+export const getDashboardTodos = () => http.get<unknown, DashboardTodo[]>('/api/admin/dashboard-workspace/todos');
+export const createDashboardTodo = (data: { title: string; dueAt: string; priority: DashboardTodo['priority'] }) => http.post<unknown, DashboardTodo>('/api/admin/dashboard-workspace/todos', data);
+export const updateDashboardTodo = (id: string, data: Partial<Pick<DashboardTodo, 'title' | 'dueAt' | 'priority' | 'completed'>>) => http.patch<unknown, DashboardTodo>(`/api/admin/dashboard-workspace/todos/${id}`, data);
+export const deleteDashboardTodo = (id: string) => http.delete<unknown, { deleted: boolean }>(`/api/admin/dashboard-workspace/todos/${id}`);
 
 export function getUsers(params: Record<string, unknown>) {
   return http.get<unknown, PageResult<UserItem>>('/api/admin/users', { params });
@@ -918,6 +930,9 @@ export const deleteAdminTeam = (id: string) => http.delete(`/api/admin/admin-tea
 export interface OfficialAccountBinding { enabled: boolean; appId: string; hasAppSecret: boolean; hasToken: boolean; hasEncodingAesKey: boolean; callbackUrl: string; }
 export const getOfficialAccountBinding = () => http.get<unknown, OfficialAccountBinding>('/api/admin/official-account/binding');
 export const updateOfficialAccountBinding = (data: { enabled: boolean; appId: string; appSecret?: string; token?: string; encodingAesKey?: string }) => http.patch<unknown, OfficialAccountBinding>('/api/admin/official-account/binding', data);
+export interface AdminLoginPreference { defaultWechatLogin: boolean; bindingReady: boolean; }
+export const getAdminLoginPreference = () => http.get<unknown, AdminLoginPreference>('/api/admin/auth/login-preference');
+export const updateAdminLoginPreference = (defaultWechatLogin: boolean) => http.patch<unknown, AdminLoginPreference>('/api/admin/official-account/login-preference', { defaultWechatLogin });
 
 export function getAdminWechatInvitations() {
   return http.get<unknown, AdminWechatInviteItem[]>('/api/admin/admin-users/invitations');
@@ -956,7 +971,7 @@ export function getAppointmentNotifyConfig() {
   return http.get<unknown, AppointmentNotifyConfig>('/api/admin/appointment-notify');
 }
 
-export function updateAppointmentNotifyConfig(data: { enabled?: boolean; templateId?: string }) {
+export function updateAppointmentNotifyConfig(data: { enabled?: boolean; templateId?: string; assignmentEnabled?: boolean; assignmentTemplateId?: string }) {
   return http.patch<unknown, AppointmentNotifyConfig>('/api/admin/appointment-notify', data);
 }
 
@@ -1011,7 +1026,7 @@ export const savePromotionAccountCredential = (id: string, data: { accessToken?:
 export interface TencentUserTokenStatus { hasUserToken: boolean; userTokenExpiresAt: string | null; }
 export const getMyTencentUserToken = () => http.get<unknown, TencentUserTokenStatus>(`${operationsBase}/my-tencent-user-token`);
 export const saveMyTencentUserToken = (data: { userToken?: string; userTokenExpiresAt?: string; clearUserToken?: boolean }) => http.put<unknown, TencentUserTokenStatus>(`${operationsBase}/my-tencent-user-token`, data);
-export interface PromotionAccountAccessGrantItem { adminUserId: string; username?: string; nickname?: string; role?: string; grant?: { canViewData: boolean; canViewMaterials: boolean; canViewCreatives: boolean; canCreateCreatives: boolean }; canViewData?: boolean; canViewMaterials?: boolean; canViewCreatives?: boolean; canCreateCreatives?: boolean; }
+export interface PromotionAccountAccessGrantItem { id: string; adminUserId: string; username?: string; nickname?: string; role?: string; grant?: { canViewData: boolean; canViewMaterials: boolean; canViewCreatives: boolean; canCreateCreatives: boolean }; canViewData?: boolean; canViewMaterials?: boolean; canViewCreatives?: boolean; canCreateCreatives?: boolean; }
 export const getPromotionAccountAccessGrants = (id: string) => http.get<unknown, PromotionAccountAccessGrantItem[]>(`${operationsBase}/accounts/${id}/access-grants`);
 export const savePromotionAccountAccessGrants = (id: string, grants: Array<Pick<PromotionAccountAccessGrantItem, 'adminUserId' | 'canViewData' | 'canViewMaterials' | 'canViewCreatives' | 'canCreateCreatives'>>) => http.put<unknown, { accountId: string; grants: PromotionAccountAccessGrantItem[] }>(`${operationsBase}/accounts/${id}/access-grants`, { grants });
 export const getPromotionDailyMetrics = (params: Record<string, string>) => http.get<unknown, PromotionDailyMetricItem[]>(`${operationsBase}/daily`, { params: operationParams(params) });
@@ -1023,6 +1038,21 @@ export const deletePromotionDailyMetric = (id: string) => http.delete<unknown, {
 export const archivePromotionDailyMetric = (id: string, isArchived: boolean) => http.patch<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily/${id}/archive`, { isArchived });
 export const getPromotionSyncConfigs = () => http.get<unknown, PromotionDataSyncConfigItem[]>(`${operationsBase}/sync-configs`);
 export const updatePromotionSyncConfig = (data: { provider: 'TENCENT_ADS' | 'OCEANENGINE'; enabled: boolean; reportUrl: string; accessToken?: string; clientId?: string; clientSecret?: string; refreshToken?: string; userToken?: string; userTokenExpiresAt?: string }) => http.put<unknown, PromotionDataSyncConfigItem>(`${operationsBase}/sync-configs`, data);
+export interface TencentBusinessUnitCredentialStatus {
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
+  hasClientSecret: boolean;
+  clientId: string;
+  updatedAt: string | null;
+  accounts: Array<{ id: string; accountNo: string; name: string; covered: boolean }>;
+}
+export interface TencentBusinessUnitCredentialResult {
+  covered: Array<{ accountNo: string; name: string }>;
+  rejected: Array<{ accountNo: string; name: string; reason: string }>;
+  updatedAt: string;
+}
+export const getTencentBusinessUnitCredential = () => http.get<unknown, TencentBusinessUnitCredentialStatus>(`${operationsBase}/sync-configs/tencent-business-unit`);
+export const updateTencentBusinessUnitCredential = (data: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string }) => http.put<unknown, TencentBusinessUnitCredentialResult>(`${operationsBase}/sync-configs/tencent-business-unit`, data);
 export const syncPromotionDailyMetrics = (data: { statDate: string; provider?: 'TENCENT_ADS' | 'OCEANENGINE'; accountIds?: string[] }) => http.post<unknown, Array<{ provider: string; synced: number; noData: number; skippedArchived: number; skipped: number; errors: string[] }>>(`${operationsBase}/daily/sync`, data);
 export const getPromotionHealthAccounts = () => http.get<unknown, PromotionHealthAccountsResult>(`${operationsBase}/health/accounts`);
 export const analyzePromotionHealth = (data: { accountIds: string[]; dateFrom: string; dateTo: string; syncEndDate?: boolean }) => http.post<unknown, PromotionHealthReport>(`${operationsBase}/health/analyze`, data);
@@ -1030,8 +1060,10 @@ export const analyzePromotionMaterials = (data: { provider?: 'TENCENT_ADS' | 'OC
 export const getPromotionCreativeBatchOptions = () => http.get<unknown, PromotionCreativeBatchOptions>(`${operationsBase}/creative-batches/options`);
 export const getPromotionCreativeAdgroups = (params: { accountId: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeAdgroup[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/creative-batches/adgroups`, { params });
 export const getPromotionCreativeTemplates = (params: { accountId: string; adgroupId: string; deliveryMode: string; dynamicCreativeType: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeTemplate[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/creative-batches/templates`, { params });
-export const getPromotionCreativeTemplateDetail = (params: { accountId: string; adgroupId: string; templateId: string; deliveryMode: string; dynamicCreativeType: string }) => http.get<unknown, { id: string; template: Record<string, unknown>; requirements: Array<{ name: string; path: string; required: boolean; elementType?: string; fieldType?: string; min: number; max: number; description?: string; restriction?: Record<string, unknown> }> }>(`${operationsBase}/creative-batches/template-detail`, { params });
+export const getPromotionCreativeTemplateDetail = (params: { accountId: string; adgroupId: string; templateId: string; deliveryMode: string; dynamicCreativeType: string }) => http.get<unknown, { id: string; template: Record<string, unknown>; requirements: Array<{ name: string; path: string; required: boolean; elementType?: string; fieldType?: string; min: number; max: number | null; description?: string; restriction?: Record<string, unknown> }> }>(`${operationsBase}/creative-batches/template-detail`, { params });
 export const getPromotionCreativeAssets = (params: { accountId: string; source: 'ACCOUNT' | 'BUSINESS_UNIT'; businessUnitKey?: string; assetType?: string; dimensions?: string; search?: string; adgroupId?: string; templateId?: string; deliveryMode?: string; dynamicCreativeType?: string; sortBy?: string; sortOrder?: 'ASC' | 'DESC'; page?: number; pageSize?: number; refresh?: boolean }) => http.get<unknown, { list: PromotionCreativeAsset[]; pageInfo: PlatformPageInfo; availableDimensions: string[] }>(`${operationsBase}/creative-batches/assets`, { params });
+export const getPromotionCreativeAssetUsageCounts = (accountId: string, assetIds: string[], refresh = false) => http.get<unknown, { scope: 'TENCENT_PLATFORM'; counts: Record<string, number> }>(`${operationsBase}/creative-batches/assets/usage`, { params: { accountId, assetIds: assetIds.join(','), refresh } });
+export const getPromotionCreativeAssetUsage = (accountId: string, assetId: string) => http.get<unknown, { asset: { id: string; name: string }; scope: 'TENCENT_PLATFORM'; total: number; list: Array<{ id: string; name: string; adgroupId: string }> }>(`${operationsBase}/creative-batches/assets/${encodeURIComponent(assetId)}/creatives`, { params: { accountId } });
 export const previewPromotionCreativeBatch = (data: PromotionCreativeBatchPayload) => http.post<unknown, { account: Record<string, unknown>; adgroup: Record<string, unknown>; template: Record<string, unknown>; items: Array<{ sequence: number; name: string; materials: Array<Record<string, unknown>>; creativeComponents: Record<string, unknown[]> }>; maxBatchSize: number; requiresConfirmation: boolean }>(`${operationsBase}/creative-batches/preview`, data);
 export const createPromotionCreativeBatch = (data: PromotionCreativeBatchPayload) => http.post<unknown, PromotionCreativeBatchTask>(`${operationsBase}/creative-batches`, data);
 export const getPromotionCreativeBatchTasks = (params: { accountId?: string; status?: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeBatchTask[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/creative-batches`, { params });
@@ -1049,8 +1081,8 @@ export const getMultiAccountCreativeOptions = () => http.get<unknown, PromotionC
 export const getMultiAccountCreativeAdgroups = (params: { accountId: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeAdgroup[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/multi-account-creative-batches/adgroups`, { params });
 export const getMultiAccountCreativeTemplates = (params: { accountId: string; adgroupId: string; deliveryMode: string; dynamicCreativeType: string; search?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: PromotionCreativeTemplate[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/multi-account-creative-batches/templates`, { params });
 export const getMultiAccountCreativeAssets = (params: { accountId: string; source: 'ACCOUNT' | 'BUSINESS_UNIT'; businessUnitKey?: string; assetType?: string; dimensions?: string; search?: string; sortBy?: string; sortOrder?: 'ASC' | 'DESC'; page?: number; pageSize?: number; refresh?: boolean }) => http.get<unknown, { list: PromotionCreativeAsset[]; pageInfo: PlatformPageInfo; availableDimensions: string[] }>(`${operationsBase}/multi-account-creative-batches/assets`, { params });
-export const preflightMultiAccountCreativeBatch = (data: MultiAccountCreativePayload) => http.post<unknown, MultiAccountCreativePreflight>(`${operationsBase}/multi-account-creative-batches/preflight`, data);
-export const createMultiAccountCreativeBatch = (data: MultiAccountCreativePayload) => http.post<unknown, MultiAccountCreativeTask>(`${operationsBase}/multi-account-creative-batches`, data);
+export const preflightMultiAccountCreativeBatch = (data: MultiAccountCreativePayload) => http.post<unknown, MultiAccountCreativePreflight>(`${operationsBase}/multi-account-creative-batches/preflight`, data, { timeout: 180000 });
+export const createMultiAccountCreativeBatch = (data: MultiAccountCreativePayload) => http.post<unknown, MultiAccountCreativeTask>(`${operationsBase}/multi-account-creative-batches`, data, { timeout: 180000 });
 export const getMultiAccountCreativeTasks = (params: { accountId?: string; adgroupId?: string; createdByAdminId?: string; status?: string; dateFrom?: string; dateTo?: string; page?: number; pageSize?: number }) => http.get<unknown, { list: MultiAccountCreativeTask[]; pageInfo: PlatformPageInfo }>(`${operationsBase}/multi-account-creative-batches`, { params });
 export const getMultiAccountCreativeTask = (id: string) => http.get<unknown, MultiAccountCreativeTask>(`${operationsBase}/multi-account-creative-batches/${id}`);
 export const retryMultiAccountCreativeBatch = (id: string) => http.post<unknown, MultiAccountCreativeTask>(`${operationsBase}/multi-account-creative-batches/${id}/retry`);
@@ -1194,6 +1226,10 @@ export const deleteWebsiteArticle = (id: string) => http.delete(`${websiteAdminB
 
 const consultationBase = '/api/admin/consultations';
 export const getConsultationMetadata = () => http.get<unknown, ConsultationMetadata>(`${consultationBase}/metadata`);
+export interface ConsultationReportRow { key: string; total: number; valid: number; effectiveRate: number; appointment: number; appointmentRate: number; arrived: number; arrivalRate: number; payment: number; custom: Record<string, number> }
+export interface ConsultationReportTreeNode extends ConsultationReportRow { id: string; label: string; level: 'TEAM' | 'MEMBER' | 'PROJECT' | 'CHANNEL' | 'ACCOUNT'; children: ConsultationReportTreeNode[] }
+export interface ConsultationReport { mode: 'channel' | 'daily'; from: string; to: string; fields: Array<{ code: string; name: string }>; availableFields: Array<{ code: string; name: string }>; summary: ConsultationReportRow; rows: ConsultationReportRow[]; tree: ConsultationReportTreeNode[] }
+export const getConsultationReport = (params: { mode: 'channel' | 'daily'; from: string; to: string; project?: string; channel?: string; customFields?: string }) => http.get<unknown, ConsultationReport>('/api/admin/consultation-reports', { params });
 export const getConsultations = (params: Record<string, unknown>) => http.get<unknown, PageResult<ConsultationFormItem>>(consultationBase, { params });
 export const getConsultation = (id: string) => http.get<unknown, ConsultationFormItem>(`${consultationBase}/${id}`);
 export const createConsultation = (data: Record<string, unknown>) => http.post<unknown, ConsultationFormItem>(consultationBase, data);
@@ -1231,3 +1267,28 @@ async function downloadAdminFile(path: string, filename: string, params?: Record
 export const downloadConsultationTemplate = () => downloadAdminFile(`${consultationBase}/import/template`, '网咨数据导入模板.xlsx');
 export const downloadConsultationImportErrors = (batchId: string) => downloadAdminFile(`${consultationBase}/import/${batchId}/errors`, '网咨导入错误明细.xlsx');
 export const exportConsultations = (params: Record<string, unknown>) => downloadAdminFile(`${consultationBase}/export/file`, `网咨数据-${new Date().toISOString().slice(0, 10)}.xlsx`, params);
+
+export type SmartMonitorAccount = { id: string; name: string; accountNo: string; platform: string; project: string; status: string; policy: { enabled: boolean; autoEnabled: boolean; emergencyStop: boolean } };
+export type SmartMonitorMetrics = { targetCpa: number | null; targetSource: string | null; spend: number | null; impressions: number | null; clicks: number | null; conversions: number | null; actualCpa: number | null; costRatio: number | null; reportSource: string | null; reportPeriodStart: string | null; reportPeriodEnd: string | null; fetchedAt: string | null; reportAgeMinutes: number | null; backfillStatus: string | null; evidenceHours: number; recommendation: string; assessment: { state: 'INSUFFICIENT' | 'NORMAL' | 'WARNING'; evidence: string; ratio: number | null } };
+export type SmartMonitorAdgroup = SmartMonitorMetrics & { id: string; name: string; configuredStatus: string | null; systemStatus: string | null; beginDate: string | null; endDate: string | null; optimizationGoal: string | null; bidMode: string | null; targetUnit: string | null; targetStatus: string; targetUpdatedAt: number | null };
+export type SmartMonitorPolicy = { enabled: boolean; autoEnabled: boolean; emergencyStop: boolean; spendThreshold: number; emptySpendThreshold: number; cpaThreshold: number; maxReportAgeMinutes: number };
+export type SmartMonitorDashboard = { account: Omit<SmartMonitorAccount, 'policy'>; credential: { enabled: boolean; authorized: boolean; hasUserToken: boolean }; policy: SmartMonitorPolicy; policySource: 'CHANNEL' | 'LEGACY_ACCOUNT'; granularity: string; adgroups: SmartMonitorAdgroup[]; creatives: Array<SmartMonitorMetrics & { id: string; name: string; adgroupId: string; configuredStatus: string | null; systemStatus: string | null; auditStatus: string | null; createdTime: string | null; metricsStatus: string }>; warnings: string[]; fetchedAt: string | null; requestIds: { adgroups?: string; creatives?: string }; trend: { labels: string[]; spend: number[] }; capabilities: Array<{ endpoint: string; interfaceExists: boolean; projectImplemented: boolean; accountVerified: boolean; validationStatus: string; requestId: string | null; verifiedAt: string | null; safeNote: string | null }> };
+export const getSmartMonitorAccounts = () => http.get<unknown, SmartMonitorAccount[]>(`${operationsBase}/smart-monitor/accounts`);
+export const getSmartMonitorDashboard = (accountId: string, refresh = true) => http.get<unknown, SmartMonitorDashboard>(`${operationsBase}/smart-monitor/accounts/${accountId}`, { params: { refresh } });
+export const saveSmartMonitorPolicy = (accountId: string, policy: { enabled: boolean; ratioThreshold: number; minSpend: number; minConversions: number; maxReportAgeMinutes: number }) => http.put<unknown, unknown>(`${operationsBase}/smart-monitor/accounts/${accountId}/policy`, policy);
+export const saveSmartMonitorChannelPolicy = (channelKey: string, policy: Pick<SmartMonitorPolicy, 'enabled' | 'spendThreshold' | 'emptySpendThreshold' | 'cpaThreshold' | 'maxReportAgeMinutes'>) => http.put<unknown, SmartMonitorPolicy>(`${operationsBase}/smart-monitor/channels/${encodeURIComponent(channelKey)}/policy`, policy);
+export type SmartMonitorActionResult = { id?: string; status: string; creativeId: string; adgroupId: string; platformRequestId: string | null; errorCode?: string | null; errorMessage?: string | null; verifiedAt?: string | null; action?: string; scheduledAt?: string | null; attemptedAt?: string | null; createdAt?: string; replacementId?: string | null };
+export const changeSmartMonitorCreativeStatus = (accountId: string, creativeId: string, configuredStatus: 'AD_STATUS_NORMAL' | 'AD_STATUS_SUSPEND', idempotencyKey: string, reason: string) =>
+  http.post<unknown, SmartMonitorActionResult>(`${operationsBase}/smart-monitor/accounts/${accountId}/creatives/${creativeId}/status`, { configuredStatus, idempotencyKey, reason, confirmed: true });
+export const scheduleSmartMonitorCreativeResume = (accountId: string, creativeId: string, scheduledAt: string, idempotencyKey: string, reason: string) =>
+  http.post<unknown, SmartMonitorActionResult>(`${operationsBase}/smart-monitor/accounts/${accountId}/creatives/${creativeId}/schedule-resume`, { scheduledAt, idempotencyKey, reason, confirmed: true });
+export const reconcileSmartMonitorAction = (accountId: string, actionId: string) =>
+  http.post<unknown, SmartMonitorActionResult>(`${operationsBase}/smart-monitor/accounts/${accountId}/actions/${actionId}/reconcile`, {});
+export const getSmartMonitorActions = (accountId: string) =>
+  http.get<unknown, SmartMonitorActionResult[]>(`${operationsBase}/smart-monitor/accounts/${accountId}/actions`);
+export const deleteSmartMonitorCreative = (accountId: string, creativeId: string, confirmationCreativeId: string, idempotencyKey: string, reason: string) =>
+  http.post<unknown, SmartMonitorActionResult>(`${operationsBase}/smart-monitor/accounts/${accountId}/creatives/${creativeId}/delete`, { confirmationCreativeId, idempotencyKey, reason, confirmed: true });
+export const reconcileSmartMonitorDeletion = (accountId: string, actionId: string) =>
+  http.post<unknown, SmartMonitorActionResult>(`${operationsBase}/smart-monitor/accounts/${accountId}/actions/${actionId}/reconcile-deletion`, {});
+export const cancelSmartMonitorSchedule = (accountId: string, actionId: string) =>
+  http.post<unknown, SmartMonitorActionResult>(`${operationsBase}/smart-monitor/accounts/${accountId}/actions/${actionId}/cancel-schedule`, {});

@@ -1,5 +1,5 @@
 <template>
-  <section class="archive-hero"><div class="container"><p class="eyebrow">DISCLAIMER</p><h1>免责声明</h1><p>请在阅读和使用本站口腔健康资讯前，了解以下信息边界。</p></div></section>
+  <section class="archive-hero"><div class="container"><h1>免责声明</h1></div></section>
   <section class="section legal-section"><div class="legal-document">
     <p class="legal-updated">最近更新：2026年9月26日</p>
     <div class="legal-highlight"><strong>重要提示</strong><p>本站仅提供一般性的口腔健康科普信息，不提供网上诊断、处方、治疗方案或挂号预约服务，也不建立医患关系。任何个体症状均应由具备资质的医疗专业人员结合面诊和检查结果判断。</p></div>

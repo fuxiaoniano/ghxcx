@@ -14,6 +14,7 @@ import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { DataScopeService } from '../../common/data-scope/data-scope.service';
 import { AdminCurrentUser } from '../../common/decorators/current-user.decorator';
 import { BusinessException } from '../../common/utils/business-exception';
@@ -60,7 +61,8 @@ export class ConsultationService {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly audit: AuditLogsService,
-    private readonly dataScopes: DataScopeService
+    private readonly dataScopes: DataScopeService,
+    private readonly notifications: NotificationsService
   ) {}
 
   async ensureDefaults() {
@@ -216,6 +218,7 @@ export class ConsultationService {
       const row = await tx.consultationForm.create({ data: {
         name: dto.name.trim(), phoneEncrypted: this.crypto.encryptPhone(dto.phone), phoneHash,
         phoneMasked: this.crypto.maskPhone(dto.phone), projectId: null, promotionAccountId: promotionAccount.id, channelSource: promotionAccount.platform,
+        appointmentScheduled: dto.appointmentScheduled ?? (status.code === 'VISITED' || status.code === 'DEAL'), paymentAmount: dto.paymentAmount ?? 0,
         statusId: status.id, ownerAdminId, createdByAdminId: user.adminUserId, lastOperatedByAdminId: user.adminUserId,
         recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
         nextFollowUpAt: dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null,
@@ -251,8 +254,11 @@ export class ConsultationService {
     let category = before.status.category;
     if (dto.statusId !== undefined) {
       const status = await this.activeStatus(dto.statusId); category = status.category; data.status = { connect: { id: status.id } };
+      if (dto.appointmentScheduled === undefined && ['VISITED', 'DEAL'].includes(status.code)) data.appointmentScheduled = true;
     }
     if (dto.recordedAt !== undefined) data.recordedAt = new Date(dto.recordedAt);
+    if (dto.appointmentScheduled !== undefined) data.appointmentScheduled = dto.appointmentScheduled;
+    if (dto.paymentAmount !== undefined) data.paymentAmount = dto.paymentAmount;
     if (dto.nextFollowUpAt !== undefined) data.nextFollowUpAt = dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null;
     if (dto.invalidReason !== undefined) data.invalidReason = dto.invalidReason?.trim() || null;
     if (dto.customData !== undefined) data.customData = await this.validateCustomData(dto.customData, false) as Prisma.InputJsonValue;
@@ -282,6 +288,7 @@ export class ConsultationService {
       await tx.consultationForm.update({ where: { id }, data: {
         lastFollowUpAt: now, lastOperatedByAdminId: user.adminUserId,
         ...(resultStatus ? { statusId: resultStatus.id } : {}),
+        ...(resultStatus && ['VISITED', 'DEAL'].includes(resultStatus.code) ? { appointmentScheduled: true } : {}),
         // 新增跟进即表示原回访任务已处理；没有重新安排时清空旧回访时间，避免继续误报逾期。
         nextFollowUpAt: dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null,
       } });
@@ -296,6 +303,7 @@ export class ConsultationService {
     await this.assertEligibleOwner(dto.ownerAdminId);
     const updated = await this.prisma.consultationForm.update({ where: { id }, data: { ownerAdminId: dto.ownerAdminId, lastOperatedByAdminId: user.adminUserId } });
     await this.log('ASSIGN_CONSULTATION', id, { ownerAdminId: before.ownerAdminId }, { ownerAdminId: dto.ownerAdminId, reason: dto.reason || '' }, user, ip, userAgent);
+    if (before.ownerAdminId !== dto.ownerAdminId) await this.notifications.sendConsultationAssignmentNotice(id, dto.ownerAdminId).catch(() => undefined);
     return updated;
   }
 
@@ -313,6 +321,12 @@ export class ConsultationService {
         } });
       }
     });
+    const changed = allowed.filter((row) => row.ownerAdminId !== dto.ownerAdminId);
+    for (let offset = 0; offset < changed.length; offset += 5) {
+      await Promise.all(changed.slice(offset, offset + 5).map((row) =>
+        this.notifications.sendConsultationAssignmentNotice(row.id, dto.ownerAdminId).catch(() => undefined)
+      ));
+    }
     return { selected: uniqueIds.length, success: allowed.length, failed: failures.length, failures };
   }
 
@@ -405,17 +419,17 @@ export class ConsultationService {
     const fields = await this.prisma.consultationFieldConfig.findMany({ where: { source: 'CUSTOM', enabled: true, importable: true }, orderBy: { listOrder: 'asc' } });
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('网咨数据导入');
-    const headers = ['姓名*', '电话*', '项目*', '渠道来源*', '账户名称*', '标签', '状态', '录单时间', '首次跟进记录', '跟进时间', '下次回访时间', '负责人', ...fields.map((field) => field.name)];
+    const headers = ['姓名*', '电话*', '项目*', '渠道来源*', '账户名称*', '标签', '状态', '已预约', '收款金额', '录单时间', '首次跟进记录', '跟进时间', '下次回访时间', '负责人', ...fields.map((field) => field.name)];
     sheet.addRow(headers);
     sheet.getRow(1).font = { bold: true };
     sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCFE3F4' } };
     sheet.columns.forEach((column) => { column.width = 18; });
-    sheet.addRow(['张三', '13800138000', '重庆', '腾讯营销', '腾讯01', '重点,待确认', '待跟进', dayjs().format('YYYY-MM-DD HH:mm:ss'), '', '', '', '']);
+    sheet.addRow(['张三', '13800138000', '重庆', '腾讯营销', '腾讯01', '重点,待确认', '待跟进', '否', '0', dayjs().format('YYYY-MM-DD HH:mm:ss'), '', '', '', '']);
     const help = workbook.addWorksheet('填写说明');
     help.addRows([
       ['字段', '说明'], ['项目/渠道来源/账户名称', '必须与推广数据中的启用账户配置完全一致，三项必须匹配'],
       ['标签', '多个标签用英文逗号分隔，必须为已启用标签'], ['状态', '填写已启用状态名称或状态编码，留空默认为待跟进'],
-      ['负责人', '填写登录账号；仅有分配权限时生效'], ['时间', '建议使用 YYYY-MM-DD HH:mm:ss']
+      ['负责人', '填写登录账号；仅有分配权限时生效'], ['已预约', '填写是或否；留空时已到诊和已成交自动视为已预约'], ['收款金额', '元；留空按 0 计算'], ['时间', '建议使用 YYYY-MM-DD HH:mm:ss']
     ]);
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
     await this.log('EXPORT_CONSULTATION_IMPORT_TEMPLATE', `template-${Date.now()}`, null, { customFieldCount: fields.length }, user, undefined, undefined, 'consultation_exports');
@@ -434,9 +448,8 @@ export class ConsultationService {
     const headerMap = new Map<string, number>();
     sheet.getRow(1).eachCell((cell, col) => headerMap.set(String(cell.text || '').trim().replace(/\*$/, ''), col));
     for (const required of ['姓名', '电话', '项目', '渠道来源', '账户名称']) if (!headerMap.has(required)) throw new BusinessException(400818, `缺少必填列：${required}*`);
-    const promotionScope = await this.dataScopes.ownershipWhere(user, 'ownerAdminId', 'createdByAdminId') as Prisma.PromotionAccountWhereInput;
     const [promotionAccounts, statuses, tags, fields, members] = await Promise.all([
-      this.prisma.promotionAccount.findMany({ where: { status: ContentStatus.ACTIVE, ...promotionScope } }), this.prisma.consultationStatus.findMany({ where: { enabled: true } }),
+      this.prisma.promotionAccount.findMany({ where: { status: ContentStatus.ACTIVE } }), this.prisma.consultationStatus.findMany({ where: { enabled: true } }),
       this.prisma.consultationTag.findMany({ where: { enabled: true } }), this.prisma.consultationFieldConfig.findMany({ where: { source: 'CUSTOM', enabled: true, importable: true } }),
       this.prisma.adminUser.findMany({ where: { status: AdminStatus.ACTIVE, deletedAt: null }, include: { customRole: true } })
     ]);
@@ -446,7 +459,7 @@ export class ConsultationService {
     let duplicateCount = 0;
     for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
       const row = sheet.getRow(rowNumber); if (!row.hasValues) continue;
-      const raw = { name: get(row, '姓名'), phone: get(row, '电话'), project: get(row, '项目'), channelSource: get(row, '渠道来源'), accountName: get(row, '账户名称'), tags: get(row, '标签'), status: get(row, '状态'), recordedAt: get(row, '录单时间'), firstFollowUp: get(row, '首次跟进记录'), firstFollowUpAt: get(row, '跟进时间'), nextFollowUpAt: get(row, '下次回访时间'), owner: get(row, '负责人') };
+      const raw = { name: get(row, '姓名'), phone: get(row, '电话'), project: get(row, '项目'), channelSource: get(row, '渠道来源'), accountName: get(row, '账户名称'), tags: get(row, '标签'), status: get(row, '状态'), appointmentScheduled: get(row, '已预约'), paymentAmount: get(row, '收款金额'), recordedAt: get(row, '录单时间'), firstFollowUp: get(row, '首次跟进记录'), firstFollowUpAt: get(row, '跟进时间'), nextFollowUpAt: get(row, '下次回访时间'), owner: get(row, '负责人') };
       const rowErrors: Array<{ field: string; message: string }> = [];
       if (!raw.name) rowErrors.push({ field: '姓名', message: '姓名不能为空' });
       if (!/^1\d{10}$/.test(raw.phone)) rowErrors.push({ field: '电话', message: '手机号格式不正确' });
@@ -457,6 +470,8 @@ export class ConsultationService {
       else if (!promotionAccount) rowErrors.push({ field: '账户名称', message: '项目、渠道来源和账户名称与推广数据中的启用账户不匹配' });
       const status = raw.status ? statuses.find((item) => item.name === raw.status || item.code === raw.status) : statuses.find((item) => item.code === 'PENDING');
       if (!status) rowErrors.push({ field: '状态', message: '状态不存在或已停用' });
+      if (raw.appointmentScheduled && !['是', '否', '1', '0'].includes(raw.appointmentScheduled)) rowErrors.push({ field: '已预约', message: '请填写是或否' });
+      if (raw.paymentAmount && (!/^\d+(\.\d{1,2})?$/.test(raw.paymentAmount) || Number(raw.paymentAmount) > 1000000000)) rowErrors.push({ field: '收款金额', message: '请填写非负金额，最多两位小数' });
       const tagNames = raw.tags.split(',').map((item) => item.trim()).filter(Boolean); const resolvedTags = tagNames.map((name) => tags.find((tag) => tag.name === name));
       if (resolvedTags.some((item) => !item)) rowErrors.push({ field: '标签', message: '包含不存在或已停用标签' });
       let owner = members.find((item) => item.username === raw.owner || item.nickname === raw.owner);
@@ -474,6 +489,7 @@ export class ConsultationService {
         channelSource: raw.channelSource, tags: raw.tags, status: raw.status, recordedAt: raw.recordedAt,
         firstFollowUp: raw.firstFollowUp, firstFollowUpAt: raw.firstFollowUpAt, nextFollowUpAt: raw.nextFollowUpAt,
         owner: raw.owner, projectId: raw.project, promotionAccountId: promotionAccount?.id, statusId: status?.id,
+        appointmentScheduled: raw.appointmentScheduled ? ['是', '1'].includes(raw.appointmentScheduled) : undefined, paymentAmount: raw.paymentAmount ? Number(raw.paymentAmount) : 0,
         tagIds: resolvedTags.filter(Boolean).map((tag) => tag!.id), ownerAdminId: owner?.id, customData, duplicateId: duplicate?.id || null
       };
       preview.push({ ...normalized, valid: rowErrors.length === 0 });
@@ -505,7 +521,7 @@ export class ConsultationService {
           await this.addFollowUp(row.duplicateId, { content: row.firstFollowUp, nextFollowUpAt: row.nextFollowUpAt || undefined }, user, ip, userAgent); success++; continue;
         }
         const phone = row.phoneEncrypted ? this.crypto.decryptPhone(row.phoneEncrypted) : '';
-        await this.create({ name: row.name, phone, projectId: row.projectId, channelSource: row.channelSource, promotionAccountId: row.promotionAccountId, statusId: row.statusId, ownerAdminId: row.ownerAdminId, tagIds: row.tagIds, recordedAt: row.recordedAt || undefined, nextFollowUpAt: row.nextFollowUpAt || undefined, customData: row.customData, firstFollowUp: row.firstFollowUp || undefined, firstFollowUpAt: row.firstFollowUpAt || undefined, forceDuplicate: Boolean(row.duplicateId), duplicateReason: row.duplicateId ? '批量导入明确选择创建重复记录' : undefined }, user, ip, userAgent); success++;
+        await this.create({ name: row.name, phone, projectId: row.projectId, channelSource: row.channelSource, promotionAccountId: row.promotionAccountId, statusId: row.statusId, appointmentScheduled: row.appointmentScheduled, paymentAmount: row.paymentAmount, ownerAdminId: row.ownerAdminId, tagIds: row.tagIds, recordedAt: row.recordedAt || undefined, nextFollowUpAt: row.nextFollowUpAt || undefined, customData: row.customData, firstFollowUp: row.firstFollowUp || undefined, firstFollowUpAt: row.firstFollowUpAt || undefined, forceDuplicate: Boolean(row.duplicateId), duplicateReason: row.duplicateId ? '批量导入明确选择创建重复记录' : undefined }, user, ip, userAgent); success++;
       } catch (error) { failures.push({ rowNumber: row.rowNumber, reason: error instanceof Error ? error.message : '导入失败' }); }
     }
     await this.prisma.consultationImportBatch.update({ where: { id: batchId }, data: { status: failures.length && !success ? 'FAILED' : 'COMMITTED', successCount: success, failedCount: failures.length + batch.failedCount, committedAt: new Date(), optionsJson: { duplicateMode, failures } } });

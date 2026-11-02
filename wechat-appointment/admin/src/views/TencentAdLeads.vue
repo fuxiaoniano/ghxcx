@@ -1,7 +1,7 @@
 <template>
   <div class="page-heading">
     <div>
-      <h1 class="page-title">腾讯广告线索</h1>
+      <h1 class="page-title">腾讯线索</h1>
       <p>接收腾讯广告线索平台推送，并在管理后台统一跟进。</p>
     </div>
     <span class="record-count">共 {{ total }} 条线索</span>
@@ -54,7 +54,7 @@
       <el-button :disabled="loading" @click="resetFilters">重置</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="rows" empty-text="暂未收到腾讯广告线索" @row-click="openDetail">
+    <el-table v-loading="loading" :data="rows" empty-text="暂未收到腾讯线索" @row-click="openDetail">
       <el-table-column prop="leadsId" label="线索 ID" min-width="130" />
       <el-table-column prop="name" label="姓名" min-width="90">
         <template #default="{ row }">{{ row.name || '-' }}</template>
@@ -90,7 +90,7 @@
     />
   </div>
 
-  <el-drawer v-model="drawerOpen" title="腾讯广告线索详情" size="680px" @closed="fullPhone = ''">
+  <el-drawer v-model="drawerOpen" title="腾讯线索详情" size="680px" @closed="fullPhone = ''">
     <div v-if="detail" class="lead-detail">
       <div class="detail-summary">
         <div>
@@ -406,7 +406,7 @@ onMounted(async () => {
 .endpoint-row code {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: #244357;
+  color: #1d1d1f;
   font-family: Consolas, Monaco, monospace;
 }
 

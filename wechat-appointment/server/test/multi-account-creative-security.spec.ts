@@ -4,6 +4,12 @@ import { PromotionCreativeBatchService } from '../src/modules/operations/promoti
 describe('multi-account creative response security', () => {
   const service = new MultiAccountCreativeBatchService({} as any, {} as any, {} as any, {} as any, {} as any);
 
+  it('recognizes a Tencent nine-image component as satisfying the image-list requirement', () => {
+    expect((service as any).requirementSatisfiedBySelection('image_list', new Set(['image_list']))).toBe(true);
+    expect((service as any).requirementSatisfiedBySelection('image_list', new Set(['image']))).toBe(true);
+    expect((service as any).requirementSatisfiedBySelection('image_list', new Set(['video']))).toBe(false);
+  });
+
   it('uses the Tencent-supported media_id filter for videos and checks the returned video_id', async () => {
     const tencentApi = jest.fn().mockResolvedValue({ data: { list: [{ video_id: 721001, status: 'MEDIA_STATUS_NORMAL' }] }, requestId: 'req-1' });
     const scopedService = new MultiAccountCreativeBatchService({} as any, { tencentApi } as any, {} as any, {} as any, {} as any);
@@ -32,7 +38,7 @@ describe('multi-account creative response security', () => {
     const creativeName = jest.fn((pattern: string) => pattern);
     const scopedService = new MultiAccountCreativeBatchService({} as any, {} as any, { creativeName } as any, {} as any, {} as any);
     expect((scopedService as any).creativeNameForTarget('{营销单元}+{标题}+{序号}', '腾讯03-视频组', 2, [], '腾讯03')).toBe('腾讯03-视频组+{标题}+{序号}');
-    expect(creativeName).toHaveBeenCalledWith('腾讯03-视频组+{标题}+{序号}', 2, [], '腾讯03');
+    expect(creativeName).toHaveBeenCalledWith('腾讯03-视频组+{标题}+{序号}', 2, [], '腾讯03', '');
   });
 
   it('expands the date wildcard in a multi-account creative name using the existing naming service', () => {
@@ -40,6 +46,13 @@ describe('multi-account creative response security', () => {
     const scopedService = new MultiAccountCreativeBatchService({} as any, {} as any, single, {} as any, {} as any);
     expect((scopedService as any).creativeNameForTarget('{营销单元}+{日期}+{序号}', '腾讯03-视频组', 2, [], '腾讯03'))
       .toMatch(/^腾讯03-视频组\+\d{4}-\d{2}-\d{2}\+002$/);
+  });
+
+  it('expands the Tencent specification wildcard for each selected target', () => {
+    const single = new PromotionCreativeBatchService({} as any, {} as any, {} as any, {} as any);
+    const scopedService = new MultiAccountCreativeBatchService({} as any, {} as any, single, {} as any, {} as any);
+    expect((scopedService as any).creativeNameForTarget('{营销单元}+{规格}+{序号}', '横版图片组', 1, [], '腾讯04', '卡片广告 横版大图 16:9'))
+      .toBe('横版图片组+卡片广告 横版大图 16:9+001');
   });
 
   it('does not use a default component scoped to a different creative template', async () => {
@@ -72,6 +85,8 @@ describe('multi-account creative response security', () => {
       canonicalCreativeComponentField: (field: string) => field,
       componentSubmissionField: (field: string) => field,
       componentSubmissionValue: (_field: string, value: unknown) => value,
+      assetMatchesTemplateDimensions: () => true,
+      templateRequiresChannelImageFloatingZone: () => false,
       normalizeTencentAssetIds: (value: unknown) => value,
       aggregateImageListComponents: jest.fn(), validateTemplateComponents: jest.fn(), validatePlacementDependencies: jest.fn(),
       creativeName: jest.fn().mockReturnValue('测试创意'),
@@ -178,5 +193,47 @@ describe('multi-account creative response security', () => {
     expect(result.componentName).toBe('完整落地页名称');
     expect(findFirst.mock.calls[1][0].where).toMatchObject({ originAccountId: 'account-1', platformAssetKind: 'REFERENCE', platformAssetId: '6532454271' });
     expect(single.landingPageNameFromTencent).toHaveBeenCalledWith('123456', '6532454271');
+  });
+
+  it('replaces an old false nine-image label name with the actual label copy', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      name: '标签_20260919', payloadJson: { componentField: 'label', component: { value: { list: [
+        { content: '当天种牙' }, { content: '到院领取优惠' },
+      ] } } },
+    });
+    const single = new PromotionCreativeBatchService({} as any, {} as any, {} as any, {} as any);
+    const scopedService = new MultiAccountCreativeBatchService({ promotionCreativeMaterialSnapshot: { findFirst } } as any, {} as any, single, {} as any, {} as any);
+    const result = await (scopedService as any).hydrateDefaultComponentName('account-1', '123456', {
+      componentType: 'label', componentName: '标签_20260919 · 九图组件（3 张）', platformComponentId: '1952471877569',
+    });
+    expect(result.componentName).toBe('当天种牙 · 到院领取优惠');
+  });
+
+  it('allows an approved official landing page to be saved as an account default', async () => {
+    const snapshot = {
+      id: 'landing-snapshot', originAccountId: 'account-1', platformAssetId: '6532454271',
+      platformAssetKind: 'REFERENCE', assetType: 'LANDING_PAGE', componentField: 'main_jump_info', isDeleted: false,
+      payloadJson: { kind: 'COMPONENT', componentField: 'main_jump_info', component: { value: { page_spec: { official_spec: { page_id: 6532454271 } } } } },
+    };
+    const created = { id: 'default-landing', accountId: 'account-1', componentType: 'main_jump_info' };
+    const prisma = {
+      promotionCreativeMaterialSnapshot: { findFirst: jest.fn().mockResolvedValue(snapshot) },
+      creativeAccountDefaultComponent: { create: jest.fn().mockResolvedValue(created) },
+    };
+    const sync = { tencentApi: jest.fn().mockResolvedValue({ data: { page_id: 6532454271, page_status: 'LANDING_PAGE_STATUS_APPROVED' }, requestId: 'page-request' }) };
+    const audit = { create: jest.fn().mockResolvedValue({}) };
+    const single = new PromotionCreativeBatchService({} as any, {} as any, {} as any, {} as any);
+    const service = new MultiAccountCreativeBatchService(prisma as any, sync as any, single, {} as any, audit as any);
+    jest.spyOn(service as any, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456' });
+
+    await expect(service.saveDefaultComponent({
+      accountId: 'account-1', componentType: 'main_jump_info', platformComponentId: '6532454271', componentName: '完整落地页名称', priority: 0,
+    } as any, { adminUserId: 'admin-1', role: 'SUPER_ADMIN' } as any)).resolves.toEqual(created);
+    expect(sync.tencentApi).toHaveBeenCalledWith('GET', '/official_landing_page_detail/get', '123456', { page_id: 6532454271 });
+    expect(prisma.creativeAccountDefaultComponent.create).toHaveBeenCalledTimes(1);
+    const verified = await (service as any).lookupAsset('123456', snapshot);
+    const component = (service as any).componentFromRow(verified.row, 'main_jump_info', snapshot.payloadJson);
+    expect(component).toEqual(snapshot.payloadJson.component);
+    expect(component).not.toHaveProperty('component_id');
   });
 });

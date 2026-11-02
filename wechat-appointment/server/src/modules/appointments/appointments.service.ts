@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -8,16 +8,19 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { FollowupForwarderService } from '../followup-forwarder/followup-forwarder.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { ConfigsService, LandingPageConfig } from '../configs/configs.service';
+import { WechatGroupNotificationsService } from '../wechat-group-notifications/wechat-group-notifications.service';
 
 @Injectable()
 export class AppointmentsService {
+  private readonly logger = new Logger(AppointmentsService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly followupForwarder: FollowupForwarderService,
     private readonly crypto: CryptoService,
     private readonly configs: ConfigsService,
-    @Inject('REDIS') private readonly redis: Redis
+    @Inject('REDIS') private readonly redis: Redis,
+    @Optional() private readonly groupNotifications?: WechatGroupNotificationsService
   ) {}
 
   async create(userId: string, dto: CreateAppointmentDto) {
@@ -63,6 +66,7 @@ export class AppointmentsService {
       data: { name: dto.name, ageRange: dto.ageRange }
     });
 
+    await this.enqueueGroupNotice(appointment.id);
     this.dispatchPostCreateTasks(appointment.id);
 
     return this.toPublicDetail(appointment);
@@ -123,6 +127,7 @@ export class AppointmentsService {
       include: { clinic: true }
     });
 
+    await this.enqueueGroupNotice(appointment.id);
     this.dispatchPostCreateTasks(appointment.id);
     return this.toPublicDetail(appointment);
   }
@@ -181,6 +186,15 @@ export class AppointmentsService {
       this.notifications.sendAppointmentSuccess(appointmentId).catch(() => undefined),
       this.notifications.sendStaffAppointmentNotice(appointmentId).catch(() => undefined)
     ]);
+  }
+
+  private async enqueueGroupNotice(appointmentId: string) {
+    try {
+      await this.groupNotifications?.enqueueForAppointment(appointmentId);
+    } catch (error) {
+      // The appointment has already committed. The outbox scanner repairs missed jobs.
+      this.logger.error(`群通知入队失败，等待补偿扫描: ${error instanceof Error ? error.name : 'unknown'}`);
+    }
   }
 
   private toPublicDetail(appointment: {

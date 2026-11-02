@@ -2,7 +2,6 @@
   <div class="page-heading">
     <div>
       <h1 class="page-title">页面跳转链接</h1>
-      <p>统一查看并复制小程序页面路径与公众号网页入口</p>
     </div>
     <el-button :icon="CopyDocument" @click="copyText(miniAppId, '小程序 AppID')">复制 AppID</el-button>
   </div>
@@ -351,7 +350,7 @@ onMounted(loadLinkOptions);
 }
 
 code {
-  color: #244357;
+  color: #1d1d1f;
   font-family: Consolas, Monaco, monospace;
 }
 
@@ -370,7 +369,7 @@ code {
   max-width: 100%;
   overflow: hidden;
   padding: 5px 8px;
-  background: #f4f7f9;
+  background: #f5f5f7;
   border-radius: 4px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -475,7 +474,7 @@ code {
   min-width: 0;
   gap: 8px;
   padding: 9px 11px;
-  background: #f4f7f9;
+  background: #f5f5f7;
   border-radius: 4px;
 }
 

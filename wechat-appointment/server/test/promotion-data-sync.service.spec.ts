@@ -247,4 +247,25 @@ describe('PromotionDataSyncService Tencent real-name token', () => {
     }));
     expect(prisma.promotionAccountCredential.update).not.toHaveBeenCalled();
   });
+
+  it('reports an expired Tencent refresh credential as an actionable client error without exposing the platform response', async () => {
+    const prisma = {
+      promotionDataSyncConfig: { findUnique: jest.fn().mockResolvedValue({
+        id: 'config_1', enabled: true, accessTokenCipher: 'expired-access',
+        extraConfig: { clientId: 'app-id', clientSecretCipher: 'client-secret', refreshTokenCipher: 'refresh-cipher' },
+      }) },
+      promotionAccount: { findMany: jest.fn().mockResolvedValue([{ id: 'account_1', name: '腾讯01', status: 'ACTIVE', platform: '腾讯营销' }]) },
+      promotionAccountCredential: { findUnique: jest.fn().mockResolvedValue(null) },
+      tencentUserToken: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    jest.spyOn(axios, 'request').mockResolvedValueOnce({ data: { code: 11002, message: 'expired' }, headers: {} } as any);
+    jest.spyOn(axios, 'get').mockResolvedValueOnce({ data: { code: 40001, message: 'RefreshToken不存在，请重新认证' } } as any);
+    const service = new PromotionDataSyncService(prisma as never, { decryptText: jest.fn((value: string) => value) } as never);
+
+    await expect(service.tencentApi('GET', '/images/get', '123456')).rejects.toMatchObject({
+      status: 400,
+      response: { code: 400925, message: expect.stringContaining('重新完成授权') },
+    });
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  });
 });

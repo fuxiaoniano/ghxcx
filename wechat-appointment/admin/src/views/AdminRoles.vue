@@ -149,7 +149,7 @@ onMounted(load);
 .basic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .permission-hint { margin-bottom:10px; }
 .permission-groups { display:grid; width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:12px; }
-.permission-group { padding:11px 13px; border:1px solid var(--admin-border); border-radius:8px; background:#fafcff; }
+.permission-group { padding:11px 13px; border:1px solid var(--admin-border); border-radius:8px; background:#ffffff; }
 .permission-group-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--admin-primary); }
 .permission-group :deep(.el-checkbox-group) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 12px; }
 .permission-group :deep(.el-checkbox) { display:flex; height:auto; margin-right:0; align-items:flex-start; white-space:normal; }

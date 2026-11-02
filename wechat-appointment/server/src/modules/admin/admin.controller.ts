@@ -36,6 +36,7 @@ import {
   OfficialAccountMenuDto,
   OfficialAutoReplyDto,
   UpdateOfficialAccountBindingDto,
+  UpdateAdminLoginPreferenceDto,
   UpdateAdminUserDto,
   UpdateAdminTeamDto,
   DeleteAdminUserDto,
@@ -340,6 +341,12 @@ export class AdminController {
   @Get('/official-account/binding')
   @Permissions('SYSTEM_OFFICIAL_BINDING')
   officialAccountBinding() { return this.admin.officialAccountBinding(); }
+
+  @Patch('/official-account/login-preference')
+  @Permissions('SYSTEM_OFFICIAL_BINDING')
+  updateAdminLoginPreference(@Body() dto: UpdateAdminLoginPreferenceDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.updateAdminLoginPreference(dto.defaultWechatLogin, user, request.ip, request.headers['user-agent']);
+  }
 
   @Patch('/official-account/binding')
   @Permissions('SYSTEM_OFFICIAL_BINDING')

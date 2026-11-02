@@ -119,6 +119,13 @@ export class PromotionDataSyncConfigDto {
   @IsOptional() @IsDateString() userTokenExpiresAt?: string;
 }
 
+export class TencentBusinessUnitCredentialDto {
+  @IsString() @MaxLength(255) clientId!: string;
+  @IsString() @MaxLength(4000) clientSecret!: string;
+  @IsString() @MaxLength(4000) accessToken!: string;
+  @IsString() @MaxLength(4000) refreshToken!: string;
+}
+
 export class SyncPromotionDailyMetricsDto {
   @IsDateString() statDate!: string;
   @IsOptional() @IsIn(['TENCENT_ADS', 'OCEANENGINE']) provider?: 'TENCENT_ADS' | 'OCEANENGINE';
@@ -165,13 +172,13 @@ export class PromotionCreativeAssetQueryDto extends PromotionCreativePagedQueryD
   @IsString() @MaxLength(32) accountId!: string;
   @IsIn(['ACCOUNT', 'BUSINESS_UNIT']) source!: 'ACCOUNT' | 'BUSINESS_UNIT';
   @IsOptional() @IsString() @MaxLength(120) businessUnitKey?: string;
-  @IsOptional() @IsIn(['MEDIA', 'COPY', 'LANDING_PAGE', 'BRAND', 'WECHAT_CHANNELS', 'CONVERSION', 'ACTION_BUTTON', 'MINI_CARD_LINK', 'TEXT_LINK', 'FLOATING_ZONE', 'LABEL', 'SOCIAL_SKILL', 'OTHER']) assetType?: string;
+  @IsOptional() @IsIn(['MEDIA', 'IMAGE', 'VIDEO', 'NINE_IMAGE', 'COPY', 'LANDING_PAGE', 'BRAND', 'WECHAT_CHANNELS', 'CONVERSION', 'ACTION_BUTTON', 'MINI_CARD_LINK', 'TEXT_LINK', 'FLOATING_ZONE', 'LABEL', 'SOCIAL_SKILL', 'OTHER']) assetType?: string;
   @IsOptional() @IsString() @Matches(/^\d{1,5}[x×]\d{1,5}$/) dimensions?: string;
   @IsOptional() @IsString() @Matches(/^\d+$/) @MaxLength(80) adgroupId?: string;
   @IsOptional() @IsString() @Matches(/^\d+$/) @MaxLength(80) templateId?: string;
   @IsOptional() @IsIn(['DELIVERY_MODE_COMPONENT', 'DELIVERY_MODE_CUSTOMIZE']) deliveryMode?: 'DELIVERY_MODE_COMPONENT' | 'DELIVERY_MODE_CUSTOMIZE';
   @IsOptional() @IsIn(['DYNAMIC_CREATIVE_TYPE_COMMON', 'DYNAMIC_CREATIVE_TYPE_PROGRAM']) dynamicCreativeType?: 'DYNAMIC_CREATIVE_TYPE_COMMON' | 'DYNAMIC_CREATIVE_TYPE_PROGRAM';
-  @IsOptional() @IsIn(['CREATED_TIME', 'NAME', 'SPEND_7_DAYS', 'SPEND_15_DAYS', 'TARGET_CONVERSION_COST', 'STATUS']) sortBy?: 'CREATED_TIME' | 'NAME' | 'SPEND_7_DAYS' | 'SPEND_15_DAYS' | 'TARGET_CONVERSION_COST' | 'STATUS';
+  @IsOptional() @IsIn(['CREATED_TIME', 'NAME', 'SPEND_7_DAYS', 'SPEND_15_DAYS', 'ACTUAL_CPA', 'TARGET_CONVERSION_COST', 'STATUS']) sortBy?: 'CREATED_TIME' | 'NAME' | 'SPEND_7_DAYS' | 'SPEND_15_DAYS' | 'ACTUAL_CPA' | 'TARGET_CONVERSION_COST' | 'STATUS';
   @IsOptional() @IsIn(['ASC', 'DESC']) sortOrder?: 'ASC' | 'DESC';
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() refresh?: boolean;
 }

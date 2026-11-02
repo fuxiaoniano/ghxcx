@@ -44,6 +44,7 @@ const COMPONENT_FIELDS = JSON.stringify([
 
 @Injectable()
 export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDestroy {
+  private readonly creativeUsageCache = new Map<string, { expiresAt: number; rows: Promise<PlatformRecord[]> }>();
   private readonly logger = new Logger(PromotionCreativeBatchService.name);
   private readonly landingPageNameCache = new Map<string, { name: string | null; expiresAt: number }>();
   private readonly liveAssetKeysCache = new Map<string, { keys: Set<string>; expiresAt: number }>();
@@ -85,7 +86,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     return {
       accounts: await Promise.all(accounts.map(async (account) => {
         const credential = credentialMap.get(account.id);
-        const credentialStatus = this.sync.credentialStatus(credential, config, sharedUserToken);
+        const credentialStatus = this.sync.credentialStatus(credential, config, sharedUserToken, account.accountNo);
         const authorized = Boolean(config?.enabled && credentialStatus.authorized);
         const hasUserToken = credentialStatus.hasUserToken;
         const accountCanCreate = this.promotionAccess ? await this.promotionAccess.canCreateCreatives(user, account) : true;
@@ -208,14 +209,19 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     // The official page list is authoritative for account landing pages. A
     // cached component snapshot can outlive a deleted page or duplicate it.
     if (query.refresh || !liveKeys || liveKeys.expiresAt <= Date.now()) {
-      const keys = await this.syncAssets(target, query.assetType, 1, 100, query.source);
+      // Manual refresh fetches every page of all material/component families
+      // for the selected Tencent asset source, not only the visible UI page.
+      const keys = await this.syncAssets(target, query.refresh ? undefined : query.assetType, 1, 100, query.source);
       if (keys instanceof Set) {
         liveKeys = { keys, expiresAt: Date.now() + 60_000 };
+        if (query.refresh) for (const cacheKey of this.liveAssetKeysCache.keys()) {
+          if (cacheKey.startsWith(`${target.id}:${query.source}:`)) this.liveAssetKeysCache.set(cacheKey, liveKeys);
+        }
         this.liveAssetKeysCache.set(liveCacheKey, liveKeys);
       }
     }
-    if (['TEXT_LINK', 'ACTION_BUTTON', 'MINI_CARD_LINK'].includes(String(query.assetType || ''))
-      && (query.refresh || !await this.hasFreshAssetSnapshots(target.id, 'LANDING_PAGE', 'ACCOUNT'))) {
+    if (!query.refresh && ['TEXT_LINK', 'ACTION_BUTTON', 'MINI_CARD_LINK'].includes(String(query.assetType || ''))
+      && !await this.hasFreshAssetSnapshots(target.id, 'LANDING_PAGE', 'ACCOUNT')) {
       await this.syncAssets(target, 'LANDING_PAGE', 1, 100, 'ACCOUNT');
     }
     const page = query.page || 1; const pageSize = query.pageSize || 20;
@@ -259,6 +265,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
           ? String(payload.platformOwnerAccountId || target.accountNo || '') === String(target.accountNo)
           : String(payload.platformOwnerAccountId || target.accountNo || '') !== String(target.accountNo));
       if (!sourceMatches) return false;
+      if (!this.selectedMediaKindMatches(query.assetType, row)) return false;
       if (query.assetType === 'BRAND') {
         const authorizedType = String(payload.authorizedAccount?.type || '');
         if (payload.componentSubType !== 'BRAND_WECHAT_CHANNEL' && authorizedType !== 'WECHAT_CHANNELS') return false;
@@ -285,7 +292,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     });
     const dimensionsOf = (row: typeof sourceRows[number]) => {
       const payload = row.payloadJson as Record<string, any>;
-      const bundledCount = this.imageListItemCount(payload);
+      const bundledCount = this.imageListItemCount(payload, row.componentField);
       if (bundledCount > 1) {
         const requirement = templateRequirements?.find((item) => String(item.path || item.name || '').split('.').pop() === 'image_list');
         const dimensionRule = (Array.isArray(requirement?.itemRules) ? requirement.itemRules : [])
@@ -302,11 +309,11 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     });
     const requestedDimensions = query.dimensions?.replace('x', '×');
     const rows = requestedDimensions ? sourceRows.filter((row) => dimensionsOf(row) === requestedDimensions) : sourceRows;
-    const spend = query.assetType === 'MEDIA'
+    const spend = ['MEDIA', 'IMAGE', 'VIDEO', 'NINE_IMAGE'].includes(String(query.assetType || ''))
       ? await this.assetSpendWindows(String(target.accountNo))
       : query.assetType === 'COPY'
         ? await this.componentSpendWindows(String(target.accountNo), await this.tencentBusinessUnitId(String(target.accountNo)))
-        : { seven: new Map<string, number>(), fifteen: new Map<string, number>(), targetConversionCost: new Map<string, number>(), available: false };
+        : { seven: new Map<string, number>(), fifteen: new Map<string, number>(), actualCpa: new Map<string, number>(), available: false };
     const sortBy = query.sortBy || 'CREATED_TIME'; const direction = query.sortOrder === 'ASC' ? 1 : -1;
     rows.sort((left, right) => {
       const compareText = (a: unknown, b: unknown) => String(a || '').localeCompare(String(b || ''), 'zh-CN');
@@ -316,7 +323,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       else if (sortBy === 'STATUS') compared = compareText(`${left.status || ''}:${left.auditStatus || ''}`, `${right.status || ''}:${right.auditStatus || ''}`);
       else if (sortBy === 'SPEND_7_DAYS') compared = compareNumber(spend.seven.get(left.platformAssetId), spend.seven.get(right.platformAssetId));
       else if (sortBy === 'SPEND_15_DAYS') compared = compareNumber(spend.fifteen.get(left.platformAssetId), spend.fifteen.get(right.platformAssetId));
-      else if (sortBy === 'TARGET_CONVERSION_COST') compared = compareNumber(spend.targetConversionCost.get(left.platformAssetId), spend.targetConversionCost.get(right.platformAssetId));
+      else if (sortBy === 'ACTUAL_CPA' || sortBy === 'TARGET_CONVERSION_COST') compared = compareNumber(spend.actualCpa.get(left.platformAssetId), spend.actualCpa.get(right.platformAssetId));
       else compared = compareNumber(left.platformCreatedAt?.getTime(), right.platformCreatedAt?.getTime());
       return compared * direction || compareText(left.name, right.name);
     });
@@ -351,7 +358,8 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         const stateValid = !/reject|invalid|delete|offline|disabled|fail/i.test(`${row.status || ''} ${row.auditStatus || ''}`);
         // 腾讯业务单元资产使用平台原始素材 ID 直接引用，不复制到目标账户。
         // 资产查询已按业务单元和成员数据范围收敛；提交时还会再次校验。
-        const usable = platformReady && stateValid;
+        const labelTexts = row.componentField === 'label' ? this.labelTexts(payload.component) : [];
+        const usable = platformReady && stateValid && (row.componentField !== 'label' || labelTexts.length > 0);
         const linkedPageId = ['text_link', 'mini_card_link', 'action_button', 'chosen_button', 'main_jump_info'].includes(this.canonicalCreativeComponentField(row.componentField))
           ? this.officialLandingPageId(payload.component)
           : null;
@@ -360,30 +368,95 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
           : null;
         const contentSummary = row.assetType === 'LANDING_PAGE' && linkedLandingPage && !linkedLandingPage.name.startsWith('腾讯落地页 ')
           ? linkedLandingPage.name
-          : this.imageListItemCount(payload) > 1
-            ? `${row.name} · 九图组件（${this.imageListItemCount(payload)} 张）`
+          : this.imageListItemCount(payload, row.componentField) > 1
+            ? `${row.name} · 九图组件（${this.imageListItemCount(payload, row.componentField)} 张）`
             : this.componentContent(row.componentField, payload.component, row.name);
         return {
           id: row.id, source: sameAccount ? 'ACCOUNT' : 'BUSINESS_UNIT', sourceAccount: row.originAccount,
-          businessUnitKey: row.businessUnitKey, platformAssetId: row.platformAssetId, platformAssetKind: row.platformAssetKind, type: row.assetType, componentField: row.componentField,
+          businessUnitKey: row.businessUnitKey, platformAssetId: row.platformAssetId, platformAssetKind: row.platformAssetKind, type: row.componentField === 'label' ? 'LABEL' : row.assetType, componentField: row.componentField,
           name: row.name, contentSummary,
-          labelTexts: row.componentField === 'label' ? this.labelTexts(payload.component) : undefined,
+          labelTexts: row.componentField === 'label' ? labelTexts : undefined,
           previewUrl: null, status: row.status, auditStatus: row.auditStatus, createdTime: row.platformCreatedAt,
           dimensions: dimensionsOf(row),
-          bundleItemCount: this.imageListItemCount(payload) || null,
+          bundleItemCount: this.imageListItemCount(payload, row.componentField) || null,
           componentSubType: payload.componentSubType || null,
           spend7Days: spend.available ? (spend.seven.get(row.platformAssetId) ?? 0) : null,
           spend15Days: spend.available ? (spend.fifteen.get(row.platformAssetId) ?? 0) : null,
-          targetConversionCost7Days: spend.targetConversionCost.get(row.platformAssetId) ?? null,
+          actualCpa7Days: spend.actualCpa.get(row.platformAssetId) ?? null,
+          // Preserve the legacy property shape without continuing the incorrect target-cost meaning.
+          targetConversionCost7Days: null,
           linkedLandingPage,
+          linkedCreativeCount: null,
           usable,
           referenceMode: sameAccount ? 'ACCOUNT_DIRECT' : 'BUSINESS_UNIT_DIRECT',
-          unavailableReason: usable ? null : !platformReady ? '该平台记录仅供参考，缺少可提交的创意组件结构' : '素材已失效、删除或审核未通过',
+          unavailableReason: usable ? null : !platformReady ? '该平台记录仅供参考，缺少可提交的创意组件结构' : !stateValid ? '素材已失效、删除或审核未通过' : '腾讯标签组件未返回具体文案，请刷新素材后重试',
         };
       }),
       pageInfo: { page, pageSize, totalNumber: total, totalPage: Math.ceil(total / pageSize) },
       availableDimensions,
     };
+  }
+
+  async assetCreativeUsageCounts(accountId: string, assetIds: string, user: AdminCurrentUser, refresh = false) {
+    const account = await this.account(accountId, user, 'MATERIALS');
+    const ids = [...new Set(assetIds.split(',').map((id) => id.trim()).filter(Boolean))];
+    if (!ids.length || ids.length > 20 || ids.some((id) => !/^[a-z0-9_-]{1,32}$/i.test(id))) throw new BusinessException(400899, '每次只能查询当前页最多 20 条素材', 400);
+    const assets = await this.prisma.promotionCreativeMaterialSnapshot.findMany({
+      where: { id: { in: ids }, originAccountId: account.id, isDeleted: false },
+      select: { id: true, platformAssetId: true, platformAssetKind: true, componentField: true },
+    });
+    if (assets.length !== ids.length) throw new BusinessException(403899, '素材不存在或超出当前账户范围', 403);
+    const creatives = await this.tencentCreativeUsageRows(String(account.accountNo), user.adminUserId, refresh);
+    return { scope: 'TENCENT_PLATFORM', counts: Object.fromEntries(assets.map((asset) => [asset.id, creatives.filter((creative) => this.tencentCreativeUsesAsset(creative, asset)).length])) };
+  }
+
+  async assetCreativeUsage(accountId: string, assetId: string, user: AdminCurrentUser) {
+    const account = await this.account(accountId, user, 'MATERIALS');
+    const asset = await this.prisma.promotionCreativeMaterialSnapshot.findFirst({ where: { id: assetId, originAccountId: account.id, isDeleted: false }, select: { id: true, name: true, platformAssetId: true, platformAssetKind: true, componentField: true, payloadJson: true } });
+    if (!asset) throw new BusinessException(404899, '素材不存在或超出当前账户范围', 404);
+    const creatives = (await this.tencentCreativeUsageRows(String(account.accountNo), user.adminUserId))
+      .filter((row) => this.tencentCreativeUsesAsset(row, asset))
+      .map((row) => ({ id: String(row.dynamic_creative_id), name: String(row.dynamic_creative_name || '未命名创意'), adgroupId: String(row.adgroup_id || '') }));
+    return { asset: { id: asset.id, name: asset.name }, scope: 'TENCENT_PLATFORM', total: creatives.length, list: creatives };
+  }
+
+  private async tencentCreativeUsageRows(accountNo: string, adminUserId: string, refresh = false) {
+    const key = `${adminUserId}:${accountNo}`;
+    if (refresh) this.creativeUsageCache.delete(key);
+    const cached = this.creativeUsageCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.rows;
+    const rows = (async () => {
+      const all: PlatformRecord[] = [];
+      for (let page = 1; page <= 100; page += 1) {
+        const response = await this.sync.tencentApi('GET', '/dynamic_creatives/get', accountNo, {
+          fields: JSON.stringify(['dynamic_creative_id', 'dynamic_creative_name', 'adgroup_id', 'creative_components', 'is_deleted']),
+          page, page_size: 100, is_deleted: false,
+        }, true, adminUserId);
+        const current = this.rows(response.data);
+        if (current.some((row) => !row.creative_components || typeof row.creative_components !== 'object'))
+          throw new BusinessException(503899, '腾讯创意查询未返回组件明细，暂不能准确统计素材关联数量', 503);
+        all.push(...current);
+        if (current.length < 100) return all;
+      }
+      throw new BusinessException(503898, '腾讯创意超过一次查询的安全分页上限，暂不能准确统计关联数量', 503);
+    })();
+    this.creativeUsageCache.set(key, { expiresAt: Date.now() + 2 * 60_000, rows });
+    try { return await rows; } catch (error) { this.creativeUsageCache.delete(key); throw error; }
+  }
+
+  private tencentCreativeUsesAsset(creative: PlatformRecord, asset: { platformAssetId: string; platformAssetKind: string; componentField?: string | null; payloadJson?: unknown }) {
+    const id = String(asset.platformAssetId);
+    const components = creative.creative_components;
+    if (!components || typeof components !== 'object') return false;
+    const keys = asset.platformAssetKind === 'VIDEO' ? ['video_id']
+      : asset.platformAssetKind === 'IMAGE' ? ['image_id', 'cover_id', 'floating_zone_image_id']
+        : asset.platformAssetKind === 'REFERENCE' ? ['page_id'] : ['component_id'];
+    const matches = (value: unknown): boolean => {
+      if (!value || typeof value !== 'object') return false;
+      if (Array.isArray(value)) return value.some(matches);
+      return Object.entries(value).some(([key, nested]) => keys.includes(key) && String(nested) === id || matches(nested));
+    };
+    return matches(components);
   }
 
   async preview(dto: PromotionCreativeBatchRequestDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
@@ -448,7 +521,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       items: result.items.map((item) => {
         if (item.errorCode === '11101') return { ...item, recoverySuggestion: this.recoverySuggestion('11101', item.errorMessage || '') };
         const components = (item.creativePayload as Record<string, any>)?.creative_components || {};
-        if (item.errorCode === '1670002' && components.video?.length && !components.image?.length && !components.image_list?.length) {
+        if (item.errorCode === '1670002' && (components.video?.length || components.short_video?.length) && !components.image?.length && !components.image_list?.length) {
           return {
             ...item,
             errorMessage: `视频默认封面尺寸不符合当前规格；腾讯原始提示：${item.errorMessage || '图片尺寸不符合要求'}`,
@@ -514,13 +587,14 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         where: { id: { in: dto.materials.images } },
         select: { id: true, componentField: true, payloadJson: true },
       });
-      const imageListSelections = imageSelections.filter((asset) => this.imageListItemCount(asset.payloadJson) > 1);
+      const imageListSelections = imageSelections.filter((asset) => this.imageListItemCount(asset.payloadJson, asset.componentField) > 1);
       if (imageListSelections.length && imageListSelections.length !== dto.materials.images.length) {
         throw new BusinessException(400875, '腾讯九图组件不能与单张图片混合选择，请仅选择九图组件或仅选择单张图片', 400);
       }
-      // A prebuilt image_list is one selectable component. Its inner list is
-      // still checked against Tencent's nine-image template below.
-      if (imageListSelections.length) effectiveRules.imageCount = 1;
+      // A prebuilt image_list is one selectable component, but several such
+      // components may be selected for one creative when Tencent's template
+      // allows it. Keep the operator's requested component count; the
+      // per-component inner image count is validated against the template.
     }
     try {
       // Brand and marketing components are fixed creative structure, not
@@ -564,6 +638,27 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const preferredConversionAssets = dto.materials.conversionComponents.map((id) => assetMap.get(id)!);
     for (const asset of assets) this.assertAssetUsable(asset, account.id, dto.businessUnitKey);
     const requirements = detail.requirements as Array<Record<string, any>>;
+    for (const asset of assets.filter((item) => ['VIDEO', 'IMAGE'].includes(item.assetType))) {
+      const field = this.componentSubmissionField(this.canonicalCreativeComponentField(asset.componentField || (asset.payloadJson as PlatformRecord)?.componentField), requirements);
+      if (!this.assetMatchesTemplateDimensions(asset, field, requirements)) {
+        const rule = requirements.find((item) => String(item.path || item.name || '').split('.').pop() === field);
+        const sizes = (Array.isArray(rule?.mediaRules) ? rule.mediaRules : Array.isArray(rule?.itemRules) ? rule.itemRules : [])
+          .map((item: PlatformRecord) => Number(item.ratioWidth) > 0 && Number(item.ratioHeight) > 0
+            ? `比例 ${item.ratioWidth}:${item.ratioHeight}、最低 ${item.minWidth || 0}×${item.minHeight || 0}`
+            : Number(item.width) > 0 && Number(item.height) > 0 ? `${item.width}×${item.height}` : '')
+          .filter(Boolean);
+        throw new BusinessException(400898, `素材“${asset.name}”尺寸不符合当前创意规格${sizes.length ? `（要求 ${[...new Set(sizes)].join(' 或 ')}）` : ''}，请更换素材`, 400);
+      }
+    }
+    const videoAssets = assets.filter((item) => item.assetType === 'VIDEO');
+    for (let offset = 0; offset < videoAssets.length; offset += 3) {
+      const issues = await Promise.all(videoAssets.slice(offset, offset + 3).map((asset) => this.videoDefaultCoverIssue(
+        asset, String(account.accountNo), this.componentSubmissionField(this.canonicalCreativeComponentField(asset.componentField || 'video'), requirements),
+        requirements, user.adminUserId,
+      )));
+      const issue = issues.find(Boolean);
+      if (issue) throw new BusinessException(400898, issue, 400);
+    }
     if (dto.combinationMode !== 'MANUAL') {
       const fixedAssets = [...new Set([...dto.materials.conversionComponents, ...dto.materials.otherComponents])].map((id) => assetMap.get(id)!);
       combinations = this.applyFixedComponentVariants(combinations, fixedAssets, requirements, dto.combinationMode, maxBatchSize);
@@ -581,7 +676,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         const component = this.componentSubmissionValue(field, payload.component);
         (creativeComponents[field] ||= []).push(this.normalizeTencentAssetIds(component));
       }
-      this.aggregateImageListComponents(creativeComponents);
+      this.aggregateImageListComponents(creativeComponents, requirements);
       if (creativeComponents.mini_card_link?.length && creativeComponents.text_link?.length) {
         throw new BusinessException(400876, '图文链接和文字链不能同时使用，请只保留一种', 400);
       }
@@ -593,9 +688,9 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       );
       const completedComponents = upgraded.payload.creative_components as Record<string, unknown[]>;
       const completedAssets = [...selected, ...upgraded.assets.filter((asset) => !selected.some((item) => item.id === asset.id))];
-      this.validateTemplateComponents(requirements, completedComponents, dto.dynamicCreativeType);
+      this.validateTemplateComponents(requirements, completedComponents, dto.dynamicCreativeType, String((detail.template as PlatformRecord).creative_template_appellation || (detail.template as PlatformRecord).creative_template_style || `创意规格 ${dto.templateId}`));
       this.validatePlacementDependencies(detail.template as PlatformRecord, completedComponents);
-      const name = this.creativeName(dto.namePattern, index + 1, selected, account.name);
+      const name = this.creativeName(dto.namePattern, index + 1, selected, account.name, String((detail.template as PlatformRecord).creative_template_appellation || (detail.template as PlatformRecord).creative_template_style || `创意规格 ${dto.templateId}`));
       const payload = {
         account_id: this.safeInteger(String(account.accountNo), '账户 ID'), adgroup_id: this.safeInteger(dto.adgroupId, '营销单元 ID'),
         dynamic_creative_name: name, creative_template_id: this.safeInteger(dto.templateId, '创意规格 ID'),
@@ -785,7 +880,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
 
   private async syncAssets(account: { id: string; accountNo: string | null; project: string }, assetType?: string, page = 1, pageSize = 20, source: 'ACCOUNT' | 'BUSINESS_UNIT' = 'ACCOUNT') {
     if (!account.accountNo) throw new BusinessException(400861, '账户未填写腾讯广告账户 ID', 400);
-    const types = assetType === 'MEDIA' ? ['VIDEO', 'IMAGE'] : assetType === 'COPY' ? ['TITLE'] : assetType ? [assetType] : ['TITLE', 'VIDEO', 'IMAGE', 'LANDING_PAGE', 'MARKETING', 'BRAND', 'WECHAT_CHANNELS', 'CONVERSION', 'OTHER'];
+    const types = assetType === 'MEDIA' ? ['VIDEO', 'IMAGE'] : assetType === 'NINE_IMAGE' ? ['IMAGE'] : assetType === 'COPY' ? ['TITLE'] : assetType ? [assetType] : ['TITLE', 'VIDEO', 'IMAGE', 'LANDING_PAGE', 'MARKETING', 'BRAND', 'WECHAT_CHANNELS', 'CONVERSION', 'OTHER'];
     const businessUnitKey = this.tencentAccountScopeKey(String(account.accountNo));
     const organizationId = source === 'BUSINESS_UNIT' ? await this.tencentBusinessUnitId(account.accountNo) : null;
     const platformScope = organizationId ? { organization_id: this.safeInteger(organizationId, '腾讯业务单元 ID') } : {};
@@ -825,7 +920,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       const rows = await this.tencentAssetRows('/videos/get', account.accountNo, platformScope, !organizationId, pageSize);
       for (const row of rows) await upsert({ id: String(row.video_id), kind: 'VIDEO', type: 'VIDEO', field: 'video', name: String(row.description || `视频 ${row.video_id}`), preview: row.preview_url || row.key_frame_image_url, status: row.system_status || row.status, auditStatus: row.status, payload: { kind: 'VIDEO', componentField: 'video', platformOwnerAccountId: row.account_id ? String(row.account_id) : account.accountNo, platformOrganizationId: row.organization_id ? String(row.organization_id) : null, width: Number(row.width) || null, height: Number(row.height) || null, fileSize: Number(row.file_size) || null, component: { value: { video_id: String(row.video_id), ...(row.cover_id ? { cover_id: String(row.cover_id) } : {}) } } }, createdTime: row.created_time });
     }
-    if (types.includes('IMAGE')) {
+    if (types.includes('IMAGE') && assetType !== 'NINE_IMAGE') {
       const rows = await this.tencentAssetRows('/images/get', account.accountNo, platformScope, !organizationId, pageSize);
       for (const row of rows) await upsert({ id: String(row.image_id), kind: 'IMAGE', type: 'IMAGE', field: 'image', name: String(row.description || `图片 ${row.image_id}`), preview: row.preview_url, status: row.status, auditStatus: row.similarity_status, payload: { kind: 'IMAGE', componentField: 'image', platformOwnerAccountId: row.account_id ? String(row.account_id) : account.accountNo, platformOrganizationId: row.organization_id ? String(row.organization_id) : null, width: Number(row.width) || null, height: Number(row.height) || null, fileSize: Number(row.file_size) || null, component: { value: { image_id: String(row.image_id), ...(row.preview_url ? { image_url: row.preview_url } : {}) } } }, createdTime: row.created_time });
     }
@@ -961,14 +1056,34 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       });
       const nestedMins = nestedLists.map((rule) => rule.min).filter((value) => value > 0);
       const nestedMaxes = nestedLists.map((rule) => rule.max).filter((value) => value > 0);
+      const mediaRules = subtypeOptions.flatMap((option: PlatformRecord) => {
+        const fields = Array.isArray(option.value_field) ? option.value_field : [];
+        return fields.filter((field: PlatformRecord) => ['video_id', 'image_id'].includes(String(field.name || ''))).map((field: PlatformRecord) => ({
+          width: Number(field.valid?.width || 0), height: Number(field.valid?.height || 0),
+          minWidth: Number(field.valid?.min_width || 0), minHeight: Number(field.valid?.min_height || 0),
+          ratioWidth: Number(field.valid?.ratio_width || 0), ratioHeight: Number(field.valid?.ratio_height || 0),
+        })).filter((rule: { width: number; height: number; minWidth: number; minHeight: number; ratioWidth: number; ratioHeight: number }) =>
+          (rule.width > 0 && rule.height > 0)
+          || (rule.ratioWidth > 0 && rule.ratioHeight > 0));
+      });
+      const coverRules = subtypeOptions.flatMap((option: PlatformRecord) => {
+        const fields = Array.isArray(option.value_field) ? option.value_field : [];
+        return fields.filter((field: PlatformRecord) => field.name === 'cover_id')
+          .map((field: PlatformRecord) => ({ width: Number(field.valid?.width || 0), height: Number(field.valid?.height || 0) }))
+          .filter((rule: { width: number; height: number }) => rule.width > 0 && rule.height > 0);
+      });
       return ({
       name: item.name || String(item.path || '').split('.').pop(), path: item.path || item.name,
       required, elementType: item.element_type || item.component_type || item.type || null, fieldType: item.field_type || item.component_sub_type || null,
       min: Number(item.array_property?.min_number ?? valid.min_occurs ?? (required ? 1 : 0)),
-      max: Number(item.array_property?.max_number ?? valid.max_occurs ?? 1),
+      // An omitted max_occurs is not an implicit Tencent limit of one.
+      max: item.array_property?.max_number === undefined && valid.max_occurs === undefined
+        ? null : Number(item.array_property?.max_number ?? valid.max_occurs),
       itemMin: nestedMins.length ? Math.min(...nestedMins) : null,
       itemMax: nestedMaxes.length ? Math.max(...nestedMaxes) : null,
       itemRules: nestedLists,
+      mediaRules,
+      coverRules,
       description: item.description || item.desc || null, restriction: item.restriction || valid || null,
       });
     });
@@ -976,12 +1091,21 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
 
   private templateRequirementsForContext(detail: PlatformRecord, templateId: string, dynamicType: string) {
     const requirements: Array<Record<string, any>> = this.templateRequirements(detail);
-    if (dynamicType !== 'DYNAMIC_CREATIVE_TYPE_PROGRAM') return requirements;
+    if (dynamicType !== 'DYNAMIC_CREATIVE_TYPE_PROGRAM') return this.applyChannelImageFloatingZoneRequirement(detail, requirements);
     const ordinaryRequirements = Array.isArray(detail.__ordinaryRequirements)
       ? detail.__ordinaryRequirements as Array<Record<string, any>>
       : [];
-    if (!ordinaryRequirements.length) return requirements;
-    return this.alignDynamicRequiredRequirements(requirements, ordinaryRequirements, templateId);
+    if (!ordinaryRequirements.length) return this.applyChannelImageFloatingZoneRequirement(detail, requirements);
+    return this.applyChannelImageFloatingZoneRequirement(detail, this.alignDynamicRequiredRequirements(requirements, ordinaryRequirements, templateId));
+  }
+
+  private applyChannelImageFloatingZoneRequirement(detail: PlatformRecord, requirements: Array<Record<string, any>>) {
+    if (!this.templateRequiresChannelImageFloatingZone(detail)) return requirements;
+    const existing = requirements.find((item) => ['floating_zone', 'floating_zone_list'].includes(
+      String(item.path || item.name || '').split('.').pop() || ''));
+    if (existing) return requirements.map((item) => item === existing
+      ? { ...item, required: true, min: Math.max(1, Number(item.min || 1)) } : item);
+    return [...requirements, { name: 'floating_zone', path: 'floating_zone', description: '浮层卡片', required: true, min: 1, max: 1 }];
   }
 
   private alignDynamicRequiredRequirements(dynamicRequirements: Array<Record<string, any>>, ordinaryRequirements: Array<Record<string, any>>, templateId = '') {
@@ -1054,9 +1178,16 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       nextComponents.brand = [this.normalizeTencentAssetIds((brandAsset.payloadJson as PlatformRecord).component)];
       addedAssets.push(brandAsset);
     }
-    // 腾讯的视频号品牌形象也能用于大图类规格，但横版大图、常规大图
-    // 并不因此需要视频版位专用的文字链和浮层卡片。只有规格本身包含
-    // video/short_video/video_list 字段时才补齐这组兼容组件。
+    // AIM 视频号版位的 1:1 常规大图与九图也要求浮层卡片；
+    // 其他图片规格仍不自动带入视频专用的文字链。
+    if (this.templateRequiresChannelImageFloatingZone(template) && !nextComponents.floating_zone?.length) {
+      const floatingZone = this.matchPlacementComponent(selectedAssets, 'floating_zone', task.accountId)
+        || this.matchPlacementComponent(candidates, 'floating_zone', task.accountId);
+      if (!floatingZone) throw new BusinessException(400871, '视频号版位的 1:1 图片规格必填浮层卡片，请选择或同步可用组件', 400);
+      this.assertAssetUsable(floatingZone, task.accountId, task.businessUnitKey);
+      nextComponents.floating_zone = [this.normalizeTencentAssetIds((floatingZone.payloadJson as PlatformRecord).component)];
+      addedAssets.push(floatingZone);
+    }
     if (!this.templateUsesVideo(template)) {
       return { payload: { ...payload, creative_components: nextComponents }, assets: addedAssets };
     }
@@ -1182,7 +1313,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     };
   }
 
-  private validateTemplateComponents(requirements: Array<Record<string, any>>, components: Record<string, unknown[]>, dynamicType: string) {
+  private validateTemplateComponents(requirements: Array<Record<string, any>>, components: Record<string, unknown[]>, dynamicType: string, templateName = '当前规格') {
     // Both ordinary and dynamic creatives may contain multiple core materials
     // (copy, video, image and landing page) when Tencent's selected template
     // advertises that capacity. The per-field minimum/maximum below is the
@@ -1191,20 +1322,24 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     if (components.mini_card_link?.length && components.text_link?.length) throw new BusinessException(400876, '图文链接和文字链不能同时使用，请只保留一种', 400);
     for (const requirement of requirements) {
       const field = String(requirement.path || requirement.name || '').split('.').pop() || '';
-      if (!CREATIVE_COMPONENT_FIELDS.has(field)) continue;
+      if (!CREATIVE_COMPONENT_FIELDS.has(field)) {
+        if (requirement.required && field) throw new BusinessException(400857, `创意规格“${templateName}”要求当前系统尚未支持的组件“${requirement.description || field}”，请更换规格或联系管理员适配`, 400);
+        continue;
+      }
       const count = components[field]?.length || 0;
-      if (requirement.required && count < Math.max(1, Number(requirement.min || 0))) throw new BusinessException(400857, `创意规格缺少必填组件“${requirement.description || field}”`, 400);
-      if (Number.isFinite(Number(requirement.max)) && count > Number(requirement.max)) throw new BusinessException(400862, `组件“${requirement.description || field}”最多允许 ${requirement.max} 项，当前为 ${count} 项`, 400);
+      if (requirement.required && !count) throw new BusinessException(400857, `创意规格缺少必填组件“${requirement.description || field}”`, 400);
+      if (count && count < Number(requirement.min || 0)) throw new BusinessException(400857, `组件“${requirement.description || field}”至少需要 ${requirement.min} 项，当前为 ${count} 项`, 400);
+      if (requirement.max !== null && requirement.max !== undefined && Number.isFinite(Number(requirement.max)) && count > Number(requirement.max)) throw new BusinessException(400862, `组件“${requirement.description || field}”最多允许 ${requirement.max} 项，当前为 ${count} 项`, 400);
       if (field === 'image_list' && count) {
-        const imageCount = components[field].reduce<number>((total, component) => {
+        for (const component of components[field]) {
           const record = component && typeof component === 'object' ? component as PlatformRecord : {};
           const value = record.value && typeof record.value === 'object' ? record.value as PlatformRecord : {};
-          return total + (Array.isArray(value.list) ? value.list.length : 0);
-        }, 0);
-        const itemMin = Number(requirement.itemMin || 0);
-        const itemMax = Number(requirement.itemMax || 0);
-        if (itemMin && imageCount < itemMin) throw new BusinessException(400857, `九图规格每条创意至少需要 ${itemMin} 张图片，当前为 ${imageCount} 张`, 400);
-        if (itemMax && imageCount > itemMax) throw new BusinessException(400862, `九图规格每条创意最多允许 ${itemMax} 张图片，当前为 ${imageCount} 张`, 400);
+          const imageCount = Array.isArray(value.list) ? value.list.length : 0;
+          if (!this.imageListCountAllowed(requirement, imageCount)) {
+            const ranges = this.imageListAllowedCounts(requirement).map((rule) => rule.min === rule.max ? `${rule.min}` : `${rule.min}–${rule.max}`).join('、');
+            throw new BusinessException(400862, `创意规格“${templateName}”每个图片组件只允许 ${ranges || '腾讯返回的规格数量'} 张图片，当前为 ${imageCount} 张`, 400);
+          }
+        }
       }
     }
   }
@@ -1214,6 +1349,9 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const channelPlacement = sites.includes('SITE_SET_CHANNELS')
       && (Boolean(components.wechat_channels?.length)
         || (components.brand || []).some((component: any) => component?.value?.jump_info?.page_type === 'PAGE_TYPE_WECHAT_CHANNELS_PROFILE'));
+    if (channelPlacement && this.templateRequiresChannelImageFloatingZone(template) && !components.floating_zone?.length) {
+      throw new BusinessException(400871, '视频号版位的 1:1 图片规格必填浮层卡片', 400);
+    }
     if (!channelPlacement || !this.templateUsesVideo(template)) return;
     if (!components.text_link?.length && !components.mini_card_link?.length) throw new BusinessException(400870, '视频号版位需填写图文链接或文字链组件', 400);
     if (components.text_link?.length && components.mini_card_link?.length) throw new BusinessException(400876, '图文链接和文字链不能同时使用，请只保留一种', 400);
@@ -1236,6 +1374,17 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       const field = String(requirement.path || requirement.name || '').split('.').pop() || '';
       return ['video', 'video_list', 'short_video', 'app_promotion_video', 'video_showcase'].includes(field);
     });
+  }
+
+  private templateRequiresChannelImageFloatingZone(template: PlatformRecord) {
+    const sites = Array.isArray(template.site_set) ? template.site_set : [];
+    if (!sites.includes('SITE_SET_CHANNELS') || this.templateUsesVideo(template)) return false;
+    const name = String(template.creative_template_appellation || template.creative_template_style || '');
+    const size = String(template.creative_template_size || '');
+    const square = /1\s*[:：×xX]\s*1/.test(`${name} ${size}`);
+    const image = this.templateRequirements(template).some((requirement: Record<string, any>) =>
+      ['image', 'image_list', 'image_showcase'].includes(String(requirement.path || requirement.name || '').split('.').pop() || ''));
+    return square && image && /常规大图|九图/.test(name);
   }
 
   private assertDynamicSupport(detail: PlatformRecord, dynamicType: string) {
@@ -1323,11 +1472,15 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
   private assetQueryScope(assetType?: string): Prisma.PromotionCreativeMaterialSnapshotWhereInput {
     const fields: Record<string, string[]> = {
       COPY: ['title', 'description'], BRAND: ['brand', 'channels_brand'],
+      WECHAT_CHANNELS: ['wechat_channels'], CONVERSION: ['consult', 'phone', 'form'],
       ACTION_BUTTON: ['action_button', 'chosen_button'], MINI_CARD_LINK: ['mini_card_link'], TEXT_LINK: ['text_link'],
       FLOATING_ZONE: ['floating_zone', 'floating_zone_list'], LABEL: ['label'], SOCIAL_SKILL: ['social_skill'],
       LANDING_PAGE: ['main_jump_info', 'jump_info', 'end_page'],
     };
     if (assetType === 'MEDIA') return { assetType: { in: ['VIDEO', 'IMAGE'] } };
+    if (assetType === 'IMAGE' || assetType === 'VIDEO') return { assetType };
+    if (assetType === 'NINE_IMAGE') return { assetType: 'IMAGE', componentField: 'image_list' };
+    if (assetType === 'OTHER') return { assetType: 'OTHER' };
     if (assetType && fields[assetType]) return { componentField: { in: fields[assetType] } };
     return {};
   }
@@ -1345,7 +1498,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     return field;
   }
   private componentSubmissionValue(field: string, component: unknown) {
-    if (field === 'video' && component && typeof component === 'object') {
+    if (['video', 'short_video'].includes(field) && component && typeof component === 'object') {
       const record = component as PlatformRecord;
       const value = record.value && typeof record.value === 'object' ? record.value as PlatformRecord : {};
       return {
@@ -1367,38 +1520,89 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       value: { list: [{ ...(value.image_id ? { image_id: value.image_id } : {}), ...(value.image_url ? { image_url: value.image_url } : {}) }] },
     };
   }
-  private aggregateImageListComponents(components: Record<string, unknown[]>) {
+  private aggregateImageListComponents(components: Record<string, unknown[]>, requirements: Array<Record<string, any>> = []) {
     const imageLists = components.image_list;
     if (!Array.isArray(imageLists) || imageLists.length < 2) return;
+    const requirement = requirements.find((item) => String(item.path || item.name || '').split('.').pop() === 'image_list');
+    // Tencent's IMAGE_LIST_16X9_1 accepts one image per component, but may
+    // accept up to 15 components. Only multi-image list subtypes need merging.
+    if (Number(requirement?.itemMin || 0) <= 1) return;
     const itemCounts = imageLists.map((component) => {
       const record = component && typeof component === 'object' ? component as PlatformRecord : {};
       const value = record.value && typeof record.value === 'object' ? record.value as PlatformRecord : {};
       return Array.isArray(value.list) ? value.list.length : 0;
     });
-    if (itemCounts.some((count) => count > 1)) {
-      throw new BusinessException(400875, '每条创意只能使用一个腾讯九图组件，且不能与单张图片混合提交', 400);
-    }
-    const list = imageLists.flatMap((component) => {
+    const singles = imageLists.filter((_, index) => itemCounts[index] === 1);
+    const bundles = imageLists.filter((_, index) => itemCounts[index] !== 1);
+    if (!singles.length) return;
+    const rules = this.imageListAllowedCounts(requirement);
+    const sizes = Array.from(new Set(rules.flatMap((rule) => Array.from({ length: Math.max(0, Math.min(rule.max, singles.length) - rule.min + 1) }, (_, index) => rule.min + index)))).filter((size) => size > 1).sort((left, right) => right - left);
+    const partitions = new Map<number, number[] | null>();
+    const split = (remaining: number): number[] | null => {
+      if (!remaining) return [];
+      if (partitions.has(remaining)) return partitions.get(remaining)!;
+      for (const size of sizes) {
+        if (size > remaining) continue;
+        const rest = split(remaining - size);
+        if (rest) { const result = [size, ...rest]; partitions.set(remaining, result); return result; }
+      }
+      partitions.set(remaining, null);
+      return null;
+    };
+    const groups = split(singles.length);
+    if (!groups) return; // The validator reports the exact permitted counts.
+    const list = singles.flatMap((component) => {
       const record = component && typeof component === 'object' ? component as PlatformRecord : {};
       const value = record.value && typeof record.value === 'object' ? record.value as PlatformRecord : {};
       return Array.isArray(value.list) ? value.list : [];
     });
-    components.image_list = [{ value: { list } }];
+    let offset = 0;
+    components.image_list = [...bundles, ...groups.map((size) => {
+      const value = { list: list.slice(offset, offset + size) };
+      offset += size;
+      return { value };
+    })];
+  }
+  private imageListAllowedCounts(requirement: Record<string, any> | undefined) {
+    const rules = Array.isArray(requirement?.itemRules) ? requirement.itemRules : [];
+    const counts = rules.map((rule: any) => ({ min: Number(rule.min || 0), max: Number(rule.max || 0) }))
+      .filter((rule: { min: number; max: number }) => rule.min > 0 && rule.max >= rule.min);
+    if (counts.length) return counts;
+    const min = Number(requirement?.itemMin || 0), max = Number(requirement?.itemMax || 0);
+    return min > 0 && max >= min ? [{ min, max }] : [];
+  }
+  private imageListCountAllowed(requirement: Record<string, any>, count: number) {
+    const rules = this.imageListAllowedCounts(requirement);
+    return !rules.length || rules.some((rule) => count >= rule.min && count <= rule.max);
   }
   private assetMatchesTemplateDimensions(asset: any, submissionField: string, requirements: Array<Record<string, any>>) {
+    if (['video', 'short_video', 'image'].includes(submissionField)) {
+      const requirement = requirements.find((item) => String(item.path || item.name || '').split('.').pop() === submissionField);
+      const rules = Array.isArray(requirement?.mediaRules) ? requirement.mediaRules : [];
+      if (!rules.length) return true;
+      const payload = asset.payloadJson as PlatformRecord;
+      const width = Number(payload?.width || 0), height = Number(payload?.height || 0);
+      return width > 0 && height > 0 && rules.some((rule: PlatformRecord) => {
+        if (submissionField !== 'image' && Number(rule.ratioWidth) > 0 && Number(rule.ratioHeight) > 0) {
+          return width * Number(rule.ratioHeight) === height * Number(rule.ratioWidth)
+            && width >= Number(rule.minWidth || rule.width) && height >= Number(rule.minHeight || rule.height);
+        }
+        return width === Number(rule.width) && height === Number(rule.height);
+      });
+    }
     if (submissionField !== 'image_list') return true;
     const requirement = requirements.find((item) => String(item.path || item.name || '').split('.').pop() === 'image_list');
-    const bundledCount = this.imageListItemCount(asset.payloadJson);
+    const bundledCount = this.imageListItemCount(asset.payloadJson, asset.componentField || submissionField);
     if (bundledCount > 1) {
-      const itemMin = Number(requirement?.itemMin || 0);
-      const itemMax = Number(requirement?.itemMax || 0);
-      if (itemMin && bundledCount < itemMin) return false;
-      if (itemMax && bundledCount > itemMax) return false;
+      if (requirement && !this.imageListCountAllowed(requirement, bundledCount)) return false;
       const payload = asset.payloadJson as PlatformRecord;
       const subtype = String(payload.componentSubType || '');
-      const supportedSubtypes = new Set((Array.isArray(requirement?.itemRules) ? requirement.itemRules : [])
-        .map((rule: any) => String(rule.componentSubType || '')).filter(Boolean));
-      return !supportedSubtypes.size || !subtype || supportedSubtypes.has(subtype);
+      const subtypeRules = (Array.isArray(requirement?.itemRules) ? requirement.itemRules : [])
+        .filter((rule: any) => String(rule.componentSubType || '') === subtype);
+      if (subtype && requirement?.itemRules?.some((rule: any) => rule.componentSubType)) {
+        return subtypeRules.some((rule: any) => bundledCount >= Number(rule.min || 0) && bundledCount <= Number(rule.max || 0));
+      }
+      return true;
     }
     const rules = Array.isArray(requirement?.itemRules) ? requirement.itemRules : [];
     const allowed = rules.filter((rule: any) => Number(rule.width) > 0 && Number(rule.height) > 0);
@@ -1407,8 +1611,45 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const width = Number(payload.width || 0); const height = Number(payload.height || 0);
     return allowed.some((rule: any) => width === Number(rule.width) && height === Number(rule.height));
   }
-  private imageListItemCount(payloadJson: unknown) {
+
+  async videoDefaultCoverIssue(asset: any, accountNo: string, submissionField: string, requirements: Array<Record<string, any>>, adminUserId?: string, platformCoverId?: string): Promise<string | null> {
+    if (!['video', 'short_video'].includes(submissionField)) return null;
+    const requirement = requirements.find((item) => String(item.path || item.name || '').split('.').pop() === submissionField);
+    const rules = Array.isArray(requirement?.coverRules) ? requirement.coverRules : [];
+    if (!rules.length) return null;
+    const payload = asset.payloadJson as PlatformRecord;
+    const coverId = String(platformCoverId || payload?.component?.value?.cover_id || '');
+    if (!coverId) return `视频“${asset.name}”缺少腾讯默认封面 ID，请刷新平台视频素材后重新预检`;
+    const query = { filtering: JSON.stringify([{ field: 'image_id', operator: 'EQUALS', values: [coverId] }]), page: 1, page_size: 10 };
+    let response = await this.sync.tencentApi('GET', '/images/get', accountNo, query, true, adminUserId);
+    let cover = this.rows(response.data).find((row) => String(row.image_id || '') === coverId);
+    if (!cover && payload?.platformOrganizationId && (payload?.platformAssetScopes || []).includes('BUSINESS_UNIT')) {
+      response = await this.sync.tencentApi('GET', '/images/get', accountNo, { ...query, organization_id: Number(payload.platformOrganizationId) }, false, adminUserId);
+      cover = this.rows(response.data).find((row) => String(row.image_id || '') === coverId);
+    }
+    if (!cover) return `视频“${asset.name}”的腾讯默认封面在目标账户不可查询，请刷新素材或更换视频`;
+    const width = Number(cover.width || 0), height = Number(cover.height || 0);
+    const ratioRules = (Array.isArray(requirement?.mediaRules) ? requirement.mediaRules : [])
+      .filter((rule: PlatformRecord) => Number(rule.ratioWidth) > 0 && Number(rule.ratioHeight) > 0);
+    const accepted = rules.some((rule: PlatformRecord) => ratioRules.length
+      ? ratioRules.some((media: PlatformRecord) => width * Number(media.ratioHeight) === height * Number(media.ratioWidth)
+        && width * Number(rule.height) === height * Number(rule.width)
+        && width >= Math.max(Number(rule.width), Number(media.minWidth || 0))
+        && height >= Math.max(Number(rule.height), Number(media.minHeight || 0)))
+      : width === Number(rule.width) && height === Number(rule.height));
+    if (!accepted) {
+      const expected = ratioRules.length
+        ? rules.map((rule: PlatformRecord) => `比例 ${rule.width}:${rule.height}、不小于 ${rule.width}×${rule.height}`).join(' 或 ')
+        : rules.map((rule: PlatformRecord) => `${rule.width}×${rule.height}`).join(' 或 ');
+      return `视频“${asset.name}”的腾讯默认封面尺寸为 ${width || '未知'}×${height || '未知'}，当前规格要求 ${expected}；请更换视频`;
+    }
+    return null;
+  }
+  private imageListItemCount(payloadJson: unknown, componentField?: string | null) {
     const payload = payloadJson && typeof payloadJson === 'object' ? payloadJson as PlatformRecord : {};
+    // Labels also use value.list, sometimes with image_id metadata. Only the
+    // Tencent image_list component may be treated as a multi-image bundle.
+    if (this.canonicalCreativeComponentField(componentField || payload.componentField) !== 'image_list') return 0;
     const component = payload.component && typeof payload.component === 'object' ? payload.component as PlatformRecord : {};
     const value = component.value && typeof component.value === 'object' ? component.value as PlatformRecord : {};
     if (!Array.isArray(value.list)) return 0;
@@ -1417,12 +1658,20 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     return value.list.every((item) => item && typeof item === 'object'
       && ('image_id' in item || 'image_url' in item)) ? value.list.length : 0;
   }
+  private selectedMediaKindMatches(assetType: string | undefined, row: { assetType: string; componentField?: string | null; payloadJson: unknown }) {
+    if (assetType === 'VIDEO') return row.assetType === 'VIDEO';
+    if (assetType === 'NINE_IMAGE') return row.assetType === 'IMAGE' && this.imageListItemCount(row.payloadJson, row.componentField) > 1;
+    if (assetType === 'IMAGE') return row.assetType === 'IMAGE' && this.imageListItemCount(row.payloadJson, row.componentField) <= 1;
+    return true;
+  }
   private requestedAssetMatches(assetType: string | undefined, family: AssetFamily, field: string) {
     if (!assetType) return true;
     if (assetType === 'MEDIA') return family === 'VIDEO' || family === 'IMAGE';
+    if (assetType === 'NINE_IMAGE') return family === 'IMAGE' && field === 'image_list';
     if (assetType === 'COPY') return family === 'TITLE';
     if (assetType === 'LANDING_PAGE') return family === 'LANDING_PAGE';
     if (assetType === 'BRAND') return family === 'BRAND' || family === 'WECHAT_CHANNELS';
+    if (assetType === family) return true;
     const fields = (this.assetQueryScope(assetType).componentField as { in?: string[] } | undefined)?.in || [];
     return fields.includes(field) || fields.includes(field === 'floating_zone' ? 'floating_zone_list' : field);
   }
@@ -1432,16 +1681,16 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(value);
     };
     const toMap = (items: Array<{ id: string; metrics?: { spend: number } | null }>) => new Map(items.map((item) => [String(item.id), Number(item.metrics?.spend || 0)]));
-    const toCostMap = (items: Array<{ id: string; metrics?: { targetConversionCost?: number | null } | null }>) => new Map(items.filter((item) => item.metrics?.targetConversionCost !== null && item.metrics?.targetConversionCost !== undefined).map((item) => [String(item.id), Number(item.metrics?.targetConversionCost)]));
+    const toCostMap = (items: Array<{ id: string; metrics?: { actualCpa?: number | null } | null }>) => new Map(items.filter((item) => item.metrics?.actualCpa !== null && item.metrics?.actualCpa !== undefined).map((item) => [String(item.id), Number(item.metrics?.actualCpa)]));
     try {
       const [seven, fifteen] = await Promise.all([
         this.sync.fetchMaterialAnalysis('TENCENT_ADS', accountNo, date(6), date(0)),
         this.sync.fetchMaterialAnalysis('TENCENT_ADS', accountNo, date(14), date(0)),
       ]);
-      return { seven: toMap(seven.items), fifteen: toMap(fifteen.items), targetConversionCost: toCostMap(seven.items), available: true };
+      return { seven: toMap(seven.items), fifteen: toMap(fifteen.items), actualCpa: toCostMap(seven.items), available: true };
     } catch (error) {
       this.logger.warn(`读取腾讯素材近7/15天消费失败: ${error instanceof Error ? error.message : 'unknown'}`);
-      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), targetConversionCost: new Map<string, number>(), available: false };
+      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), actualCpa: new Map<string, number>(), available: false };
     }
   }
   private async componentSpendWindows(accountNo: string, organizationId: string) {
@@ -1489,11 +1738,11 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     try {
       const [seven, fifteen] = await Promise.all([fetch(6), fetch(14)]);
       const spending = (values: typeof seven) => new Map([...values].map(([id, item]) => [id, item.spend]));
-      const targetConversionCost = new Map([...seven].filter(([, item]) => item.reportedCost !== null).map(([id, item]) => [id, Number(item.reportedCost)]));
-      return { seven: spending(seven), fifteen: spending(fifteen), targetConversionCost, available: true };
+      const actualCpa = new Map([...seven].filter(([, item]) => item.reportedCost !== null).map(([id, item]) => [id, Number(item.reportedCost)]));
+      return { seven: spending(seven), fifteen: spending(fifteen), actualCpa, available: true };
     } catch (error) {
       this.logger.warn(`读取腾讯文案组件近7/15天消费失败: ${error instanceof Error ? error.message : 'unknown'}`);
-      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), targetConversionCost: new Map<string, number>(), available: false };
+      return { seven: new Map<string, number>(), fifteen: new Map<string, number>(), actualCpa: new Map<string, number>(), available: false };
     }
   }
   private async maxBatchSize() { const config = await this.prisma.systemConfig.findUnique({ where: { key: 'promotionCreativeBatchMax' } }); const value = Number((config?.valueJson as any)?.value || 50); return Math.min(100, Math.max(1, Number.isFinite(value) ? Math.round(value) : 50)); }
@@ -1604,11 +1853,12 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     if (value && typeof value === 'object') return `{${Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${this.stableJson(item)}`).join(',')}}`;
     return JSON.stringify(value);
   }
-  private creativeName(pattern: string, sequence: number, assets: Array<{ assetType: string; name: string }> = [], accountName = '') {
+  private creativeName(pattern: string, sequence: number, assets: Array<{ assetType: string; name: string }> = [], accountName = '', templateName = '') {
     const suffix = String(sequence).padStart(3, '0');
     const names = (...types: string[]) => assets.filter((asset) => types.includes(asset.assetType)).map((asset) => asset.name).filter(Boolean).join('+');
     const tokens: Record<string, string> = {
       '{账户}': accountName,
+      '{规格}': templateName,
       '{标题}': names('TITLE'),
       '{视频}': names('VIDEO'),
       '{图片}': names('IMAGE'),
@@ -1629,10 +1879,11 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     if (field === 'title' || field === 'description') return 'TITLE';
     if (field === 'brand' || field === 'channels_brand') return 'BRAND';
     if (field === 'wechat_channels') return 'WECHAT_CHANNELS';
+    if (/^(form|consult|phone)$/.test(field)) return 'CONVERSION';
     if (/video/.test(field)) return 'VIDEO';
     if (/image/.test(field)) return 'IMAGE';
     if (/main_jump_info|^jump_info$|end_page/.test(field)) return 'LANDING_PAGE';
-    if (/form|consult|phone|button|pendant|social_skill|floating_zone|text_link|mini_card_link|count_down|barrage|show_data/.test(field)) return 'MARKETING';
+    if (/button|pendant|social_skill|floating_zone|text_link|mini_card_link|count_down|barrage|show_data/.test(field)) return 'MARKETING';
     return 'OTHER';
   }
   private componentName(row: PlatformRecord, field: string, component: unknown) {

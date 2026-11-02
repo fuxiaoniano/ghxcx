@@ -2,7 +2,6 @@
   <div class="page-heading">
     <div>
       <h1 class="page-title">用户管理</h1>
-      <p>查看用户资料、微信绑定状态与历史挂号</p>
     </div>
     <span>共 {{ total }} 位用户</span>
   </div>
