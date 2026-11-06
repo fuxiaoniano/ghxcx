@@ -46,6 +46,7 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
   private readonly logger = new Logger(MultiAccountCreativeBatchService.name);
   private worker?: NodeJS.Timeout;
   private workerBusy = false;
+  private lastRecoveryScan = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -259,13 +260,13 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
     let changed = 0;
     for (const target of batch.targets) for (const item of target.items) {
       if (item.platformCreativeId && ['PLATFORM_ACCEPTED', 'VERIFYING', 'UNKNOWN_NEEDS_REVIEW'].includes(item.status)) {
-        await this.prisma.multiAccountCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'VERIFYING', errorCode: null, errorMessage: null } }); changed += 1;
+        const claimed = await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: item.status, updatedAt: item.updatedAt, target: { batch: { status: { not: 'CANCELLED' } } } }, data: { status: 'VERIFYING', verificationAttempts: 0, errorCode: null, errorMessage: null } }); changed += claimed.count;
       } else if (!item.platformCreativeId && item.status === 'FAILED') {
-        await this.prisma.multiAccountCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'PENDING', errorCode: null, errorMessage: null, retryCount: { increment: 1 } } }); changed += 1;
+        const claimed = await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: 'FAILED', platformCreativeId: null, updatedAt: item.updatedAt, target: { batch: { status: { not: 'CANCELLED' } } } }, data: { status: 'PENDING', errorCode: null, errorMessage: null, retryCount: { increment: 1 } } }); changed += claimed.count;
       }
     }
     if (!changed) throw new BusinessException(400884, '没有可安全重试或回查的创意项', 400);
-    await this.prisma.multiAccountCreativeBatch.update({ where: { id }, data: { status: 'RUNNING', completedAt: null } });
+    await this.prisma.multiAccountCreativeBatch.updateMany({ where: { id, status: { not: 'CANCELLED' } }, data: { status: 'RUNNING', completedAt: null } });
     await this.audit.create({ adminUserId: user.adminUserId, action: 'RETRY_MULTI_ACCOUNT_CREATIVE_BATCH', resourceType: 'multi_account_creative_batches', resourceId: id, afterJson: { count: changed } as Prisma.InputJsonValue, ip, userAgent: this.ua(userAgent) });
     void this.runWorker();
     return this.task(id, user);
@@ -764,8 +765,9 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
     if (this.workerBusy) return;
     this.workerBusy = true;
     try {
+      if (Date.now() - this.lastRecoveryScan >= 60_000) { await this.recoverInterruptedItems(); this.lastRecoveryScan = Date.now(); }
       const item = await this.prisma.multiAccountCreativeBatchItem.findFirst({
-        where: { OR: [{ status: 'PENDING' }, { status: { in: ['PLATFORM_ACCEPTED', 'VERIFYING'] }, verificationAttempts: { lt: 5 }, updatedAt: { lte: new Date(Date.now() - 10_000) } }] },
+        where: { OR: [{ status: 'PENDING', target: { batch: { status: { not: 'CANCELLED' } } } }, { status: { in: ['PLATFORM_ACCEPTED', 'VERIFYING'] }, verificationAttempts: { lt: 5 }, updatedAt: { lte: new Date(Date.now() - 10_000) } }] },
         include: { target: { include: { account: true, batch: true } } }, orderBy: { createdAt: 'asc' },
       });
       if (!item) return;
@@ -777,10 +779,22 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
     finally { this.workerBusy = false; }
   }
 
+  private async recoverInterruptedItems() {
+    const cutoff = new Date(Date.now() - 15 * 60_000);
+    const stale = await this.prisma.multiAccountCreativeBatchItem.findMany({ where: { OR: [{ status: 'SUBMITTING' }, { status: 'VERIFYING', verificationAttempts: { gte: 5 } }], updatedAt: { lt: cutoff } }, select: { id: true, status: true, updatedAt: true, target: { select: { batchId: true } } }, take: 20, orderBy: { updatedAt: 'asc' } });
+    const batches = new Set<string>();
+    for (const item of stale) {
+      const result = await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: item.status, updatedAt: item.updatedAt }, data: { status: 'UNKNOWN_NEEDS_REVIEW', errorCode: 'INTERRUPTED_NEEDS_REVIEW', errorMessage: '处理超时或服务中断，请先回查腾讯后台，禁止盲目重建' } });
+      if (result.count) batches.add(item.target.batchId);
+    }
+    for (const id of batches) await this.refreshCounts(id);
+  }
+
   private async submitItem(item: any) {
-    const locked = await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: 'PENDING' }, data: { status: 'SUBMITTING', lastRequestedAt: new Date(), errorCode: null, errorMessage: null } });
+    const locked = await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: 'PENDING', target: { batch: { status: { not: 'CANCELLED' } } } }, data: { status: 'SUBMITTING', lastRequestedAt: new Date(), errorCode: null, errorMessage: null } });
     if (!locked.count) return;
     const { target } = item; const { account, batch } = target;
+    let requestMayHaveBeenSent = false;
     try {
       const creator = await this.currentUser(batch.createdByAdminId);
       this.assertPermission(creator, 'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CREATE');
@@ -793,14 +807,23 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
       const duplicate = await this.prisma.multiAccountCreativeBatchItem.findFirst({ where: { idempotencyKey: item.idempotencyKey, status: 'CONFIRMED', id: { not: item.id } } });
       if (duplicate) throw new BusinessException(400891, `相同腾讯请求已由创意 ${duplicate.platformCreativeId || duplicate.id} 确认成功，已阻止重复创建`, 400);
       await this.log(batch.id, item.id, 'SUBMIT_TENCENT_CREATIVE', 'SUBMITTING', item.requestPayload);
+      const submissionClaim = await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: 'SUBMITTING', target: { batch: { status: { not: 'CANCELLED' } } } }, data: { lastRequestedAt: new Date() } });
+      if (!submissionClaim.count) {
+        await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: 'SUBMITTING', target: { batch: { status: 'CANCELLED' } } }, data: { status: 'CANCELLED', errorMessage: '用户取消，尚未提交腾讯广告' } });
+        return;
+      }
       let response;
-      try { response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', account.accountNo!, item.requestPayload as PlatformRecord, true, batch.createdByAdminId); }
+      try {
+        requestMayHaveBeenSent = true;
+        response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', account.accountNo!, item.requestPayload as PlatformRecord, true, batch.createdByAdminId);
+      }
       catch (error) {
         if (error instanceof TencentMarketingApiError && error.retryable) {
           await this.prisma.multiAccountCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN_NEEDS_REVIEW', errorCode: error.code, errorMessage: error.message, platformRequestId: error.requestId } });
           await this.log(batch.id, item.id, 'TENCENT_RESPONSE_UNKNOWN', 'UNKNOWN_NEEDS_REVIEW', undefined, undefined, error);
           return;
         }
+        if (error instanceof TencentMarketingApiError && !error.retryable) requestMayHaveBeenSent = false;
         throw error;
       }
       const creativeId = String((response.data as any)?.dynamic_creative_id || '');
@@ -813,8 +836,9 @@ export class MultiAccountCreativeBatchService implements OnModuleInit, OnModuleD
       await this.verifyItem({ ...item, platformCreativeId: creativeId, status: 'PLATFORM_ACCEPTED' });
     } catch (error) {
       const code = error instanceof TencentMarketingApiError ? error.code : 'CREATE_FAILED';
-      await this.prisma.multiAccountCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'FAILED', errorCode: code, errorMessage: (error instanceof Error ? error.message : '创建失败').slice(0, 1000) } });
-      await this.log(batch.id, item.id, 'TENCENT_CREATIVE_REJECTED', 'FAILED', undefined, undefined, error);
+      const status = requestMayHaveBeenSent ? 'UNKNOWN_NEEDS_REVIEW' : 'FAILED';
+      await this.prisma.multiAccountCreativeBatchItem.updateMany({ where: { id: item.id, status: { in: ['SUBMITTING', 'PLATFORM_ACCEPTED', 'VERIFYING'] } }, data: { status, errorCode: code, errorMessage: requestMayHaveBeenSent ? '腾讯请求结果不明，请先回查并人工核对，禁止盲目重建' : (error instanceof Error ? error.message : '创建失败').slice(0, 1000) } });
+      await this.log(batch.id, item.id, 'TENCENT_CREATIVE_REJECTED', status, undefined, undefined, error);
     }
   }
 

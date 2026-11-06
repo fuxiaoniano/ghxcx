@@ -17,6 +17,9 @@ import {
   ConsultationListQueryDto,
   ConsultationStatusDto,
   ConsultationTagDto,
+  ConsultationValidityRuleDto,
+  ConsultationScheduleQueryDto,
+  SaveConsultationScheduleDto,
   CommitConsultationImportDto,
   CreateConsultationDto,
   UpdateConsultationDto,
@@ -35,6 +38,8 @@ export class ConsultationController {
   @Get('/metadata') @Permissions('CONSULTATION_VIEW') metadata(@CurrentUser() user: AdminCurrentUser) { return this.consultations.metadata(user); }
   @Get('/callbacks/today') @Permissions('CONSULTATION_VIEW') callbacks(@CurrentUser() user: AdminCurrentUser) { return this.consultations.todayCallbacks(user); }
   @Get('/eligible-members') @Permissions('CONSULTATION_ASSIGN') eligibleMembers() { return this.consultations.eligibleMembers(); }
+  @Get('/schedule') @Permissions('CONSULTATION_SCHEDULE_VIEW') schedule(@Query() query: ConsultationScheduleQueryDto) { return this.consultations.schedule(query.month); }
+  @Put('/schedule') @Permissions('CONSULTATION_SCHEDULE_VIEW') saveSchedule(@Body() dto: SaveConsultationScheduleDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.saveSchedule(dto, user, req.ip, req.headers['user-agent']); }
   @Get('/') @Permissions('CONSULTATION_VIEW') list(@Query() query: ConsultationListQueryDto, @CurrentUser() user: AdminCurrentUser) { return this.consultations.list(query, user); }
   @Post('/') @Permissions('CONSULTATION_CREATE') create(@Body() dto: CreateConsultationDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.create(dto, user, req.ip, req.headers['user-agent']); }
   @Post('/bulk-assign') @Permissions('CONSULTATION_ASSIGN') bulkAssign(@Body() dto: ConsultationBulkAssignDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.bulkAssign(dto, user, req.ip, req.headers['user-agent']); }
@@ -57,11 +62,14 @@ export class ConsultationController {
   @Patch('/settings/statuses/:id') @Permissions('CONSULTATION_SETTINGS') updateStatus(@Param('id') id: string, @Body() dto: UpdateConsultationStatusDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.updateStatus(id, dto, user, req.ip, req.headers['user-agent']); }
   @Delete('/settings/statuses/:id') @Permissions('CONSULTATION_SETTINGS') deleteStatus(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.deleteStatus(id, user, req.ip, req.headers['user-agent']); }
   @Get('/settings/tags') @Permissions('CONSULTATION_SETTINGS') tags() { return this.consultations.tags(); }
+  @Get('/settings/validity-rule') @Permissions('CONSULTATION_SETTINGS') validityRule() { return this.consultations.validityRule(); }
+  @Put('/settings/validity-rule') @Permissions('CONSULTATION_SETTINGS') saveValidityRule(@Body() dto: ConsultationValidityRuleDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.saveValidityRule(dto, user, req.ip, req.headers['user-agent']); }
   @Post('/settings/tags') @Permissions('CONSULTATION_SETTINGS') createTag(@Body() dto: ConsultationTagDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.createTag(dto, user, req.ip, req.headers['user-agent']); }
   @Patch('/settings/tags/:id') @Permissions('CONSULTATION_SETTINGS') updateTag(@Param('id') id: string, @Body() dto: UpdateConsultationTagDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.updateTag(id, dto, user, req.ip, req.headers['user-agent']); }
   @Delete('/settings/tags/:id') @Permissions('CONSULTATION_SETTINGS') deleteTag(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.deleteTag(id, user, req.ip, req.headers['user-agent']); }
 
   @Get('/:id') @Permissions('CONSULTATION_VIEW') detail(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) { return this.consultations.detail(id, user); }
+  @Delete('/:id') @Permissions('CONSULTATION_DELETE') delete(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.deleteForm(id, user, req.ip, req.headers['user-agent']); }
   @Patch('/:id') @Permissions('CONSULTATION_EDIT') update(@Param('id') id: string, @Body() dto: UpdateConsultationDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.update(id, dto, user, req.ip, req.headers['user-agent']); }
   @Post('/:id/follow-ups') @Permissions('CONSULTATION_FOLLOW_UP') addFollowUp(@Param('id') id: string, @Body() dto: ConsultationFollowUpDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.addFollowUp(id, dto, user, req.ip, req.headers['user-agent']); }
   @Patch('/:id/assign') @Permissions('CONSULTATION_ASSIGN') assign(@Param('id') id: string, @Body() dto: ConsultationAssignDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.consultations.assign(id, dto, user, req.ip, req.headers['user-agent']); }

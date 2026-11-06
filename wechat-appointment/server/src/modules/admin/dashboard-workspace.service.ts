@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
 
 const allowedModules = ['METRICS', 'TREND', 'RECENT'] as const;
+const defaultModules = ['PAGE:/consultations/callbacks', 'PAGE:/consultations'] as const;
 const validModule = (value: string) => allowedModules.includes(value as typeof allowedModules[number]) || /^PAGE:\/[a-z0-9/-]{1,80}$/.test(value);
 
 @Injectable()
@@ -12,7 +13,7 @@ export class DashboardWorkspaceService {
 
   async preferences(adminUserId: string) {
     const row = await this.prisma.adminDashboardPreference.findUnique({ where: { adminUserId } });
-    const saved = Array.isArray(row?.modulesJson) ? row.modulesJson : allowedModules;
+    const saved = Array.isArray(row?.modulesJson) ? row.modulesJson : defaultModules;
     return { modules: saved.filter((value): value is string => typeof value === 'string' && validModule(value)) };
   }
 

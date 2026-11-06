@@ -39,6 +39,16 @@ describe('PermissionsGuard', () => {
     expect(new PermissionsGuard(reflector).canActivate(context(['CONSULTATION_ASSIGN']))).toBe(true);
   });
 
+  it('requires separate schedule view and management permissions', () => {
+    const schedule = { getAllAndOverride: jest.fn().mockReturnValue(['CONSULTATION_SCHEDULE_VIEW']) } as unknown as Reflector;
+    expect(() => new PermissionsGuard(schedule).canActivate(context(['CONSULTATION_VIEW'])))
+      .toThrow(expect.objectContaining({ status: 403 }));
+    expect(new PermissionsGuard(schedule).canActivate(context(['CONSULTATION_SCHEDULE_VIEW']))).toBe(true);
+    const manage = { getAllAndOverride: jest.fn().mockReturnValue(['CONSULTATION_SCHEDULE_MANAGE']) } as unknown as Reflector;
+    expect(() => new PermissionsGuard(manage).canActivate(context(['CONSULTATION_SCHEDULE_VIEW'])))
+      .toThrow(expect.objectContaining({ status: 403 }));
+  });
+
   it('always grants super administrators newly introduced permissions', () => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(['CONSULTATION_SETTINGS']) } as unknown as Reflector;
     const superContext = {

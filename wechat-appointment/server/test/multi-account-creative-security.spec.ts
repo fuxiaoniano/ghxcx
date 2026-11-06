@@ -4,6 +4,76 @@ import { PromotionCreativeBatchService } from '../src/modules/operations/promoti
 describe('multi-account creative response security', () => {
   const service = new MultiAccountCreativeBatchService({} as any, {} as any, {} as any, {} as any, {} as any);
 
+  it('marks an interrupted submission for manual review instead of creating again', async () => {
+    const updatedAt = new Date('2026-01-01');
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const prisma = { multiAccountCreativeBatchItem: { findMany: jest.fn().mockResolvedValue([{ id: 'i', status: 'SUBMITTING', updatedAt, target: { batchId: 'b' } }]), updateMany } };
+    const scoped = new MultiAccountCreativeBatchService(prisma as any, {} as any, {} as any, {} as any, {} as any) as any;
+    jest.spyOn(scoped, 'refreshCounts').mockResolvedValue(undefined);
+    await scoped.recoverInterruptedItems();
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'i', status: 'SUBMITTING', updatedAt }, data: expect.objectContaining({ status: 'UNKNOWN_NEEDS_REVIEW' }) }));
+  });
+
+  it('does not send a creative when the batch was cancelled during validation', async () => {
+    const updateMany = jest.fn().mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+    const prisma = { multiAccountCreativeBatchItem: { updateMany, findFirst: jest.fn().mockResolvedValue(null) } };
+    const api = jest.fn();
+    const scoped = new MultiAccountCreativeBatchService(prisma as any, { tencentApi: api } as any, {} as any, {} as any, {} as any) as any;
+    for (const name of ['currentUser', 'account', 'adgroup', 'revalidateItemAssets', 'log']) jest.spyOn(scoped, name).mockResolvedValue({});
+    jest.spyOn(scoped, 'assertPermission').mockImplementation(() => undefined);
+    await scoped.submitItem({ id: 'item', requestPayload: {}, target: { adgroupId: 'group', account: { id: 'a', accountNo: '1' }, batch: { id: 'b', createdByAdminId: 'u' } } });
+    expect(api).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELLED' }) }));
+  });
+
+  it('excludes cancelled pending tasks while retaining post-submission verification', async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const scoped = new MultiAccountCreativeBatchService({ multiAccountCreativeBatchItem: { findFirst, findMany: jest.fn().mockResolvedValue([]) } } as any, {} as any, {} as any, {} as any, {} as any) as any;
+    await scoped.runWorker();
+    expect(findFirst.mock.calls[0][0].where.OR).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 'PENDING', target: { batch: { status: { not: 'CANCELLED' } } } }),
+      expect.objectContaining({ status: { in: ['PLATFORM_ACCEPTED', 'VERIFYING'] } }),
+    ]));
+  });
+
+  it('keeps the result unknown when saving the accepted Tencent response fails', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const prisma = { multiAccountCreativeBatchItem: { updateMany, findFirst: jest.fn().mockResolvedValue(null), update: jest.fn().mockRejectedValue(new Error('database unavailable')) } };
+    const api = jest.fn().mockResolvedValue({ data: { dynamic_creative_id: '123' } });
+    const scoped = new MultiAccountCreativeBatchService(prisma as any, { tencentApi: api } as any, {} as any, {} as any, {} as any) as any;
+    for (const name of ['currentUser', 'account', 'adgroup', 'revalidateItemAssets', 'log']) jest.spyOn(scoped, name).mockResolvedValue({});
+    jest.spyOn(scoped, 'assertPermission').mockImplementation(() => undefined);
+    await scoped.submitItem({ id: 'item', requestPayload: {}, target: { adgroupId: 'group', account: { id: 'a', accountNo: '1' }, batch: { id: 'b', createdByAdminId: 'u' } } });
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'UNKNOWN_NEEDS_REVIEW' }) }));
+  });
+
+  it('allows an exhausted verification to be scheduled again without resubmitting creation', async () => {
+    const itemUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    const prisma = { multiAccountCreativeBatchItem: { updateMany: itemUpdate }, multiAccountCreativeBatch: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
+    const scoped = new MultiAccountCreativeBatchService(prisma as any, {} as any, {} as any, {} as any, { create: jest.fn().mockResolvedValue({}) } as any) as any;
+    const batch = { status: 'COMPLETED_WITH_EXCEPTIONS', targets: [{ items: [{ id: 'item', platformCreativeId: '123', status: 'UNKNOWN_NEEDS_REVIEW', verificationAttempts: 5 }] }] };
+    jest.spyOn(scoped, 'assertPermission').mockImplementation(() => undefined);
+    jest.spyOn(scoped, 'assertFullTaskScope').mockResolvedValue(undefined);
+    jest.spyOn(scoped, 'task').mockResolvedValue(batch);
+    jest.spyOn(scoped, 'runWorker').mockResolvedValue(undefined);
+    await scoped.retry('batch', { adminUserId: 'admin' });
+    expect(itemUpdate).toHaveBeenCalledWith({ where: expect.objectContaining({ id: 'item', status: 'UNKNOWN_NEEDS_REVIEW' }), data: expect.objectContaining({ status: 'VERIFYING', verificationAttempts: 0 }) });
+  });
+
+  it('does not resurrect an item changed by another worker during retry', async () => {
+    const itemUpdate = jest.fn().mockResolvedValue({ count: 0 });
+    const batchUpdate = jest.fn();
+    const prisma = { multiAccountCreativeBatchItem: { updateMany: itemUpdate }, multiAccountCreativeBatch: { updateMany: batchUpdate } };
+    const scoped = new MultiAccountCreativeBatchService(prisma as any, {} as any, {} as any, {} as any, {} as any) as any;
+    jest.spyOn(scoped, 'assertPermission').mockImplementation(() => undefined);
+    jest.spyOn(scoped, 'assertFullTaskScope').mockResolvedValue(undefined);
+    jest.spyOn(scoped, 'task').mockResolvedValue({ status: 'RUNNING', targets: [{ items: [{ id: 'item', platformCreativeId: '123', status: 'VERIFYING', updatedAt: new Date('2026-01-01') }] }] });
+    await expect(scoped.retry('batch', { adminUserId: 'admin' })).rejects.toThrow('没有可安全重试');
+    expect(batchUpdate).not.toHaveBeenCalled();
+    expect(itemUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: 'VERIFYING', updatedAt: new Date('2026-01-01') }) }));
+  });
+
   it('recognizes a Tencent nine-image component as satisfying the image-list requirement', () => {
     expect((service as any).requirementSatisfiedBySelection('image_list', new Set(['image_list']))).toBe(true);
     expect((service as any).requirementSatisfiedBySelection('image_list', new Set(['image']))).toBe(true);

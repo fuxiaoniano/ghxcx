@@ -1,7 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { AdminCurrentUser, CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { BusinessException } from '../../common/utils/business-exception';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { ConsultationReportService } from './consultation-report.service';
@@ -20,7 +20,9 @@ class ConsultationReportQuery {
 export class ConsultationReportController {
   constructor(private readonly reports: ConsultationReportService) {}
 
-  @Get('/') @Permissions('CONSULTATION_VIEW') report(@Query() query: ConsultationReportQuery, @CurrentUser() user: AdminCurrentUser) {
+  @Get('/') report(@Query() query: ConsultationReportQuery, @CurrentUser() user: AdminCurrentUser) {
+    const required = query.mode === 'channel' ? 'CONSULTATION_CHANNEL_REPORT' : 'CONSULTATION_TEAM_REPORT';
+    if (user.role !== 'SUPER_ADMIN' && !user.permissions?.includes(required)) throw new BusinessException(403001, '无权限访问', 403);
     return this.reports.report(query, user);
   }
 }

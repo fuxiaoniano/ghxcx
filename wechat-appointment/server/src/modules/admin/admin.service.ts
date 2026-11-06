@@ -595,7 +595,7 @@ export class AdminService {
       throw new BusinessException(404502, '挂号记录不存在');
     }
     await this.assertAppointmentScope(row, user);
-    const result = await this.notifications.sendAppointmentSuccess(id);
+    const result = await this.notifications.sendAppointmentSuccess(id, { force: true });
     await this.audit.create({
       adminUserId: user.adminUserId,
       action: 'RESEND_NOTIFICATION',

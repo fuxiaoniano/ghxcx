@@ -215,6 +215,7 @@ model Appointment {
   assignedTo                  AdminUser?            @relation("AppointmentAssignedTo", fields: [assignedToAdminId], references: [id], onDelete: SetNull)
   createdByAdmin              AdminUser?            @relation("AppointmentCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   notifications               NotificationLog[]
+  postCreateJobs              AppointmentPostCreateJob[]
   wechatGroupDeliveries       WechatGroupDelivery[]
 
   @@index([userId])
@@ -233,6 +234,24 @@ model Appointment {
   @@index([assignedToAdminId])
   @@index([createdByAdminId])
   @@map("appointments")
+}
+
+model AppointmentPostCreateJob {
+  id            String      @id @default(cuid()) @db.VarChar(32)
+  appointmentId String      @db.VarChar(32)
+  kind          String      @db.VarChar(40)
+  status        String      @default("PENDING") @db.VarChar(24)
+  attemptCount  Int         @default(0)
+  availableAt   DateTime    @default(now())
+  lastErrorCode String?     @db.VarChar(100)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  completedAt   DateTime?
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade, map: "apcj_appointment_fk")
+
+  @@unique([appointmentId, kind], map: "apcj_appointment_kind_uq")
+  @@index([status, availableAt, createdAt], map: "apcj_status_available_ix")
+  @@map("appointment_post_create_jobs")
 }
 
 model TencentAdLead {
@@ -366,6 +385,7 @@ model AdminUser {
   updatedPromotionCredentials PromotionAccountCredential[] @relation("PromotionAccountCredentialUpdater")
   tencentUserToken           TencentUserToken?
   ownedConsultations         ConsultationForm[]          @relation("ConsultationOwner")
+  consultationSchedules      ConsultationSchedule[]      @relation("ConsultationScheduleMember")
   createdConsultations       ConsultationForm[]          @relation("ConsultationCreator")
   operatedConsultations      ConsultationForm[]          @relation("ConsultationLastOperator")
   consultationFollowUps      ConsultationFollowUp[]      @relation("ConsultationFollowUpCreator")
@@ -373,6 +393,7 @@ model AdminUser {
   consultationFields         ConsultationFieldConfig[]   @relation("ConsultationFieldCreator")
   consultationImports        ConsultationImportBatch[]   @relation("ConsultationImportOperator")
   consultationListPreference ConsultationListPreference?
+  consultationAssignmentNoticeJobs ConsultationAssignmentNoticeJob[] @relation("ConsultationAssignmentNoticeOwner")
 
   @@index([unionId])
   @@index([customRoleId])
@@ -1587,6 +1608,7 @@ model ConsultationForm {
   duplicates            ConsultationForm[]     @relation("ConsultationDuplicates")
   followUps             ConsultationFollowUp[]
   tags                  ConsultationFormTag[]
+  assignmentNoticeJobs  ConsultationAssignmentNoticeJob[]
 
   @@index([phoneHash])
   @@index([projectId])
@@ -1597,6 +1619,26 @@ model ConsultationForm {
   @@index([recordedAt])
   @@index([nextFollowUpAt])
   @@map("consultation_forms")
+}
+
+model ConsultationAssignmentNoticeJob {
+  id            String           @id @default(cuid()) @db.VarChar(32)
+  eventKey      String           @unique @db.VarChar(191)
+  formId        String           @db.VarChar(32)
+  ownerAdminId  String           @db.VarChar(32)
+  status        String           @default("PENDING") @db.VarChar(24)
+  attemptCount  Int              @default(0)
+  availableAt   DateTime         @default(now())
+  lastErrorCode String?          @db.VarChar(100)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  completedAt   DateTime?
+  form          ConsultationForm @relation(fields: [formId], references: [id], onDelete: Cascade, map: "canj_form_fk")
+  owner         AdminUser        @relation("ConsultationAssignmentNoticeOwner", fields: [ownerAdminId], references: [id], onDelete: Cascade, map: "canj_owner_fk")
+
+  @@index([status, availableAt, createdAt], map: "canj_status_available_ix")
+  @@index([formId, createdAt], map: "canj_form_created_ix")
+  @@map("consultation_assignment_notice_jobs")
 }
 
 model AdminDashboardPreference {
@@ -1619,6 +1661,21 @@ model AdminDashboardTodo {
 
   @@index([adminUserId, completed, dueAt])
   @@map("admin_dashboard_todos")
+}
+
+model ConsultationSchedule {
+  id          String    @id @default(cuid()) @db.VarChar(32)
+  adminUserId String    @db.VarChar(32)
+  workDate    DateTime  @db.Date
+  shift       String    @default("MORNING") @db.VarChar(16)
+  updatedById String    @db.VarChar(32)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  adminUser   AdminUser @relation("ConsultationScheduleMember", fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@unique([adminUserId, workDate])
+  @@index([workDate])
+  @@map("consultation_schedules")
 }
 
 model ConsultationFollowUp {

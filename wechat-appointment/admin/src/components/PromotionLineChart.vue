@@ -1,11 +1,5 @@
 <template>
   <div class="trend-chart">
-    <div v-if="series.length" class="chart-summary">
-      <span><strong>{{ visibleSeries.length }}</strong> 条趋势</span>
-      <span><strong>{{ labels.length }}</strong> 天数据</span>
-      <span>{{ valueType === 'rate' ? '百分比' : valueType === 'integer' ? '整数' : '数值' }}刻度</span>
-      <small>图例为所选时间汇总，曲线为每日数据；点击图例可切换显示</small>
-    </div>
     <div v-if="series.length" class="legend" role="list" aria-label="趋势图图例">
       <button v-for="item in series" :key="item.name" type="button" :class="{ muted: hiddenNames.includes(item.name) }" :aria-pressed="!hiddenNames.includes(item.name)" @click="toggleSeries(item.name)">
         <i :style="{ background: item.color }" /><span>{{ item.name }}</span><b>{{ formatValue(item.summaryValue ?? item.values[item.values.length - 1] ?? 0) }}</b>

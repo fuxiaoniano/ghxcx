@@ -10,20 +10,19 @@
   <div class="chart-list">
     <section v-for="card in cards" :key="card.key" v-loading="loadingByCard[card.key]" class="content-panel chart-card">
       <div class="card-heading">
-        <div class="card-title"><i :class="`accent-${card.key}`" /><div><h2>{{ card.title }}</h2><p>{{ card.description }}</p></div></div>
+        <div class="card-title"><i :class="`accent-${card.key}`" /><h2>{{ card.title }}</h2></div>
+        <div class="time-controls">
+          <el-radio-group v-model="selections[card.key].period" size="small" @change="selectPeriod(card.key,$event)">
+            <el-radio-button value="3">过去3天</el-radio-button><el-radio-button value="7">过去7天</el-radio-button><el-radio-button value="15">过去15天</el-radio-button><el-radio-button value="30">过去一个月</el-radio-button><el-radio-button value="custom">自定义</el-radio-button>
+          </el-radio-group>
+          <el-date-picker v-if="selections[card.key].period==='custom'" v-model="selections[card.key].dateRange" class="date-picker" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" :clearable="false" @change="loadCard(card.key)" />
+          <el-button v-if="selections[card.key].period==='custom'" type="primary" size="small" @click="loadCard(card.key)">查询</el-button>
+          <span v-else class="range-text">{{ selections[card.key].dateRange[0] }} 至 {{ selections[card.key].dateRange[1] }}</span>
+        </div>
         <div class="card-filters">
           <el-select v-model="selections[card.key].metric" class="metric-picker" placeholder="展示字段"><el-option v-for="field in chartFields" :key="field.key" :label="field.label" :value="field.key" /></el-select>
           <el-select v-model="selections[card.key].entities" class="entity-picker" multiple collapse-tags collapse-tags-tooltip clearable filterable :placeholder="card.placeholder"><el-option v-for="option in optionsFor(card.key)" :key="option.value" :label="option.label" :value="option.value" /></el-select>
         </div>
-      </div>
-      <div class="time-controls">
-        <span class="control-label">统计时间</span>
-        <el-radio-group v-model="selections[card.key].period" size="small" @change="selectPeriod(card.key,$event)">
-          <el-radio-button value="3">过去3天</el-radio-button><el-radio-button value="7">过去7天</el-radio-button><el-radio-button value="15">过去15天</el-radio-button><el-radio-button value="30">过去一个月</el-radio-button><el-radio-button value="custom">自定义</el-radio-button>
-        </el-radio-group>
-        <el-date-picker v-if="selections[card.key].period==='custom'" v-model="selections[card.key].dateRange" class="date-picker" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" :clearable="false" @change="loadCard(card.key)" />
-        <el-button v-if="selections[card.key].period==='custom'" type="primary" size="small" @click="loadCard(card.key)">查询</el-button>
-        <span class="range-text">{{ selections[card.key].dateRange[0] }} 至 {{ selections[card.key].dateRange[1] }}</span>
       </div>
       <el-alert v-if="errorsByCard[card.key]" class="chart-error" type="error" :closable="false" :title="errorsByCard[card.key]" show-icon><el-button size="small" @click="loadCard(card.key)">重新加载</el-button></el-alert>
       <PromotionLineChart :labels="datesFor(card.key)" :series="seriesFor(card.key)" :value-type="fieldType(selections[card.key].metric)" />
@@ -39,12 +38,21 @@ type CardKey='project'|'platform'|'account';type ValueType='number'|'integer'|'r
 const systemTypes:Record<string,ValueType>={spend:'number',impressions:'integer',clicks:'integer',clickRate:'rate',leads:'integer',validLeads:'integer',validRate:'rate',averageCost:'number',validCost:'number',appointments:'integer',transactions:'integer',conversionRate:'rate',arrivalRate:'rate',validArrivalRate:'rate',arrivalCost:'number',revenue:'number',roi:'number'};
 const directKeys=new Set(['spend','impressions','clicks','leads','validLeads','appointments','transactions','revenue']);const calculatedKeys=new Set(['clickRate','validRate','averageCost','validCost','conversionRate','arrivalRate','validArrivalRate','arrivalCost','roi']);
 const colors=['#457ea9','#838e7c','#d88961','#6d63a8','#4f9a87','#b88a45','#7d91b8','#a76882','#5f6f78','#8c9d4f','#bf6e54','#7398b7'];
-const cards=[{key:'project' as const,title:'项目趋势',description:'对比各项目每日数据变化',placeholder:'全部项目'},{key:'platform' as const,title:'渠道趋势',description:'对比各推广渠道每日数据变化',placeholder:'全部渠道'},{key:'account' as const,title:'账户趋势',description:'对比各推广账户每日数据变化',placeholder:'全部账户'}];
+const cards=[{key:'project' as const,title:'项目趋势',placeholder:'全部项目'},{key:'platform' as const,title:'渠道趋势',placeholder:'全部渠道'},{key:'account' as const,title:'账户趋势',placeholder:'全部账户'}];
 const dateText=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 function recentRange(days:number):[string,string]{const end=new Date();end.setDate(end.getDate()-1);const start=new Date(end);start.setDate(start.getDate()-days+1);return[dateText(start),dateText(end)];}
 const selections=reactive<Record<CardKey,{metric:string;entities:string[];period:string;dateRange:string[]}>>({project:{metric:'spend',entities:[],period:'7',dateRange:recentRange(7)},platform:{metric:'spend',entities:[],period:'7',dateRange:recentRange(7)},account:{metric:'spend',entities:[],period:'7',dateRange:recentRange(7)}});
 const rowsByCard=reactive<Record<CardKey,PromotionDailyMetricItem[]>>({project:[],platform:[],account:[]});const loadingByCard=reactive<Record<CardKey,boolean>>({project:false,platform:false,account:false});const errorsByCard=reactive<Record<CardKey,string>>({project:'',platform:'',account:''});const fields=ref<PromotionMetricFieldItem[]>([]),accounts=ref<PromotionAccountItem[]>([]);
 const requestSequence:Record<CardKey,number>={project:0,platform:0,account:0};
+const pendingRanges=new Map<string,ReturnType<typeof getPromotionDashboard>>();
+async function dashboardRange(dateFrom:string,dateTo:string){
+  const key=`${dateFrom}:${dateTo}`;
+  const current=pendingRanges.get(key);
+  if(current)return current;
+  const request=getPromotionDashboard({dateFrom,dateTo});
+  pendingRanges.set(key,request);
+  try{return await request;}finally{if(pendingRanges.get(key)===request)pendingRanges.delete(key);}
+}
 const overviewRows=computed(()=>rowsByCard.project.filter(row=>!selections.project.entities.length||selections.project.entities.includes(row.account.project)));
 const hasOverviewData=computed(()=>overviewRows.value.length>0);
 const overviewTotals=computed(()=>totals(overviewRows.value));
@@ -58,7 +66,7 @@ function fieldType(key:string):ValueType{return systemTypes[key]||'number';}func
 function totals(source:PromotionDailyMetricItem[]){const sum=(key:'spend'|'impressions'|'clicks'|'leads'|'validLeads'|'appointments'|'transactions'|'revenue')=>source.reduce((total,row)=>total+Number(row[key]||0),0);const base={spend:sum('spend'),impressions:sum('impressions'),clicks:sum('clicks'),leads:sum('leads'),validLeads:sum('validLeads'),appointments:sum('appointments'),transactions:sum('transactions'),revenue:sum('revenue')};return{...base,clickRate:base.impressions?base.clicks/base.impressions:0,validRate:base.leads?base.validLeads/base.leads:0,averageCost:base.leads?base.spend/base.leads:0,validCost:base.validLeads?base.spend/base.validLeads:0,conversionRate:base.appointments?base.transactions/base.appointments:0,arrivalRate:base.leads?base.appointments/base.leads:0,validArrivalRate:base.validLeads?base.appointments/base.validLeads:0,arrivalCost:base.appointments?base.spend/base.appointments:0,roi:base.spend?base.revenue/base.spend:0};}
 function metricValue(source:PromotionDailyMetricItem[],key:string){if(directKeys.has(key)||calculatedKeys.has(key))return Number(totals(source)[key as keyof ReturnType<typeof totals>]||0);return source.reduce((total,row)=>total+Number(row.customMetrics?.[key]||0),0);}
 function seriesFor(key:CardKey):TrendSeries[]{const rows=rowsByCard[key];if(!rows.length)return [];const chosen=selections[key].entities,available=optionsFor(key),ids=(chosen.length?chosen:available.map(item=>item.value)).filter(id=>rows.some(row=>groupKey(row,key)===id));return ids.map((id,index)=>{const matched=rows.filter(row=>groupKey(row,key)===id),fallback=available.find(item=>item.value===id)?.label||id;return{name:matched[0]?groupLabel(matched[0],key):fallback,color:colors[index%colors.length],summaryValue:metricValue(matched,selections[key].metric),values:datesFor(key).map(date=>metricValue(matched.filter(row=>row.statDate===date),selections[key].metric))};});}
-async function loadCard(key:CardKey){const [dateFrom,dateTo]=selections[key].dateRange;if(!dateFrom||!dateTo)return;const sequence=++requestSequence[key];loadingByCard[key]=true;errorsByCard[key]='';rowsByCard[key]=[];try{const result=await getPromotionDashboard({dateFrom,dateTo});if(sequence!==requestSequence[key])return;rowsByCard[key]=result.rows;fields.value=result.fields;accounts.value=result.accounts;if(!chartFields.value.some(field=>field.key===selections[key].metric))selections[key].metric=chartFields.value[0]?.key||'spend';}catch{if(sequence===requestSequence[key]){rowsByCard[key]=[];errorsByCard[key]='趋势数据读取失败，当前图表未显示旧数据，请重试。';}}finally{if(sequence===requestSequence[key])loadingByCard[key]=false;}}
+async function loadCard(key:CardKey){const [dateFrom,dateTo]=selections[key].dateRange;if(!dateFrom||!dateTo)return;const sequence=++requestSequence[key];loadingByCard[key]=true;errorsByCard[key]='';rowsByCard[key]=[];try{const result=await dashboardRange(dateFrom,dateTo);if(sequence!==requestSequence[key])return;rowsByCard[key]=result.rows;fields.value=result.fields;accounts.value=result.accounts;if(!chartFields.value.some(field=>field.key===selections[key].metric))selections[key].metric=chartFields.value[0]?.key||'spend';}catch{if(sequence===requestSequence[key]){rowsByCard[key]=[];errorsByCard[key]='趋势数据读取失败，当前图表未显示旧数据，请重试。';}}finally{if(sequence===requestSequence[key])loadingByCard[key]=false;}}
 async function selectPeriod(key:CardKey,value:string|number|boolean|undefined){if(value!=='custom'){selections[key].dateRange=recentRange(Number(value));await loadCard(key);}}
 onMounted(()=>Promise.all(cards.map(card=>loadCard(card.key))));
 </script>
@@ -69,4 +77,10 @@ onMounted(()=>Promise.all(cards.map(card=>loadCard(card.key))));
 @media(max-width:760px){.page-heading{align-items:flex-start;flex-direction:column}.page-title{font-size:25px}.source-note{max-width:100%}.overview-strip strong{font-size:20px}.overview-strip strong em{font-size:13px}.overview-caption{margin-top:-6px}}
 @media(max-width:1200px){.overview-strip{grid-template-columns:repeat(2,1fr)}.card-heading{flex-direction:column}.card-filters{width:100%;justify-content:flex-start}.range-text{width:100%;margin-left:0}}
 @media(max-width:760px){.overview-strip{grid-template-columns:1fr 1fr;gap:8px}.overview-strip>div{padding:12px}.chart-card{padding:14px 10px}.card-filters{display:grid;grid-template-columns:1fr;width:100%}.metric-picker,.entity-picker{width:100%!important}.time-controls{display:grid;grid-template-columns:1fr}.time-controls :deep(.el-radio-group){display:grid;grid-template-columns:repeat(2,1fr)}.time-controls :deep(.el-radio-button:last-child){grid-column:1/-1}.time-controls :deep(.el-radio-button__inner),.date-picker,.time-controls :deep(.el-button){width:100%!important}.range-text{text-align:center}}
+.chart-card{padding:16px 18px}.card-heading{align-items:center;gap:14px}.card-title{align-items:center;min-width:130px}.card-title>i{height:25px}.card-heading h2{margin:0;font-size:17px;white-space:nowrap}.card-filters{flex:1;min-width:0;padding:0;border:0;background:transparent}.metric-picker{width:130px}.entity-picker{width:min(280px,100%)}.time-controls{margin:10px 0 10px;padding:8px 0;border-top:1px solid var(--admin-border);border-bottom:0;background:transparent}.range-text{white-space:nowrap}
+@media(max-width:1200px){.card-heading{align-items:stretch}.card-filters{justify-content:flex-start}.range-text{width:auto;margin-left:auto}}
+@media(max-width:760px){.chart-card{padding:14px}.card-heading{gap:10px}.card-filters{display:grid;grid-template-columns:minmax(0,120px) minmax(0,1fr);gap:8px}.metric-picker,.entity-picker{width:100%!important}.time-controls{display:flex;gap:8px}.time-controls :deep(.el-radio-group){display:flex;flex-wrap:wrap;gap:4px}.time-controls :deep(.el-radio-button:last-child){grid-column:auto}.range-text{width:100%;margin-left:0;text-align:left}.date-picker{min-width:0}}
+.card-heading{flex-flow:row wrap;align-items:center;gap:10px 14px}.card-title{flex:0 0 auto;min-width:0}.time-controls{display:flex;flex:1 1 520px;align-items:center;gap:6px;min-width:0;margin:0;padding:0;border:0;background:transparent}.time-controls :deep(.el-radio-group){flex:0 0 auto}.range-text{width:auto;margin-left:4px;white-space:nowrap;font-size:11px}.card-filters{flex:0 1 420px;justify-content:flex-end;flex-wrap:nowrap}.metric-picker{flex:0 0 130px}.entity-picker{flex:1 1 210px;min-width:150px}.date-picker{width:260px!important}
+@media(max-width:1200px){.card-heading{flex-direction:row;align-items:center}.card-filters{flex:1 1 100%;justify-content:flex-start}.range-text{width:auto;margin-left:4px}}
+@media(max-width:760px){.card-heading{flex-direction:column;align-items:stretch}.time-controls{flex:none;width:100%;flex-wrap:wrap}.time-controls :deep(.el-radio-group){flex-wrap:wrap}.card-filters{flex:none;width:100%;flex-wrap:nowrap}.range-text{width:100%;margin-left:0}.date-picker{width:100%!important}}
 </style>

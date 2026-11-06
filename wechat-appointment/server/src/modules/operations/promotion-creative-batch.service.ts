@@ -50,6 +50,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
   private readonly liveAssetKeysCache = new Map<string, { keys: Set<string>; expiresAt: number }>();
   private worker?: NodeJS.Timeout;
   private workerBusy = false;
+  private lastRecoveryScan = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -194,6 +195,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
 
   async assets(query: PromotionCreativeAssetQueryDto, user: AdminCurrentUser) {
     const target = await this.account(query.accountId, user, 'MATERIALS');
+    if (query.sortBy === 'TARGET_CONVERSION_COST') throw new BusinessException(400870, '素材没有可确认的统一目标成本，请使用实际转化成本排序', 400);
     const businessUnitKey = this.tencentAccountScopeKey(String(target.accountNo));
     if (query.businessUnitKey && ![businessUnitKey, this.businessUnitKey(target.project)].includes(query.businessUnitKey)) throw new BusinessException(400852, '腾讯资产范围与目标账户不匹配', 400);
     const liveCacheKey = `${target.id}:${query.source}:${query.assetType || 'ALL'}`;
@@ -323,7 +325,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       else if (sortBy === 'STATUS') compared = compareText(`${left.status || ''}:${left.auditStatus || ''}`, `${right.status || ''}:${right.auditStatus || ''}`);
       else if (sortBy === 'SPEND_7_DAYS') compared = compareNumber(spend.seven.get(left.platformAssetId), spend.seven.get(right.platformAssetId));
       else if (sortBy === 'SPEND_15_DAYS') compared = compareNumber(spend.fifteen.get(left.platformAssetId), spend.fifteen.get(right.platformAssetId));
-      else if (sortBy === 'ACTUAL_CPA' || sortBy === 'TARGET_CONVERSION_COST') compared = compareNumber(spend.actualCpa.get(left.platformAssetId), spend.actualCpa.get(right.platformAssetId));
+      else if (sortBy === 'ACTUAL_CPA') compared = compareNumber(spend.actualCpa.get(left.platformAssetId), spend.actualCpa.get(right.platformAssetId));
       else compared = compareNumber(left.platformCreatedAt?.getTime(), right.platformCreatedAt?.getTime());
       return compared * direction || compareText(left.name, right.name);
     });
@@ -542,10 +544,11 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const items = await this.prisma.promotionCreativeBatchItem.findMany({ where: { taskId: id, status: { in: ['FAILED', 'UNKNOWN'] } } });
     if (!items.length) throw new BusinessException(400859, '没有可重试或待确认的创意', 400);
     for (const item of items) {
-      if (item.status === 'UNKNOWN') await this.reconcileItem(task, item, true);
-      else await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'PENDING', errorCode: null, errorMessage: null, recoverySuggestion: null, retryCount: { increment: 1 } } });
+      if (item.status === 'UNKNOWN') await this.reconcileItem(task, item);
+      else await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: 'FAILED', updatedAt: item.updatedAt, platformCreativeId: null, task: { status: { not: 'CANCELLED' } } }, data: { status: 'PENDING', errorCode: null, errorMessage: null, recoverySuggestion: null, retryCount: { increment: 1 } } });
     }
-    await this.prisma.promotionCreativeBatchTask.update({ where: { id }, data: { status: 'PENDING', completedAt: null } });
+    await this.prisma.promotionCreativeBatchTask.updateMany({ where: { id, status: { not: 'CANCELLED' } }, data: { status: 'PENDING', completedAt: null } });
+    await this.refreshTaskCounts(id);
     await this.audit.create({ adminUserId: user.adminUserId, action: 'RETRY_PROMOTION_CREATIVE_BATCH', resourceType: 'promotion_creative_batch_tasks', resourceId: id, afterJson: { itemCount: items.length } as Prisma.InputJsonValue, ip, userAgent: this.userAgent(userAgent) });
     void this.runWorker();
     return this.task(id, user);
@@ -713,7 +716,8 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     if (this.workerBusy) return;
     this.workerBusy = true;
     try {
-      const task = await this.prisma.promotionCreativeBatchTask.findFirst({ where: { status: { in: ['PENDING', 'PROCESSING'] } }, orderBy: { createdAt: 'asc' } });
+      if (Date.now() - this.lastRecoveryScan >= 60_000) { await this.recoverInterruptedItems(); this.lastRecoveryScan = Date.now(); }
+      const task = await this.prisma.promotionCreativeBatchTask.findFirst({ where: { status: { in: ['PENDING', 'PROCESSING'] }, items: { some: { status: 'PENDING' } } }, orderBy: { createdAt: 'asc' } });
       if (!task) return;
       const locked = await this.prisma.promotionCreativeBatchTask.updateMany({ where: { id: task.id, status: { in: ['PENDING', 'PROCESSING'] } }, data: { status: 'PROCESSING', startedAt: task.startedAt || new Date() } });
       if (!locked.count) return;
@@ -724,11 +728,23 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     finally { this.workerBusy = false; }
   }
 
+  private async recoverInterruptedItems() {
+    const cutoff = new Date(Date.now() - 15 * 60_000);
+    const stale = await this.prisma.promotionCreativeBatchItem.findMany({ where: { status: { in: ['VALIDATING', 'PREPARING_ASSETS', 'SUBMITTING', 'PLATFORM_ACCEPTED', 'VERIFYING'] }, updatedAt: { lt: cutoff } }, select: { id: true, taskId: true, status: true, updatedAt: true }, take: 20, orderBy: { updatedAt: 'asc' } });
+    const tasks = new Set<string>();
+    for (const item of stale) {
+      const result = await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: item.status, updatedAt: item.updatedAt }, data: { status: 'UNKNOWN', errorCode: 'INTERRUPTED_NEEDS_REVIEW', errorMessage: '处理超时或服务中断，腾讯提交结果需要核对', recoverySuggestion: '请先回查腾讯后台，不要直接重新创建' } });
+      if (result.count) tasks.add(item.taskId);
+    }
+    for (const id of tasks) await this.refreshTaskCounts(id);
+  }
+
   private async processItem(task: any, item: any) {
-    const locked = await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: 'PENDING' }, data: { status: 'VALIDATING', errorCode: null, errorMessage: null, recoverySuggestion: null } });
+    const locked = await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: 'PENDING', task: { status: { in: ['PENDING', 'PROCESSING'] } } }, data: { status: 'VALIDATING', errorCode: null, errorMessage: null, recoverySuggestion: null } });
     if (!locked.count) return;
     const account = await this.prisma.promotionAccount.findUnique({ where: { id: task.accountId } });
     if (!account?.accountNo || account.status !== ContentStatus.ACTIVE) return this.failItem(task, item, 'ACCOUNT_UNAVAILABLE', '目标账户不存在、已停用或未填写腾讯账户 ID', '恢复账户并重新发起任务');
+    let requestMayHaveBeenSent = false;
     try {
       const creator = await this.currentUser(task.createdByAdminId);
       this.assertPermission(creator, 'PROMOTION_CREATIVE_BATCH_CREATE');
@@ -737,7 +753,11 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       await this.assertTencentUserTokenConfigured(account.id, task.createdByAdminId);
       const adgroup = await this.adgroup(account, task.adgroupId, true);
       if (!this.adgroupUsable(adgroup)) return this.failItem(task, item, 'ADGROUP_UNAVAILABLE', this.adgroupUnavailableReason(adgroup), '选择可投放营销单元后重新创建批次');
-      await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'PREPARING_ASSETS' } });
+      const preparationClaim = await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: 'VALIDATING', task: { status: { in: ['PENDING', 'PROCESSING'] } } }, data: { status: 'PREPARING_ASSETS' } });
+      if (!preparationClaim.count) {
+        await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: 'VALIDATING', task: { status: 'CANCELLED' } }, data: { status: 'SKIPPED', errorMessage: '用户取消，未提交腾讯广告' } });
+        return;
+      }
       const materialSnapshot = item.materialSnapshot as Array<{ id: string; [key: string]: unknown }>;
       const assets = await this.prisma.promotionCreativeMaterialSnapshot.findMany({ where: { id: { in: materialSnapshot.map((entry) => entry.id) } } });
       if (assets.length !== materialSnapshot.length) return this.failItem(task, item, 'ASSET_MISSING', '部分素材快照不存在', '重新选择素材并创建新批次');
@@ -750,19 +770,27 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       for (const asset of upgraded.assets) {
         if (!nextMaterialSnapshot.some((entry) => entry.id === asset.id)) nextMaterialSnapshot.push(this.materialSnapshotEntry(asset, task.accountId));
       }
-      await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: {
+      const submissionClaim = await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: 'PREPARING_ASSETS', task: { status: { in: ['PENDING', 'PROCESSING'] } } }, data: {
         status: 'SUBMITTING', submittedAt: new Date(), creativePayload: creativePayload as Prisma.InputJsonValue,
         materialSnapshot: nextMaterialSnapshot as Prisma.InputJsonValue,
       } });
+      if (!submissionClaim.count) {
+        await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: 'PREPARING_ASSETS', task: { status: 'CANCELLED' } }, data: { status: 'SKIPPED', errorMessage: '用户取消，未提交腾讯广告' } });
+        return;
+      }
       await this.submissionLog(task.id, item.id, 'SUBMIT_TENCENT_CREATIVE', 'SUBMITTING', creativePayload);
       let response;
-      try { response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', String(account.accountNo), creativePayload, true, task.createdByAdminId); }
+      try {
+        requestMayHaveBeenSent = true;
+        response = await this.sync.tencentApi('POST', '/dynamic_creatives/add', String(account.accountNo), creativePayload, true, task.createdByAdminId);
+      }
       catch (error) {
         if (error instanceof TencentMarketingApiError && error.retryable) {
           await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN', errorCode: error.code, errorMessage: error.message, recoverySuggestion: '平台响应不确定，必须先回查，系统不会直接重复创建', platformRequestId: error.requestId, submittedAt: new Date() } });
           await this.submissionLog(task.id, item.id, 'TENCENT_CREATIVE_RESPONSE_UNKNOWN', 'UNKNOWN', undefined, undefined, error);
           return;
         }
+        if (error instanceof TencentMarketingApiError && !error.retryable) requestMayHaveBeenSent = false;
         throw error;
       }
       const creativeId = String((response.data as any)?.dynamic_creative_id || '');
@@ -772,30 +800,21 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
       }
       await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'PLATFORM_ACCEPTED', platformCreativeId: creativeId, platformRequestId: response.requestId } });
       await this.submissionLog(task.id, item.id, 'TENCENT_CREATIVE_ACCEPTED', 'PLATFORM_ACCEPTED', undefined, { creativeId }, undefined, response.requestId);
-      await this.reconcileItem(task, { ...item, platformCreativeId: creativeId, status: 'PLATFORM_ACCEPTED' }, false);
+      await this.reconcileItem(task, { ...item, platformCreativeId: creativeId, status: 'PLATFORM_ACCEPTED' });
     } catch (error) {
       const code = error instanceof TencentMarketingApiError ? error.code : 'VALIDATION_OR_PLATFORM_ERROR';
       const message = error instanceof Error ? error.message : '腾讯广告创建失败';
-      await this.failItem(task, item, code, message, this.recoverySuggestion(code, message));
+      if (requestMayHaveBeenSent) {
+        await this.prisma.promotionCreativeBatchItem.updateMany({ where: { id: item.id, status: { in: ['SUBMITTING', 'PLATFORM_ACCEPTED', 'VERIFYING'] } }, data: { status: 'UNKNOWN', errorCode: code, errorMessage: '腾讯请求结果不明，请先回查并人工核对', recoverySuggestion: '禁止盲目重新提交，避免创建重复创意' } });
+      } else {
+        await this.failItem(task, item, code, message, this.recoverySuggestion(code, message));
+      }
     }
   }
 
-  private async reconcileItem(task: any, item: any, allowResubmit: boolean) {
+  private async reconcileItem(task: any, item: any) {
     const account = await this.prisma.promotionAccount.findUnique({ where: { id: task.accountId } });
     if (!account?.accountNo) return;
-    // Tencent only returns dynamic_creative_id after accepting and creating the
-    // creative. Treat that authoritative ID as success. A follow-up GET may
-    // normalize/omit helper fields (URLs, account hints, default covers), so it
-    // must not downgrade an accepted creative to UNKNOWN and tempt operators
-    // to create duplicates.
-    if (item.platformCreativeId) {
-      await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: {
-        status: 'SUCCEEDED', verifiedAt: new Date(), errorCode: null, errorMessage: null, recoverySuggestion: null,
-        verifyResult: { acceptedByTencent: true, creativeId: String(item.platformCreativeId), confirmationRule: 'PLATFORM_CREATIVE_ID_RETURNED' },
-      } });
-      await this.submissionLog(task.id, item.id, 'CONFIRM_TENCENT_CREATIVE_ID', 'SUCCEEDED', undefined, { creativeId: String(item.platformCreativeId) });
-      return;
-    }
     await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'VERIFYING' } });
     const filtering = item.platformCreativeId
       ? [{ field: 'dynamic_creative_id', operator: 'EQUALS', values: [String(item.platformCreativeId)] }]
@@ -809,7 +828,14 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         ]),
         filtering: JSON.stringify(filtering), page: 1, page_size: 20, is_deleted: false,
       }, true, task.createdByAdminId);
-      const row = this.rows(response.data).find((entry) => String(entry.dynamic_creative_id || '') === String(item.platformCreativeId || '') || String(entry.dynamic_creative_name || '') === item.creativeName);
+      const candidates = this.rows(response.data).filter((entry) => item.platformCreativeId
+        ? String(entry.dynamic_creative_id || '') === String(item.platformCreativeId)
+        : String(entry.dynamic_creative_name || '') === item.creativeName);
+      if (!item.platformCreativeId && candidates.length) {
+        await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN', errorCode: 'VERIFY_AMBIGUOUS', errorMessage: '腾讯后台存在同名创意，但缺少本次请求的创意 ID，无法确认对应关系', recoverySuggestion: '请人工核对腾讯后台，禁止重复提交', verifiedAt: new Date() } });
+        return;
+      }
+      const row = candidates[0];
       const payload = item.creativePayload as Record<string, any>;
       const submittedAt = item.submittedAt ? new Date(item.submittedAt).getTime() : Date.now();
       const platformCreatedAt = Number(row?.created_time || 0) * (Number(row?.created_time || 0) > 1e12 ? 1 : 1000);
@@ -830,11 +856,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
         await this.submissionLog(task.id, item.id, 'VERIFY_TENCENT_CREATIVE', 'UNKNOWN', undefined, { reason: 'VERIFY_MISMATCH', creativeId: String(row.dynamic_creative_id || '') }, undefined, response.requestId);
         return;
       }
-      if (allowResubmit && !item.platformCreativeId && Date.now() - submittedAt >= 5 * 60_000) {
-        await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'PENDING', errorCode: null, errorMessage: null, recoverySuggestion: null, retryCount: { increment: 1 } } });
-      } else {
-        await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN', errorCode: 'VERIFY_NOT_FOUND', errorMessage: '腾讯广告回查暂未找到该创意', recoverySuggestion: '等待至少 5 分钟后再次回查；为防重复创建，当前不会重新提交', verifiedAt: new Date(), verifyResult: { found: false } } });
-      }
+      await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN', errorCode: 'VERIFY_NOT_FOUND', errorMessage: '腾讯广告回查暂未找到该创意', recoverySuggestion: '请稍后再次回查并人工核对腾讯后台；查不到不能证明未创建，系统不会自动重新提交', verifiedAt: new Date(), verifyResult: { found: false } } });
     } catch (error) {
       await this.prisma.promotionCreativeBatchItem.update({ where: { id: item.id }, data: { status: 'UNKNOWN', errorCode: error instanceof TencentMarketingApiError ? error.code : 'VERIFY_FAILED', errorMessage: error instanceof Error ? error.message : '回查失败', recoverySuggestion: '稍后重新回查，禁止直接重复创建', verifiedAt: new Date() } });
       await this.submissionLog(task.id, item.id, 'VERIFY_TENCENT_CREATIVE', 'UNKNOWN', undefined, undefined, error);
@@ -849,8 +871,8 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     const pending = count(['PENDING', 'VALIDATING', 'PREPARING_ASSETS', 'SUBMITTING', 'PLATFORM_ACCEPTED', 'VERIFYING']);
     const successCount = count(['SUCCEEDED']); const failedCount = count(['FAILED']); const unknownCount = count(['UNKNOWN']); const skippedCount = count(['SKIPPED']);
     const status = pending ? 'PROCESSING' : successCount === task.totalCount ? 'SUCCEEDED' : successCount ? 'PARTIAL_SUCCESS' : unknownCount ? 'UNKNOWN' : 'FAILED';
-    await this.prisma.promotionCreativeBatchTask.update({ where: { id: taskId }, data: { status, successCount, failedCount, unknownCount, skippedCount, ...(pending ? {} : { completedAt: new Date() }) } });
-    if (!pending) await this.audit.create({ adminUserId: task.createdByAdminId, action: status === 'PARTIAL_SUCCESS' ? 'PROMOTION_CREATIVE_BATCH_PARTIAL_SUCCESS' : 'PROMOTION_CREATIVE_BATCH_COMPLETED', resourceType: 'promotion_creative_batch_tasks', resourceId: taskId, afterJson: { status, successCount, failedCount, unknownCount, skippedCount } as Prisma.InputJsonValue, ip: task.submittedIp || undefined, userAgent: task.submittedUserAgent || undefined });
+    const updated = await this.prisma.promotionCreativeBatchTask.updateMany({ where: { id: taskId, status: { not: 'CANCELLED' } }, data: { status, successCount, failedCount, unknownCount, skippedCount, ...(pending ? {} : { completedAt: new Date() }) } });
+    if (!pending && updated.count) await this.audit.create({ adminUserId: task.createdByAdminId, action: status === 'PARTIAL_SUCCESS' ? 'PROMOTION_CREATIVE_BATCH_PARTIAL_SUCCESS' : 'PROMOTION_CREATIVE_BATCH_COMPLETED', resourceType: 'promotion_creative_batch_tasks', resourceId: taskId, afterJson: { status, successCount, failedCount, unknownCount, skippedCount } as Prisma.InputJsonValue, ip: task.submittedIp || undefined, userAgent: task.submittedUserAgent || undefined });
   }
 
   private async failItem(task: any, item: any, code: string, message: string, suggestion: string) {
@@ -878,7 +900,7 @@ export class PromotionCreativeBatchService implements OnModuleInit, OnModuleDest
     } });
   }
 
-  private async syncAssets(account: { id: string; accountNo: string | null; project: string }, assetType?: string, page = 1, pageSize = 20, source: 'ACCOUNT' | 'BUSINESS_UNIT' = 'ACCOUNT') {
+  private async syncAssets(account: { id: string; accountNo: string | null; project: string }, assetType?: string, _page = 1, pageSize = 20, source: 'ACCOUNT' | 'BUSINESS_UNIT' = 'ACCOUNT') {
     if (!account.accountNo) throw new BusinessException(400861, '账户未填写腾讯广告账户 ID', 400);
     const types = assetType === 'MEDIA' ? ['VIDEO', 'IMAGE'] : assetType === 'NINE_IMAGE' ? ['IMAGE'] : assetType === 'COPY' ? ['TITLE'] : assetType ? [assetType] : ['TITLE', 'VIDEO', 'IMAGE', 'LANDING_PAGE', 'MARKETING', 'BRAND', 'WECHAT_CHANNELS', 'CONVERSION', 'OTHER'];
     const businessUnitKey = this.tencentAccountScopeKey(String(account.accountNo));

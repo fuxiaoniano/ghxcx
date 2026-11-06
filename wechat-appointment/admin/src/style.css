@@ -644,3 +644,16 @@ select {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* 弹窗中的数据表与各统计表使用一致的密度，窄屏保留横向查看。 */
+.el-dialog .el-table {
+  width: 100%;
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  font-size: 12px;
+}
+.el-dialog .el-table .el-table__cell { padding: 4px 3px; }
+.el-dialog .el-table .cell { min-width: 0; overflow-wrap: anywhere; }
+.el-dialog .el-table .el-table__body-wrapper { overflow-x: auto; }
+.el-dialog .el-dialog__footer .el-button { margin-left: 0; min-height: 34px; }
+.el-dialog .el-dialog__footer { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }

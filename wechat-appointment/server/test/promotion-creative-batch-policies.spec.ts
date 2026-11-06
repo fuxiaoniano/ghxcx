@@ -345,13 +345,6 @@ describe('PromotionCreativeBatchService platform safety policies', () => {
   });
 
   it('excludes obsolete component snapshots when Tencent no longer returns the page', async () => {
-    const component = {
-      id: 'component-1', originAccountId: 'account-1', businessUnitKey: 'TENCENT_ACCOUNT:123456',
-      platformAssetId: 'component-987', platformAssetKind: 'COMPONENT', assetType: 'LANDING_PAGE', componentField: 'main_jump_info',
-      name: '落地页_20260918', isDeleted: false, status: 'AVAILABLE', platformCreatedAt: new Date('2026-09-18'),
-      originAccount: { id: 'account-1', name: '测试账户', accountNo: '123456', project: '测试' },
-      payloadJson: { kind: 'COMPONENT', platformAssetScopes: ['ACCOUNT'], component: { value: { page_spec: { official_spec: { page_id: 6308377364 } } } } },
-    };
     const findMany = jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const localService = new PromotionCreativeBatchService({ promotionCreativeMaterialSnapshot: { findMany } } as any, {} as any, {} as any, {} as any) as any;
     jest.spyOn(localService, 'account').mockResolvedValue({ id: 'account-1', accountNo: '123456', project: '测试' });

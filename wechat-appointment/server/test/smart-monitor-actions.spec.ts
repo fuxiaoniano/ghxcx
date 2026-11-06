@@ -22,7 +22,10 @@ function fixture(responses: Array<unknown>) {
   } as any;
   const access = { where: jest.fn().mockResolvedValue({}), assertCanCreateCreatives: jest.fn().mockResolvedValue(undefined) } as any;
   const tencentApi = jest.fn();
-  for (const response of responses) response instanceof Error ? tencentApi.mockRejectedValueOnce(response) : tencentApi.mockResolvedValueOnce(response);
+  for (const response of responses) {
+    if (response instanceof Error) tencentApi.mockRejectedValueOnce(response);
+    else tencentApi.mockResolvedValueOnce(response);
+  }
   const audit = { create: jest.fn().mockResolvedValue({}) } as any;
   return { prisma, access, tencentApi, audit, service: new SmartMonitorActionsService(prisma, access, { tencentApi } as any, audit) };
 }

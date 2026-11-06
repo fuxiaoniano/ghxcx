@@ -4,6 +4,7 @@ import { AdminCurrentUser } from '../../common/decorators/current-user.decorator
 import { DataScopeService } from '../../common/data-scope/data-scope.service';
 import { BusinessException } from '../../common/utils/business-exception';
 import { PrismaService } from '../../prisma/prisma.service';
+import { defaultConsultationValidityRule, isConsultationValid, type ConsultationValidityRule } from './consultation-validity-rule';
 
 type Query = { mode: 'channel' | 'daily'; from: string; to: string; project?: string; channel?: string; customFields?: string };
 type Totals = { total: number; valid: number; appointment: number; arrived: number; payment: number; custom: Record<string, number> };
@@ -22,6 +23,12 @@ export class ConsultationReportService {
     const requested = [...new Set((query.customFields || '').split(',').map(value => value.trim()).filter(Boolean))];
     if (requested.length > 6) throw new BusinessException(400941, '最多选择六个自定义数值字段');
     const fields = await this.prisma.consultationFieldConfig.findMany({ where: { source: 'CUSTOM', enabled: true, type: ConsultationFieldType.NUMBER }, select: { code: true, name: true }, orderBy: { listOrder: 'asc' } });
+    const ruleConfig = await this.prisma.systemConfig.findUnique({ where: { key: 'consultationValidityRule' } });
+    const configured = ruleConfig?.valueJson && typeof ruleConfig.valueJson === 'object' && !Array.isArray(ruleConfig.valueJson) ? ruleConfig.valueJson as Record<string, unknown> : {};
+    const rule: ConsultationValidityRule = {
+      validTagIds: Array.isArray(configured.validTagIds) ? configured.validTagIds.filter((id): id is string => typeof id === 'string') : defaultConsultationValidityRule().validTagIds,
+      invalidTagIds: Array.isArray(configured.invalidTagIds) ? configured.invalidTagIds.filter((id): id is string => typeof id === 'string') : defaultConsultationValidityRule().invalidTagIds,
+    };
     if (requested.some(code => !fields.some(field => field.code === code))) throw new BusinessException(400942, '包含不可用于报表的自定义字段');
     const scope = await this.dataScopes.ownershipWhere(user, 'ownerAdminId', 'createdByAdminId');
     const where: Prisma.ConsultationFormWhereInput = { AND: [
@@ -41,7 +48,7 @@ export class ConsultationReportService {
         select: { id: true, recordedAt: true, channelSource: true, appointmentScheduled: true, paymentAmount: true, customData: true,
           project: { select: { name: true } }, promotionAccount: { select: { id: true, name: true, project: true } },
           owner: { select: { id: true, username: true, nickname: true, team: { select: { id: true, name: true } } } },
-          status: { select: { code: true, category: true } } }
+          status: { select: { code: true, category: true } }, tags: { select: { tagId: true } } }
       });
       for (const row of rows) {
         const key = query.mode === 'channel' ? row.channelSource : new Date(row.recordedAt.getTime() + 8 * 3600000).toISOString().slice(0, 10);
@@ -70,7 +77,7 @@ export class ConsultationReportService {
           branch.push(node);
           siblings = node.children;
         }
-        const valid = row.status.category !== ConsultationStatusCategory.INVALID;
+        const valid = isConsultationValid(row.status.category === ConsultationStatusCategory.INVALID, row.tags.map((item) => item.tagId), rule);
         const arrived = row.status.code === 'VISITED' || row.status.code === 'DEAL';
         const custom = row.customData && typeof row.customData === 'object' && !Array.isArray(row.customData) ? row.customData as Record<string, unknown> : {};
         for (const target of [summary, group, ...branch.map(node => node.totals)]) {

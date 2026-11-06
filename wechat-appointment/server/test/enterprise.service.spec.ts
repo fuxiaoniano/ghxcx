@@ -81,19 +81,12 @@ describe('EnterpriseService', () => {
       appointment: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
     };
-    const notifications = {
-      sendAppointmentSuccess: jest.fn().mockResolvedValue({}),
-      sendStaffAppointmentNotice: jest.fn().mockResolvedValue({})
-    };
-    const followup = { forwardAppointment: jest.fn().mockResolvedValue({}) };
     const audit = { create: jest.fn().mockResolvedValue({}) };
     const redis = { set: jest.fn().mockResolvedValue('OK'), del: jest.fn().mockResolvedValue(1) };
     return {
-      service: new EnterpriseService(prisma as any, notifications as any, followup as any, audit as any, redis as any),
+      service: new EnterpriseService(prisma as any, audit as any, redis as any),
       prisma,
       transaction,
-      notifications,
-      followup,
       redis,
       user,
       doctor,
@@ -103,7 +96,7 @@ describe('EnterpriseService', () => {
   }
 
   it('creates a doctor appointment in the shared appointments table and reserves the schedule', async () => {
-    const { service, transaction, notifications, followup } = fixture();
+    const { service, transaction } = fixture();
     const result = await service.createDoctorAppointment('user_1', {
       doctorId: 'doctor_1',
       dentalCategoryId: 'category_1',
@@ -120,13 +113,12 @@ describe('EnterpriseService', () => {
           type: AppointmentType.DOCTOR_APPOINTMENT,
           doctorId: 'doctor_1',
           dentalProjectId: 'project_1',
-          phoneEncrypted: 'encrypted'
+          phoneEncrypted: 'encrypted',
+          postCreateJobs: { create: expect.arrayContaining([{ kind: 'USER_NOTICE' }, { kind: 'STAFF_NOTICE' }, { kind: 'FOLLOWUP_FORWARD' }]) }
         })
       })
     );
     expect(transaction.doctorSchedule.updateMany).toHaveBeenCalled();
-    expect(notifications.sendAppointmentSuccess).toHaveBeenCalledWith('appointment_1');
-    expect(followup.forwardAppointment).toHaveBeenCalledWith('appointment_1');
     expect(result.typeText).toBe('医生预约');
     expect(result).not.toHaveProperty('status');
     expect(result).not.toHaveProperty('statusText');
@@ -170,7 +162,7 @@ describe('EnterpriseService', () => {
   });
 
   it('creates a package consultation without creating a payment order', async () => {
-    const { service, prisma, notifications } = fixture();
+    const { service, prisma } = fixture();
     prisma.package.findFirst.mockResolvedValue({ id: 'package_1', title: '洁牙套餐', status: ContentStatus.ACTIVE });
     prisma.appointment.create.mockResolvedValue({
       id: 'appointment_2',
@@ -198,9 +190,8 @@ describe('EnterpriseService', () => {
     });
 
     expect(prisma.appointment.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: AppointmentType.PACKAGE_APPLICATION, packageId: 'package_1' }) })
+      expect.objectContaining({ data: expect.objectContaining({ type: AppointmentType.PACKAGE_APPLICATION, packageId: 'package_1', postCreateJobs: { create: expect.arrayContaining([{ kind: 'USER_NOTICE' }, { kind: 'STAFF_NOTICE' }, { kind: 'FOLLOWUP_FORWARD' }]) } }) })
     );
-    expect(notifications.sendStaffAppointmentNotice).toHaveBeenCalledWith('appointment_2');
     expect(result.typeText).toBe('套餐申请');
   });
 

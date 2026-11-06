@@ -1,6 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 
 export interface MiniTokenPayload {
   userId: string;
@@ -29,14 +29,14 @@ export class AuthService {
   signMini(payload: MiniTokenPayload): string {
     return this.jwt.sign(payload, {
       secret: this.jwtSecret('JWT_SECRET', 'dev-mini-secret'),
-      expiresIn: this.config.get<string>('JWT_EXPIRES_IN') || '7d'
+      expiresIn: (this.config.get<string>('JWT_EXPIRES_IN') || '7d') as JwtSignOptions['expiresIn']
     });
   }
 
   signAdmin(payload: AdminTokenPayload): string {
     return this.jwt.sign(payload, {
       secret: this.jwtSecret('ADMIN_JWT_SECRET', 'dev-admin-secret'),
-      expiresIn: this.config.get<string>('ADMIN_JWT_EXPIRES_IN') || '8h'
+      expiresIn: (this.config.get<string>('ADMIN_JWT_EXPIRES_IN') || '8h') as JwtSignOptions['expiresIn']
     });
   }
 

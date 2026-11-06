@@ -1,14 +1,16 @@
 <template>
   <div class="consultation-report">
-    <header class="report-heading"><h1>{{ mode === 'channel' ? '渠道报表' : '网咨报表' }}</h1><span>按录单日期统计</span></header>
-    <section class="content-panel filters">
+    <section class="content-panel report-toolbar">
+      <h1>{{ mode === 'channel' ? '渠道报表' : '网咨报表' }}</h1>
+      <div class="filters">
       <el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" />
       <el-select v-if="mode === 'channel'" v-model="project" clearable placeholder="全部项目"><el-option v-for="item in metadata.projects" :key="item.id" :label="item.name" :value="item.id" /></el-select>
       <el-select v-if="mode === 'channel'" v-model="channel" clearable placeholder="全部渠道"><el-option v-for="item in channels" :key="item" :label="item" :value="item" /></el-select>
       <el-button type="primary" :loading="loading" @click="load">查询</el-button>
+      <div class="tree-actions"><el-button size="small" @click="setExpanded(true)">展开全部</el-button><el-button size="small" @click="setExpanded(false)">收起全部</el-button></div>
+      </div>
     </section>
     <section class="content-panel report-table">
-      <div class="tree-actions"><el-button size="small" @click="setExpanded(true)">展开全部</el-button><el-button size="small" @click="setExpanded(false)">收起全部</el-button></div>
       <div class="table-scroll"><el-table ref="tableRef" :data="report?.tree || []" v-loading="loading" row-key="id" :tree-props="{ children: 'children' }" default-expand-all show-summary :summary-method="summaryMethod" min-width="980">
         <el-table-column prop="label" :label="mode === 'channel' ? '项目 / 渠道 / 账户' : '网咨团队 / 成员'" min-width="260" />
         <el-table-column prop="total" label="总表单" min-width="95" /><el-table-column prop="valid" label="有效表单" min-width="100" />
@@ -57,10 +59,21 @@ function setExpanded(expanded: boolean) {
   };
   walk(report.value?.tree || []);
 }
-onMounted(async () => { Object.assign(metadata, await getConsultationMetadata()); await load(); });
+onMounted(() => { void Promise.allSettled([getConsultationMetadata().then((result) => Object.assign(metadata, result)), load()]); });
 watch(() => props.mode, load);
 </script>
 
 <style scoped>
-.consultation-report{display:grid;gap:16px;min-width:0}.report-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.report-heading h1{margin:0}.report-heading span,.report-note{color:var(--admin-text-muted);font-size:12px}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.filters .el-select{width:180px}.tree-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px}.tree-actions .el-button+.el-button{margin-left:0}.table-scroll{overflow-x:auto}.table-scroll :deep(.el-table){min-width:980px}.report-table{min-width:0}.report-note{margin:0}@media(max-width:760px){.report-heading{align-items:flex-start}.filters{display:grid;grid-template-columns:1fr 1fr}.filters .el-date-editor,.filters .el-select,.filters .el-button{width:100%;min-width:0}.filters .el-date-editor,.filters .el-button{grid-column:1/-1}}
+.consultation-report{display:grid;gap:12px;min-width:0}
+.report-toolbar{display:flex;align-items:center;gap:18px;min-width:0}
+.report-toolbar h1{margin:0;flex:none;font-size:24px;white-space:nowrap}
+.report-note{margin:0;color:var(--admin-text-muted);font-size:12px}
+.filters{display:flex;flex:1;justify-content:flex-end;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.filters :deep(.el-date-editor){width:300px;max-width:100%}
+.filters .el-select{width:145px}
+.tree-actions{display:flex;gap:8px;margin-left:0}
+.tree-actions .el-button+.el-button{margin-left:0}
+.filters :deep(.el-button){white-space:nowrap}
+.table-scroll{overflow-x:auto}.table-scroll :deep(.el-table){min-width:980px}.report-table{min-width:0}
+@media(max-width:760px){.report-toolbar{display:grid;gap:12px}.report-toolbar h1{font-size:20px}.filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.filters :deep(.el-date-editor),.filters .el-select,.filters>.el-button{width:100%;min-width:0}.filters :deep(.el-date-editor),.filters>.el-button{grid-column:1/-1}.tree-actions{grid-column:1/-1}.tree-actions .el-button{flex:1;min-width:0}}
 </style>

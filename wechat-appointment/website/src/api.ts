@@ -12,9 +12,9 @@ export interface Bootstrap { settings: WebsiteSettings; categories: ArticleCateg
 import { demoArticles, demoBootstrap } from './demo';
 
 const API_BASE = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-const DEMO_REQUESTED = new URLSearchParams(window.location.search).get('demo') === '1';
+const DEMO_REQUESTED = import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === '1';
 if (DEMO_REQUESTED) sessionStorage.setItem('fxn-website-demo', '1');
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true' || DEMO_REQUESTED || sessionStorage.getItem('fxn-website-demo') === '1';
+const DEMO_MODE = import.meta.env.DEV && (import.meta.env.VITE_DEMO_MODE === 'true' || DEMO_REQUESTED || sessionStorage.getItem('fxn-website-demo') === '1');
 
 export async function api<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json' } });

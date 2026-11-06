@@ -102,7 +102,7 @@ const auth = useAuthStore();
 const router = useRouter();
 const data = ref<Record<string, any>>({});
 const dashboardError = ref('');
-const modules = ref<DashboardModule[]>(['METRICS', 'TREND', 'RECENT']);
+const modules = ref<DashboardModule[]>(['PAGE:/consultations/callbacks', 'PAGE:/consultations']);
 const todos = ref<DashboardTodo[]>([]);
 const activeTodos = computed(() => todos.value.filter(todo => !todo.completed));
 const completedTodos = computed(() => todos.value.filter(todo => todo.completed));

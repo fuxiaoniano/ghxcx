@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import dayjs from 'dayjs';
 import Redis from 'ioredis';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,9 +10,14 @@ import { CryptoService } from '../crypto/crypto.service';
 import { ConfigsService, LandingPageConfig } from '../configs/configs.service';
 import { WechatGroupNotificationsService } from '../wechat-group-notifications/wechat-group-notifications.service';
 
+const POST_CREATE_JOB_KINDS = ['FOLLOWUP_FORWARD', 'USER_NOTICE', 'STAFF_NOTICE'] as const;
+
 @Injectable()
-export class AppointmentsService {
+export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AppointmentsService.name);
+  private postCreateTimer?: ReturnType<typeof setInterval>;
+  private postCreateWorkerBusy = false;
+  private lastPostCreateRecoveryScan = 0;
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
@@ -22,6 +27,14 @@ export class AppointmentsService {
     @Inject('REDIS') private readonly redis: Redis,
     @Optional() private readonly groupNotifications?: WechatGroupNotificationsService
   ) {}
+
+  onModuleInit() {
+    this.postCreateTimer = setInterval(() => void this.runPostCreateWorker(), 5_000);
+    this.postCreateTimer.unref?.();
+    void this.runPostCreateWorker();
+  }
+
+  onModuleDestroy() { if (this.postCreateTimer) clearInterval(this.postCreateTimer); }
 
   async create(userId: string, dto: CreateAppointmentDto) {
     if (!dto.privacyAccepted) {
@@ -43,7 +56,7 @@ export class AppointmentsService {
       throw new BusinessException(409301, '您刚刚已经提交过挂号，请勿重复点击', 409);
     }
 
-    const appointment = await this.prisma.appointment.create({
+    const [appointment] = await this.prisma.$transaction([this.prisma.appointment.create({
       data: {
         appointmentNo: await this.createAppointmentNo(),
         userId,
@@ -56,18 +69,17 @@ export class AppointmentsService {
         clinicId: dto.clinicId || null,
         landingPageId: landing.pageId || null,
         source: dto.source || 'mini_program',
-        remark: dto.remark
+        remark: dto.remark,
+        postCreateJobs: { create: POST_CREATE_JOB_KINDS.map((kind) => ({ kind })) }
       },
       include: { clinic: true }
-    });
-
-    await this.prisma.user.update({
+    }), this.prisma.user.update({
       where: { id: userId },
       data: { name: dto.name, ageRange: dto.ageRange }
-    });
+    })]);
 
     await this.enqueueGroupNotice(appointment.id);
-    this.dispatchPostCreateTasks(appointment.id);
+    this.dispatchPostCreateTasks();
 
     return this.toPublicDetail(appointment);
   }
@@ -122,13 +134,14 @@ export class AppointmentsService {
         clinicId: dto.clinicId || null,
         landingPageId: landing.pageId || null,
         source: dto.source || `h5_${pageKey}`,
-        remark: dto.remark
+        remark: dto.remark,
+        postCreateJobs: { create: POST_CREATE_JOB_KINDS.map((kind) => ({ kind })) }
       },
       include: { clinic: true }
     });
 
     await this.enqueueGroupNotice(appointment.id);
-    this.dispatchPostCreateTasks(appointment.id);
+    this.dispatchPostCreateTasks();
     return this.toPublicDetail(appointment);
   }
 
@@ -178,14 +191,38 @@ export class AppointmentsService {
     }
   }
 
-  private dispatchPostCreateTasks(appointmentId: string) {
-    void this.followupForwarder.forwardAppointment(appointmentId).catch(() => undefined);
+  private dispatchPostCreateTasks() {
+    void this.runPostCreateWorker();
+  }
 
-    // 微信接口偶发超时不能拖慢或改变已经成功落库的挂号结果。
-    void Promise.all([
-      this.notifications.sendAppointmentSuccess(appointmentId).catch(() => undefined),
-      this.notifications.sendStaffAppointmentNotice(appointmentId).catch(() => undefined)
-    ]);
+  private async runPostCreateWorker() {
+    if (this.postCreateWorkerBusy) return;
+    this.postCreateWorkerBusy = true;
+    try {
+      if (Date.now() - this.lastPostCreateRecoveryScan >= 60_000) {
+        const staleAt = new Date(Date.now() - 5 * 60_000);
+        await this.prisma.appointmentPostCreateJob.updateMany({ where: { status: 'PROCESSING', updatedAt: { lt: staleAt } }, data: { status: 'UNKNOWN', lastErrorCode: 'INTERRUPTED_NEEDS_REVIEW' } });
+        this.lastPostCreateRecoveryScan = Date.now();
+      }
+      const job = await this.prisma.appointmentPostCreateJob.findFirst({
+        where: { status: 'PENDING', attemptCount: { lt: 5 }, availableAt: { lte: new Date() } },
+        orderBy: [{ availableAt: 'asc' }, { createdAt: 'asc' }]
+      });
+      if (!job) return;
+      const claimed = await this.prisma.appointmentPostCreateJob.updateMany({ where: { id: job.id, status: job.status, updatedAt: job.updatedAt }, data: { status: 'PROCESSING', attemptCount: { increment: 1 }, lastErrorCode: null } });
+      if (!claimed.count) return;
+      try {
+        if (job.kind === 'FOLLOWUP_FORWARD') await this.followupForwarder.forwardAppointment(job.appointmentId);
+        else if (job.kind === 'USER_NOTICE') await this.notifications.sendAppointmentSuccess(job.appointmentId);
+        else if (job.kind === 'STAFF_NOTICE') await this.notifications.sendStaffAppointmentNotice(job.appointmentId);
+        else throw new Error('UNSUPPORTED_JOB_KIND');
+        await this.prisma.appointmentPostCreateJob.updateMany({ where: { id: job.id, status: 'PROCESSING' }, data: { status: 'SUCCEEDED', completedAt: new Date() } });
+      } catch (error) {
+        await this.prisma.appointmentPostCreateJob.updateMany({ where: { id: job.id, status: 'PROCESSING' }, data: { status: 'UNKNOWN', lastErrorCode: error instanceof Error ? error.name.slice(0, 100) : 'UNKNOWN' } });
+      }
+    } catch (error) {
+      this.logger.error(`挂号后任务工作器异常：${error instanceof Error ? error.name : 'unknown'}`);
+    } finally { this.postCreateWorkerBusy = false; }
   }
 
   private async enqueueGroupNotice(appointmentId: string) {

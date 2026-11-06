@@ -1,7 +1,8 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import axios from 'axios';
 import { randomBytes } from 'crypto';
 import dayjs from 'dayjs';
+import Redis from 'ioredis';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { BusinessException } from '../../common/utils/business-exception';
@@ -35,7 +36,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
   private lastScheduledSlot = '';
   private readonly refreshInFlight = new Map<string, Promise<string>>();
 
-  constructor(private readonly prisma: PrismaService, private readonly crypto: CryptoService) {}
+  constructor(private readonly prisma: PrismaService, private readonly crypto: CryptoService, @Optional() @Inject('REDIS') private readonly redis?: Redis) {}
 
   onModuleInit() {
     // Poll within the scheduled minute: a 60-second interval can stay phase-shifted
@@ -54,11 +55,31 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
   private async runScheduledSync() {
     const schedule = this.getScheduledSync(new Date());
     if (!schedule || this.running || this.lastScheduledSlot === schedule.slot) return;
-    this.lastScheduledSlot = schedule.slot;
     this.running = true;
-    try { await this.sync(schedule.statDate); }
+    let leaseTimer: NodeJS.Timeout | undefined;
+    let acquired = false;
+    const lockKey = `promotion-sync:slot:${schedule.slot}:lock`;
+    const doneKey = `promotion-sync:slot:${schedule.slot}:done`;
+    const token = randomBytes(16).toString('hex');
+    try {
+      if (!this.redis) throw new Error('Redis unavailable; scheduled sync skipped');
+      if (await this.redis.get(doneKey)) { this.lastScheduledSlot = schedule.slot; return; }
+      acquired = await this.redis.set(lockKey, token, 'PX', 120_000, 'NX') === 'OK';
+      if (!acquired) return;
+      if (await this.redis.get(doneKey)) { this.lastScheduledSlot = schedule.slot; return; }
+      leaseTimer = setInterval(() => void this.redis!.eval("if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('pexpire',KEYS[1],ARGV[2]) else return 0 end", 1, lockKey, token, '120000').catch(() => this.logger.error('Scheduled promotion sync lease renewal failed')), 30_000);
+      leaseTimer.unref();
+      await this.sync(schedule.statDate);
+      const completed = await this.redis.eval("if redis.call('get',KEYS[1]) == ARGV[1] then redis.call('set',KEYS[2],'1','EX',86400); return 1 else return 0 end", 2, lockKey, doneKey, token);
+      if (completed === 1) this.lastScheduledSlot = schedule.slot;
+      else this.logger.error('Scheduled promotion sync lease lost before completion');
+    }
     catch (error) { this.logger.error(`Scheduled promotion sync failed: ${error instanceof Error ? error.message : 'unknown error'}`); }
-    finally { this.running = false; }
+    finally {
+      if (leaseTimer) clearInterval(leaseTimer);
+      if (acquired && this.redis) await this.redis.eval("if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", 1, lockKey, token).catch(() => this.logger.error('Scheduled promotion sync lease release failed'));
+      this.running = false;
+    }
   }
 
   private getScheduledSync(now: Date) {
@@ -67,7 +88,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
     const hour = Number(getPart('hour'));
     const minute = Number(getPart('minute'));
     const beijingDate = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
-    if (minute !== 0 || ![10, 14, 22].includes(hour)) return null;
+    if (minute > 14 || ![10, 14, 22].includes(hour)) return null;
     const statDate = hour === 10 ? dayjs(beijingDate).subtract(1, 'day').format('YYYY-MM-DD') : beijingDate;
     return { slot: `${beijingDate}-${hour}`, statDate };
   }
@@ -329,7 +350,7 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
     if (!Number.isSafeInteger(accountId) || accountId <= 0) throw new TencentMarketingApiError('INVALID_ACCOUNT_ID', '腾讯广告账户 ID 超出安全整数范围，已拒绝请求以避免精度丢失');
     const config = await this.prisma.promotionDataSyncConfig.findUnique({ where: { provider: 'TENCENT_ADS' } });
     if (!config?.enabled) throw new TencentMarketingApiError('TENCENT_NOT_ENABLED', '腾讯广告同步设置尚未启用');
-    const { account, credential } = await this.accountCredentialByNo(accountNo, 'TENCENT_ADS');
+    const { credential } = await this.accountCredentialByNo(accountNo, 'TENCENT_ADS');
     const auth = this.resolveTencentAuth(credential, config, accountNo);
     const extra = auth.extra;
     // An explicit task/request actor selects their own real-name token. Account
@@ -488,18 +509,25 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
           page: 1,
           page_size: 1000,
         };
-        let payload;
-        try {
-          payload = await this.platformGet('https://api.e.qq.com/v3.0/daily_reports/get', token, reportQuery, 'TENCENT_ADS');
-        } catch (error) {
-          if (error instanceof TencentMarketingApiError && error.code === '11002') throw error;
-          // Some Tencent account/report-level combinations reject this optional metric.
-          // Preserve the existing spend view; an unavailable conversion cost remains null.
-          payload = await this.platformGet('https://api.e.qq.com/v3.0/daily_reports/get', token, {
-            ...reportQuery, fields: JSON.stringify(['material_id', 'cost', 'view_count', 'valid_click_count', 'conversions_count']),
-          }, 'TENCENT_ADS');
+        const rows: any[] = [];
+        let fields = reportQuery.fields;
+        for (let page = 1; page <= 10; page += 1) {
+          let payload;
+          try {
+            payload = await this.platformGet('https://api.e.qq.com/v3.0/daily_reports/get', token, { ...reportQuery, page, fields }, 'TENCENT_ADS');
+          } catch (error) {
+            if (error instanceof TencentMarketingApiError && error.code === '11002') throw error;
+            if (fields !== reportQuery.fields) throw error;
+            // 部分账户不支持转化成本字段，保持消费可见并明确实际成本缺失。
+            fields = JSON.stringify(['material_id', 'cost', 'view_count', 'valid_click_count', 'conversions_count']);
+            payload = await this.platformGet('https://api.e.qq.com/v3.0/daily_reports/get', token, { ...reportQuery, page, fields }, 'TENCENT_ADS');
+          }
+          const current = this.responseRows(payload);
+          rows.push(...current);
+          const totalPage = Number(payload?.data?.page_info?.total_page || 0);
+          if (!current.length || (totalPage ? page >= totalPage : current.length < 1000)) break;
+          if (page === 10) warnings.push(`${definition.type === 'VIDEO' ? '视频' : '图片'}效果报表超过 10 页安全上限，结果可能不完整`);
         }
-        const rows = this.responseRows(payload);
         for (const row of rows) {
           const flat = this.flattenMetricRow(row);
           const id = String(flat.material_id || flat.id || `${definition.type}-${items.length + 1}`);
@@ -528,13 +556,32 @@ export class PromotionDataSyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const payload = await this.platformGet('https://api.e.qq.com/v3.0/adcreatives/get', token, {
-        account_id: accountNo,
-        filtering: JSON.stringify({}),
-        page: 1,
-        page_size: 500,
-      }, 'TENCENT_ADS');
-      const rows = this.responseRows(payload);
+      const rows: any[] = [];
+      for (let page = 1; page <= 10; page += 1) {
+        const payload = await this.platformGet('https://api.e.qq.com/v3.0/adcreatives/get', token, {
+          account_id: accountNo, filtering: JSON.stringify({}), page, page_size: 500,
+        }, 'TENCENT_ADS');
+        const current = this.responseRows(payload);
+        rows.push(...current);
+        const totalPage = Number(payload?.data?.page_info?.total_page || 0);
+        if (!current.length || (totalPage ? page >= totalPage : current.length < 500)) break;
+        if (page === 10) warnings.push('创意配置超过 10 页安全上限，组件盘点可能不完整');
+      }
+      // 新建创意走动态创意接口；仅查旧版创意会漏掉刚创建的组件。
+      try {
+        for (let page = 1; page <= 10; page += 1) {
+          const response = await this.tencentApi('GET', '/dynamic_creatives/get', accountNo, {
+            fields: JSON.stringify(['dynamic_creative_id', 'creative_components']), page, page_size: 100, is_deleted: false,
+          });
+          const current = this.responseRows(response);
+          rows.push(...current);
+          const totalPage = Number((response.data as any)?.page_info?.total_page || 0);
+          if (!current.length || (totalPage ? page >= totalPage : current.length < 100)) break;
+          if (page === 10) warnings.push('动态创意超过 10 页安全上限，组件盘点可能不完整');
+        }
+      } catch (error) {
+        warnings.push(`动态创意组件读取失败：${error instanceof Error ? error.message : '未知错误'}`);
+      }
       const discovered = this.extractConfigurationMaterials(rows);
       for (const item of discovered) if (!items.some((current) => current.type === item.type && current.id === item.id)) items.push(item);
       for (const type of ['COPY', 'LANDING_PAGE', 'BRAND', 'ACTION_BUTTON', 'MINI_CARD_LINK', 'TEXT_LINK', 'FLOATING_ZONE', 'LABEL', 'SOCIAL_SKILL'] as PromotionMaterialType[]) {

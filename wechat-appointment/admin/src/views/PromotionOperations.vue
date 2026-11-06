@@ -274,6 +274,18 @@ function trend(current: number | null, previous: number | null, reverse = false)
 }
 function formatTime(value: string) { return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)); }
 
+async function loadCreativeEntry() {
+  if (!isMaterialPage.value || !auth.hasPermission('PROMOTION_CREATIVE_BATCH_VIEW')) return;
+  try {
+    creativeOptions.value = await getPromotionCreativeBatchOptions();
+    for (const account of creativeOptions.value.accounts.filter((item) => item.authorized && item.canCreate)) {
+      try {
+        const result = await getPromotionCreativeAdgroups({ accountId: account.id, page: 1, pageSize: 20 });
+        if (result.list.some((item) => item.canCreate)) { creativeReadyAccountId.value = account.id; break; }
+      } catch { /* 当前账户不可用时继续检查下一账户。 */ }
+    }
+  } catch { creativeOptions.value = null; }
+}
 async function loadOptions() {
   loadingOptions.value = true;
   try {
@@ -283,18 +295,8 @@ async function loadOptions() {
     selectedAccountIds.value = result.accounts.map((item) => item.id);
     materialProvider.value = businessUnits.value.find((item) => item.accountCount > 0)?.provider || 'TENCENT_ADS';
     materialAccountId.value = result.accounts.find((item) => item.accountNo)?.id || '';
-    if (isMaterialPage.value && auth.hasPermission('PROMOTION_CREATIVE_BATCH_VIEW')) {
-      try {
-        creativeOptions.value = await getPromotionCreativeBatchOptions();
-        for (const account of creativeOptions.value.accounts.filter((item) => item.authorized && item.canCreate)) {
-          try {
-            const result = await getPromotionCreativeAdgroups({ accountId: account.id, page: 1, pageSize: 20 });
-            if (result.list.some((item) => item.canCreate)) { creativeReadyAccountId.value = account.id; break; }
-          } catch { /* 入口保持隐藏；独立记录页仍可通过菜单查看历史任务。 */ }
-        }
-      } catch { creativeOptions.value = null; }
-    }
   } finally { loadingOptions.value = false; }
+  void loadCreativeEntry();
 }
 async function analyzeMaterials() {
   if (materialScope.value === 'BUSINESS_UNIT') {

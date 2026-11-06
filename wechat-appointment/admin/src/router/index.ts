@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { ElMessage } from 'element-plus';
+import { ref } from 'vue';
 import Login from '../views/Login.vue';
 import Layout from '../views/Layout.vue';
 
@@ -50,6 +51,7 @@ const ConsultationForms = () => import('../views/ConsultationForms.vue');
 const ConsultationReport = () => import('../views/ConsultationReport.vue');
 const ConsultationCallbacks = () => import('../views/ConsultationCallbacks.vue');
 const ConsultationSettings = () => import('../views/ConsultationSettings.vue');
+const ConsultationSchedule = () => import('../views/ConsultationSchedule.vue');
 const WechatGroupNotifications = () => import('../views/WechatGroupNotifications.vue');
 const WechatGroupSenderSettings = () => import('../views/WechatGroupSenderSettings.vue');
 
@@ -67,10 +69,11 @@ export const router = createRouter({
         { path: 'appointments', component: Appointments, meta: { permission: 'BUSINESS_APPOINTMENTS' } },
         { path: 'tencent-ad-leads', component: TencentAdLeads, meta: { permission: 'BUSINESS_LEADS' } },
         { path: 'consultations', component: ConsultationForms, meta: { permission: 'CONSULTATION_VIEW' } },
-        { path: 'consultations/channel-report', component: ConsultationReport, props: { mode: 'channel' }, meta: { permission: 'CONSULTATION_VIEW' } },
-        { path: 'consultations/report', component: ConsultationReport, props: { mode: 'daily' }, meta: { permission: 'CONSULTATION_VIEW' } },
+        { path: 'consultations/channel-report', component: ConsultationReport, props: { mode: 'channel' }, meta: { permission: 'CONSULTATION_CHANNEL_REPORT' } },
+        { path: 'consultations/report', component: ConsultationReport, props: { mode: 'daily' }, meta: { permission: 'CONSULTATION_TEAM_REPORT' } },
         { path: 'consultations/callbacks', component: ConsultationCallbacks, meta: { permission: 'CONSULTATION_VIEW' } },
         { path: 'consultations/settings', component: ConsultationSettings, meta: { permission: 'CONSULTATION_SETTINGS' } },
+        { path: 'consultations/schedule', component: ConsultationSchedule, meta: { permission: 'CONSULTATION_SCHEDULE_VIEW' } },
         { path: 'operations/dashboard', component: PromotionDashboard, meta: { permission: 'PROMOTION_HOME' } },
         { path: 'operations/daily', component: OperationsDaily, meta: { permission: 'PROMOTION_DAILY' } },
         { path: 'operations/weekly', component: OperationsWeekly, meta: { permission: 'PROMOTION_WEEKLY' } },
@@ -121,7 +124,10 @@ export const router = createRouter({
   ]
 });
 
-router.beforeEach((to) => {
+export const navigationPending = ref(false);
+
+router.beforeEach((to, from) => {
+  navigationPending.value = to.fullPath !== from.fullPath;
   const auth = useAuthStore();
   if (to.path !== '/login' && !auth.token) {
     return '/login';
@@ -139,6 +145,7 @@ router.beforeEach((to) => {
 
 const routeLoadRetryKey = 'admin_route_load_retry';
 router.onError((error, to) => {
+  navigationPending.value = false;
   const message = error instanceof Error ? error.message : String(error);
   if (/dynamically imported module|importing a module script failed|failed to load module script/i.test(message)) {
     const retryPath = to.fullPath;
@@ -156,6 +163,7 @@ router.onError((error, to) => {
   ElMessage.error('页面加载失败，请稍后重试');
 });
 router.afterEach((_to, _from, failure) => {
+  navigationPending.value = false;
   if (!failure) {
     try { sessionStorage.removeItem(routeLoadRetryKey); } catch { /* 无存储权限 */ }
   }

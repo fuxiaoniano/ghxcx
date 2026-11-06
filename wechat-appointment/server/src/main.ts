@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { isCorsOriginAllowed } from './common/utils/cors-origin';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,12 +17,8 @@ async function bootstrap() {
   app.use('/wechat/mini/callback', text({ type: ['text/*', 'application/xml', 'text/xml'] }));
   app.use(helmet());
   app.enableCors({
-    origin: (origin, callback) => {
-      const allowList = (config.get<string>('CORS_ORIGINS') || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean);
-      if (!origin || allowList.length === 0 || allowList.includes(origin)) {
+    origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
+      if (isCorsOriginAllowed(origin, config.get<string>('CORS_ORIGINS') || '', config.get<string>('NODE_ENV'))) {
         callback(null, true);
         return;
       }

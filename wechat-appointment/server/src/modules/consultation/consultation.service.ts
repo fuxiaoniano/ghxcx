@@ -28,6 +28,8 @@ import {
   ConsultationListQueryDto,
   ConsultationStatusDto,
   ConsultationTagDto,
+  ConsultationValidityRuleDto,
+  SaveConsultationScheduleDto,
   CreateConsultationDto,
   UpdateConsultationDto,
   UpdateConsultationFieldDto,
@@ -41,10 +43,10 @@ const BUSINESS_TIME_ZONE = 'Asia/Shanghai';
 const FIXED_FIELDS = [
   ['name', '姓名', true, 10, 110], ['phone', '电话', true, 20, 130], ['project', '项目', true, 30, 120],
   ['channelSource', '渠道来源', true, 40, 120], ['accountName', '账户名称', true, 45, 130], ['tags', '标签', false, 50, 160], ['status', '状态', false, 60, 100],
-  ['owner', '当前负责人', false, 70, 120], ['recordedAt', '录单时间', false, 80, 170],
+  ['owner', '当前负责人', false, 70, 120],
   ['lastFollowUpAt', '最近跟进时间', false, 90, 170], ['lastFollowUpContent', '最新跟进记录', false, 95, 220],
   ['nextFollowUpAt', '下次回访时间', false, 100, 170], ['overdue', '是否逾期', false, 110, 90],
-  ['createdBy', '创建人', false, 120, 110], ['createdAt', '创建时间', false, 130, 170], ['updatedAt', '更新时间', false, 140, 170]
+  ['createdBy', '创建人', false, 120, 110], ['createdAt', '创建时间', false, 130, 170]
 ] as const;
 
 const DEFAULT_STATUSES = [
@@ -101,7 +103,7 @@ export class ConsultationService {
       promotionAccounts: promotionAccounts.map((item) => ({ id: item.id, name: item.name, project: item.project, channel: item.platform })),
       statuses,
       tags,
-      fields: fields.map((item) => this.fieldItem(item)),
+      fields: fields.filter((item) => !['recordedAt', 'updatedAt'].includes(item.code)).map((item) => this.fieldItem(item)),
       members,
       preference: preference?.columnsJson || null
     };
@@ -109,6 +111,8 @@ export class ConsultationService {
 
   async list(query: ConsultationListQueryDto, user: AdminCurrentUser) {
     await this.ensureDefaults();
+    const filterFields = await this.prisma.consultationFieldConfig.findMany({ where: { enabled: true, filterable: true }, select: { code: true } });
+    const canFilter = new Set(filterFields.map((field) => field.code));
     const page = Math.max(1, query.page || 1);
     const pageSize = Math.min(200, Math.max(1, query.pageSize || 20));
     const where: Prisma.ConsultationFormWhereInput = {};
@@ -120,15 +124,17 @@ export class ConsultationService {
       const phoneHash = /^1\d{10}$/.test(keyword) ? this.crypto.hashPhone(keyword) : undefined;
       where.OR = [{ name: { contains: keyword } }, ...(phoneHash ? [{ phoneHash }] : [])];
     }
-    if (query.projectId) and.push({ OR: [{ promotionAccount: { project: query.projectId } }, { projectId: query.projectId }] });
-    if (query.channelSource) where.channelSource = query.channelSource;
-    if (query.statusIds?.length) where.statusId = { in: query.statusIds };
-    if (query.tagIds?.length) where.tags = { some: { tagId: { in: query.tagIds } } };
-    if (query.ownerAdminId) where.ownerAdminId = query.ownerAdminId;
-    if (query.recordedFrom || query.recordedTo) where.recordedAt = this.dateRange(query.recordedFrom, query.recordedTo);
-    if (query.followedFrom || query.followedTo) where.lastFollowUpAt = this.dateRange(query.followedFrom, query.followedTo);
-    if (query.callbackFrom || query.callbackTo) where.nextFollowUpAt = this.dateRange(query.callbackFrom, query.callbackTo);
-    if (query.overdue === true) {
+    if (query.projectId && canFilter.has('project')) and.push({ OR: [{ promotionAccount: { project: query.projectId } }, { projectId: query.projectId }] });
+    if (query.promotionAccountId && canFilter.has('accountName')) where.promotionAccountId = query.promotionAccountId;
+    if (query.channelSource && canFilter.has('channelSource')) where.channelSource = query.channelSource;
+    if (query.statusIds?.length && canFilter.has('status')) where.statusId = { in: query.statusIds };
+    if (query.tagIds?.length && canFilter.has('tags')) where.tags = { some: { tagId: { in: query.tagIds } } };
+    if (query.ownerAdminId && canFilter.has('owner')) where.ownerAdminId = query.ownerAdminId;
+    if ((query.recordedFrom || query.recordedTo) && canFilter.has('recordedAt')) where.recordedAt = this.dateRange(query.recordedFrom, query.recordedTo);
+    if ((query.createdFrom || query.createdTo) && canFilter.has('createdAt')) where.createdAt = this.dateRange(query.createdFrom, query.createdTo);
+    if ((query.followedFrom || query.followedTo) && canFilter.has('lastFollowUpAt')) where.lastFollowUpAt = this.dateRange(query.followedFrom, query.followedTo);
+    if ((query.callbackFrom || query.callbackTo) && canFilter.has('nextFollowUpAt')) where.nextFollowUpAt = this.dateRange(query.callbackFrom, query.callbackTo);
+    if (query.overdue === true && canFilter.has('overdue')) {
       where.nextFollowUpAt = { lt: new Date() };
       where.status = { category: { notIn: [ConsultationStatusCategory.COMPLETED, ConsultationStatusCategory.INVALID] } };
     }
@@ -154,7 +160,7 @@ export class ConsultationService {
       this.prisma.consultationForm.count({ where }),
       this.prisma.consultationForm.findMany({
         where, skip: (page - 1) * pageSize, take: pageSize,
-        include: this.formInclude(), orderBy: [{ recordedAt: 'desc' }, { createdAt: 'desc' }]
+        include: this.formInclude(), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
       }),
       this.prisma.consultationFieldConfig.findMany({ where: { source: 'CUSTOM', enabled: true, showInList: true }, select: { code: true } }),
     ]);
@@ -220,16 +226,19 @@ export class ConsultationService {
         phoneMasked: this.crypto.maskPhone(dto.phone), projectId: null, promotionAccountId: promotionAccount.id, channelSource: promotionAccount.platform,
         appointmentScheduled: dto.appointmentScheduled ?? (status.code === 'VISITED' || status.code === 'DEAL'), paymentAmount: dto.paymentAmount ?? 0,
         statusId: status.id, ownerAdminId, createdByAdminId: user.adminUserId, lastOperatedByAdminId: user.adminUserId,
-        recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
+        recordedAt: new Date(),
         nextFollowUpAt: dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null,
         invalidReason: dto.invalidReason?.trim() || null, customData: customData as Prisma.InputJsonValue,
         duplicateOfId: duplicate?.id || null, duplicateReason: dto.duplicateReason?.trim() || null,
         tags: { create: tags.map((tag) => ({ tagId: tag.id })) }
       } });
-      if (dto.firstFollowUp?.trim()) {
-        const createdAt = dto.firstFollowUpAt ? new Date(dto.firstFollowUpAt) : new Date();
-        await tx.consultationFollowUp.create({ data: { formId: row.id, content: dto.firstFollowUp.trim(), createdByAdminId: user.adminUserId, createdAt } });
-        await tx.consultationForm.update({ where: { id: row.id }, data: { lastFollowUpAt: createdAt } });
+      const first = dto.firstFollowUp?.trim();
+      const latest = dto.latestFollowUp?.trim();
+      if (first || latest) {
+        const latestAt = new Date();
+        if (first) await tx.consultationFollowUp.create({ data: { formId: row.id, content: first, createdByAdminId: user.adminUserId, createdAt: latest && latest !== first ? new Date(latestAt.getTime() - 1) : latestAt } });
+        if (latest && latest !== first) await tx.consultationFollowUp.create({ data: { formId: row.id, content: latest, createdByAdminId: user.adminUserId, createdAt: latestAt } });
+        await tx.consultationForm.update({ where: { id: row.id }, data: { lastFollowUpAt: latestAt } });
       }
       return row;
     });
@@ -256,7 +265,6 @@ export class ConsultationService {
       const status = await this.activeStatus(dto.statusId); category = status.category; data.status = { connect: { id: status.id } };
       if (dto.appointmentScheduled === undefined && ['VISITED', 'DEAL'].includes(status.code)) data.appointmentScheduled = true;
     }
-    if (dto.recordedAt !== undefined) data.recordedAt = new Date(dto.recordedAt);
     if (dto.appointmentScheduled !== undefined) data.appointmentScheduled = dto.appointmentScheduled;
     if (dto.paymentAmount !== undefined) data.paymentAmount = dto.paymentAmount;
     if (dto.nextFollowUpAt !== undefined) data.nextFollowUpAt = dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null;
@@ -301,45 +309,58 @@ export class ConsultationService {
   async assign(id: string, dto: ConsultationAssignDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
     const before = await this.requireAccessible(id, user);
     await this.assertEligibleOwner(dto.ownerAdminId);
-    const updated = await this.prisma.consultationForm.update({ where: { id }, data: { ownerAdminId: dto.ownerAdminId, lastOperatedByAdminId: user.adminUserId } });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.consultationForm.update({ where: { id }, data: { ownerAdminId: dto.ownerAdminId, lastOperatedByAdminId: user.adminUserId } });
+      if (before.ownerAdminId !== dto.ownerAdminId) await tx.consultationAssignmentNoticeJob.create({ data: {
+        eventKey: `${id}:${before.updatedAt.toISOString()}:${dto.ownerAdminId}`,
+        formId: id,
+        ownerAdminId: dto.ownerAdminId,
+      } });
+      return row;
+    });
     await this.log('ASSIGN_CONSULTATION', id, { ownerAdminId: before.ownerAdminId }, { ownerAdminId: dto.ownerAdminId, reason: dto.reason || '' }, user, ip, userAgent);
-    if (before.ownerAdminId !== dto.ownerAdminId) await this.notifications.sendConsultationAssignmentNotice(id, dto.ownerAdminId).catch(() => undefined);
     return updated;
   }
 
   async bulkAssign(dto: ConsultationBulkAssignDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
-    await this.assertEligibleOwner(dto.ownerAdminId);
+    const owners = await this.bulkAssignmentOwners(dto);
     const { uniqueIds, allowed, failures } = await this.assignmentCandidates(dto.ids, user);
     if (!allowed.length) return { selected: uniqueIds.length, success: 0, failed: failures.length, failures };
+    const assignments = allowed.map((row, index) => ({ row, owner: owners[index % owners.length] }));
     await this.prisma.$transaction(async (tx) => {
-      for (const row of allowed) {
-        await tx.consultationForm.update({ where: { id: row.id }, data: { ownerAdminId: dto.ownerAdminId, lastOperatedByAdminId: user.adminUserId } });
+      for (const { row, owner } of assignments) {
+        await tx.consultationForm.update({ where: { id: row.id }, data: { ownerAdminId: owner.id, lastOperatedByAdminId: user.adminUserId } });
+        if (row.ownerAdminId !== owner.id) await tx.consultationAssignmentNoticeJob.create({ data: {
+          eventKey: `${row.id}:${row.updatedAt.toISOString()}:${owner.id}`,
+          formId: row.id,
+          ownerAdminId: owner.id,
+        } });
         await tx.auditLog.create({ data: {
           adminUserId: user.adminUserId, action: 'BULK_ASSIGN_CONSULTATION', resourceType: 'consultation_forms', resourceId: row.id,
-          beforeJson: { ownerAdminId: row.ownerAdminId }, afterJson: { ownerAdminId: dto.ownerAdminId, reason: dto.reason || '' }, ip,
+          beforeJson: { ownerAdminId: row.ownerAdminId }, afterJson: { ownerAdminId: owner.id, reason: dto.reason || '' }, ip,
           userAgent: this.ua(userAgent)
         } });
       }
     });
-    const changed = allowed.filter((row) => row.ownerAdminId !== dto.ownerAdminId);
-    for (let offset = 0; offset < changed.length; offset += 5) {
-      await Promise.all(changed.slice(offset, offset + 5).map((row) =>
-        this.notifications.sendConsultationAssignmentNotice(row.id, dto.ownerAdminId).catch(() => undefined)
-      ));
-    }
-    return { selected: uniqueIds.length, success: allowed.length, failed: failures.length, failures };
+    return { selected: uniqueIds.length, success: allowed.length, failed: failures.length, failures, distribution: owners.map((owner) => ({ id: owner.id, name: owner.nickname || owner.username, count: assignments.filter((item) => item.owner.id === owner.id).length })) };
   }
 
   async bulkAssignPreview(dto: ConsultationBulkAssignDto, user: AdminCurrentUser) {
-    const owner = await this.assertEligibleOwner(dto.ownerAdminId);
+    const owners = await this.bulkAssignmentOwners(dto);
     const { uniqueIds, allowed, failures } = await this.assignmentCandidates(dto.ids, user);
     return {
       selected: uniqueIds.length,
       assignable: allowed.length,
       failed: failures.length,
       failures,
-      target: { id: owner.id, username: owner.username, nickname: owner.nickname || owner.username },
+      targets: owners.map((owner, index) => ({ id: owner.id, username: owner.username, nickname: owner.nickname || owner.username, count: Math.floor(allowed.length / owners.length) + (index < allowed.length % owners.length ? 1 : 0) })),
     };
+  }
+
+  private async bulkAssignmentOwners(dto: ConsultationBulkAssignDto) {
+    const ids = [...new Set(dto.ownerAdminIds?.length ? dto.ownerAdminIds : dto.ownerAdminId ? [dto.ownerAdminId] : [])];
+    if (!ids.length) throw new BusinessException(400807, '请至少选择一名网咨负责人');
+    return Promise.all(ids.map((id) => this.assertEligibleOwner(id)));
   }
 
   async bulkTags(dto: ConsultationBulkTagsDto, mode: 'add' | 'remove', user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
@@ -373,11 +394,46 @@ export class ConsultationService {
 
   async eligibleMembers() {
     const rows = await this.prisma.adminUser.findMany({ where: { status: AdminStatus.ACTIVE, deletedAt: null, consultationReceivable: true }, include: { customRole: true }, orderBy: { username: 'asc' } });
-    return rows.filter((row) => row.role === AdminRole.SUPER_ADMIN || this.parsePermissions(row.customRole?.permissionsJson ?? row.permissionsJson).includes('CONSULTATION_VIEW'))
+    return rows.filter((row) => row.role === AdminRole.SUPER_ADMIN ||
+      this.parsePermissions(row.customRole?.permissionsJson ?? row.permissionsJson).some((permission) =>
+        permission === 'CONSULTATION_VIEW' || permission === 'CONSULTATION_SCHEDULE_VIEW'))
       .map((row) => ({ id: row.id, username: row.username, nickname: row.nickname || row.username, teamId: row.teamId }));
   }
 
-  async fields() { await this.ensureDefaults(); return (await this.prisma.consultationFieldConfig.findMany({ orderBy: [{ listOrder: 'asc' }, { createdAt: 'asc' }] })).map((item) => this.fieldItem(item)); }
+  async schedule(month: string) {
+    const start = new Date(`${month}-01T00:00:00.000Z`);
+    if (Number.isNaN(start.getTime()) || start.toISOString().slice(0, 7) !== month) throw new BusinessException(400830, '月份无效');
+    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+    const members = await this.eligibleMembers();
+    const rows = await this.prisma.consultationSchedule.findMany({ where: { workDate: { gte: start, lt: end }, adminUserId: { in: members.map((member) => member.id) } } });
+    return { month, members, days: Math.round((end.getTime() - start.getTime()) / 86400000), entries: rows.map((row) => ({ adminUserId: row.adminUserId, date: row.workDate.toISOString().slice(0, 10), shift: row.shift })) };
+  }
+
+  async saveSchedule(dto: SaveConsultationScheduleDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const date = new Date(`${dto.date}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dto.date) throw new BusinessException(400831, '日期无效');
+    if (dto.adminUserId !== user.adminUserId) this.requirePermission(user, 'CONSULTATION_SCHEDULE_MANAGE');
+    const member = await this.prisma.adminUser.findFirst({ where: { id: dto.adminUserId, status: AdminStatus.ACTIVE, deletedAt: null, consultationReceivable: true }, select: { id: true } });
+    if (!member) throw new BusinessException(404830, '网咨成员不存在或未启用', 404);
+    const where = { adminUserId_workDate: { adminUserId: dto.adminUserId, workDate: date } };
+    const before = await this.prisma.consultationSchedule.findUnique({ where });
+    if (dto.shift === 'MORNING') await this.prisma.consultationSchedule.deleteMany({ where: { adminUserId: dto.adminUserId, workDate: date } });
+    else await this.prisma.consultationSchedule.upsert({ where, create: { adminUserId: dto.adminUserId, workDate: date, shift: dto.shift, updatedById: user.adminUserId }, update: { shift: dto.shift, updatedById: user.adminUserId } });
+    await this.log('UPDATE_CONSULTATION_SCHEDULE', `${dto.adminUserId}:${dto.date}`, { shift: before?.shift || 'MORNING' }, { shift: dto.shift }, user, ip, userAgent, 'consultation_schedules');
+    return dto;
+  }
+
+  async deleteForm(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    await this.requireAccessible(id, user);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.auditLog.deleteMany({ where: { resourceId: id } });
+      await tx.consultationForm.delete({ where: { id } });
+      await tx.auditLog.create({ data: { adminUserId: user.adminUserId, action: 'DELETE_CONSULTATION', resourceType: 'consultation_forms', resourceId: id, afterJson: { deleted: true }, ip, userAgent: this.ua(userAgent) } });
+    });
+    return { id, deleted: true };
+  }
+
+  async fields() { await this.ensureDefaults(); return (await this.prisma.consultationFieldConfig.findMany({ where: { code: { notIn: ['recordedAt', 'updatedAt'] } }, orderBy: [{ listOrder: 'asc' }, { createdAt: 'asc' }] })).map((item) => this.fieldItem(item)); }
   async createField(dto: ConsultationFieldDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
     const row = await this.prisma.consultationFieldConfig.create({ data: this.fieldData(dto, user.adminUserId) });
     await this.log('CREATE_CONSULTATION_FIELD', row.id, null, row, user, ip, userAgent); return this.fieldItem(row);
@@ -403,9 +459,30 @@ export class ConsultationService {
   async deleteStatus(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) { const before = await this.prisma.consultationStatus.findUnique({ where: { id }, include: { _count: { select: { forms: true, followUps: true } } } }); if (!before) throw new BusinessException(404804, '状态不存在', 404); if (before._count.forms || before._count.followUps) { const row = await this.prisma.consultationStatus.update({ where: { id }, data: { enabled: false } }); await this.log('DISABLE_CONSULTATION_STATUS', id, before, row, user, ip, userAgent); return row; } await this.prisma.consultationStatus.delete({ where: { id } }); await this.log('DELETE_CONSULTATION_STATUS', id, before, { deleted: true }, user, ip, userAgent); return { id, deleted: true }; }
 
   async tags() { return this.prisma.consultationTag.findMany({ orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] }); }
+  async validityRule() {
+    const row = await this.prisma.systemConfig.findUnique({ where: { key: 'consultationValidityRule' } });
+    const value = row?.valueJson && typeof row.valueJson === 'object' && !Array.isArray(row.valueJson) ? row.valueJson as Record<string, unknown> : {};
+    return {
+      validTagIds: Array.isArray(value.validTagIds) ? value.validTagIds.filter((id): id is string => typeof id === 'string') : [],
+      invalidTagIds: Array.isArray(value.invalidTagIds) ? value.invalidTagIds.filter((id): id is string => typeof id === 'string') : [],
+    };
+  }
+  async saveValidityRule(dto: ConsultationValidityRuleDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    const validTagIds = [...new Set(dto.validTagIds)];
+    const invalidTagIds = [...new Set(dto.invalidTagIds)];
+    if (validTagIds.some((id) => invalidTagIds.includes(id))) throw new BusinessException(400821, '同一标签不能同时设为有效和无效');
+    const allIds = [...validTagIds, ...invalidTagIds];
+    const count = await this.prisma.consultationTag.count({ where: { id: { in: allIds } } });
+    if (count !== allIds.length) throw new BusinessException(400822, '包含不存在的网咨标签');
+    const before = await this.validityRule();
+    const after = { validTagIds, invalidTagIds };
+    await this.prisma.systemConfig.upsert({ where: { key: 'consultationValidityRule' }, create: { key: 'consultationValidityRule', valueJson: after, description: '网咨报表有效无效标签统计规则' }, update: { valueJson: after } });
+    await this.log('UPDATE_CONSULTATION_VALIDITY_RULE', 'consultationValidityRule', before, after, user, ip, userAgent, 'system_configs');
+    return after;
+  }
   async createTag(dto: ConsultationTagDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) { const row = await this.prisma.consultationTag.create({ data: { ...dto, createdByAdminId: user.adminUserId } }); await this.log('CREATE_CONSULTATION_TAG', row.id, null, row, user, ip, userAgent); return row; }
   async updateTag(id: string, dto: Partial<ConsultationTagDto>, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) { const before = await this.prisma.consultationTag.findUnique({ where: { id } }); if (!before) throw new BusinessException(404805, '标签不存在', 404); const row = await this.prisma.consultationTag.update({ where: { id }, data: dto }); await this.log('UPDATE_CONSULTATION_TAG', id, before, row, user, ip, userAgent); return row; }
-  async deleteTag(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) { const before = await this.prisma.consultationTag.findUnique({ where: { id }, include: { _count: { select: { forms: true } } } }); if (!before) throw new BusinessException(404805, '标签不存在', 404); if (before._count.forms) { const row = await this.prisma.consultationTag.update({ where: { id }, data: { enabled: false } }); await this.log('DISABLE_CONSULTATION_TAG', id, before, row, user, ip, userAgent); return row; } await this.prisma.consultationTag.delete({ where: { id } }); await this.log('DELETE_CONSULTATION_TAG', id, before, { deleted: true }, user, ip, userAgent); return { id, deleted: true }; }
+  async deleteTag(id: string, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) { const before = await this.prisma.consultationTag.findUnique({ where: { id }, include: { _count: { select: { forms: true } } } }); if (!before) throw new BusinessException(404805, '标签不存在', 404); const rule = await this.validityRule(); if (before._count.forms || rule.validTagIds.includes(id) || rule.invalidTagIds.includes(id)) { const row = await this.prisma.consultationTag.update({ where: { id }, data: { enabled: false } }); await this.log('DISABLE_CONSULTATION_TAG', id, before, row, user, ip, userAgent); return row; } await this.prisma.consultationTag.delete({ where: { id } }); await this.log('DELETE_CONSULTATION_TAG', id, before, { deleted: true }, user, ip, userAgent); return { id, deleted: true }; }
 
   async savePreference(dto: ConsultationListPreferenceDto, user: AdminCurrentUser) {
     const before = await this.prisma.consultationListPreference.findUnique({ where: { adminUserId: user.adminUserId } });
@@ -419,17 +496,17 @@ export class ConsultationService {
     const fields = await this.prisma.consultationFieldConfig.findMany({ where: { source: 'CUSTOM', enabled: true, importable: true }, orderBy: { listOrder: 'asc' } });
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('网咨数据导入');
-    const headers = ['姓名*', '电话*', '项目*', '渠道来源*', '账户名称*', '标签', '状态', '已预约', '收款金额', '录单时间', '首次跟进记录', '跟进时间', '下次回访时间', '负责人', ...fields.map((field) => field.name)];
+    const headers = ['姓名*', '电话*', '项目*', '渠道来源*', '账户名称*', '标签', '状态', '已预约', '收款金额', '首次跟进记录', '最新跟进记录', '下次回访时间', '负责人', ...fields.map((field) => field.name)];
     sheet.addRow(headers);
     sheet.getRow(1).font = { bold: true };
     sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCFE3F4' } };
     sheet.columns.forEach((column) => { column.width = 18; });
-    sheet.addRow(['张三', '13800138000', '重庆', '腾讯营销', '腾讯01', '重点,待确认', '待跟进', '否', '0', dayjs().format('YYYY-MM-DD HH:mm:ss'), '', '', '', '']);
+    sheet.addRow(['张三', '13800138000', '重庆', '腾讯营销', '腾讯01', '重点,待确认', '待跟进', '否', '0', '已首次联系', '客户希望下周回访', '', '']);
     const help = workbook.addWorksheet('填写说明');
     help.addRows([
       ['字段', '说明'], ['项目/渠道来源/账户名称', '必须与推广数据中的启用账户配置完全一致，三项必须匹配'],
       ['标签', '多个标签用英文逗号分隔，必须为已启用标签'], ['状态', '填写已启用状态名称或状态编码，留空默认为待跟进'],
-      ['负责人', '填写登录账号；仅有分配权限时生效'], ['已预约', '填写是或否；留空时已到诊和已成交自动视为已预约'], ['收款金额', '元；留空按 0 计算'], ['时间', '建议使用 YYYY-MM-DD HH:mm:ss']
+      ['负责人', '填写登录账号；仅有分配权限时生效'], ['已预约', '填写是或否；留空时已到诊和已成交自动视为已预约'], ['收款金额', '元；留空按 0 计算'], ['最新跟进记录', '与首次跟进同时填写时，两条记录都会导入，最新跟进显示在最前'], ['时间', '建议使用 YYYY-MM-DD HH:mm:ss']
     ]);
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
     await this.log('EXPORT_CONSULTATION_IMPORT_TEMPLATE', `template-${Date.now()}`, null, { customFieldCount: fields.length }, user, undefined, undefined, 'consultation_exports');
@@ -459,7 +536,7 @@ export class ConsultationService {
     let duplicateCount = 0;
     for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
       const row = sheet.getRow(rowNumber); if (!row.hasValues) continue;
-      const raw = { name: get(row, '姓名'), phone: get(row, '电话'), project: get(row, '项目'), channelSource: get(row, '渠道来源'), accountName: get(row, '账户名称'), tags: get(row, '标签'), status: get(row, '状态'), appointmentScheduled: get(row, '已预约'), paymentAmount: get(row, '收款金额'), recordedAt: get(row, '录单时间'), firstFollowUp: get(row, '首次跟进记录'), firstFollowUpAt: get(row, '跟进时间'), nextFollowUpAt: get(row, '下次回访时间'), owner: get(row, '负责人') };
+      const raw = { name: get(row, '姓名'), phone: get(row, '电话'), project: get(row, '项目'), channelSource: get(row, '渠道来源'), accountName: get(row, '账户名称'), tags: get(row, '标签'), status: get(row, '状态'), appointmentScheduled: get(row, '已预约'), paymentAmount: get(row, '收款金额'), recordedAt: get(row, '录单时间'), firstFollowUp: get(row, '首次跟进记录'), latestFollowUp: get(row, '最新跟进记录'), firstFollowUpAt: get(row, '跟进时间'), nextFollowUpAt: get(row, '下次回访时间'), owner: get(row, '负责人') };
       const rowErrors: Array<{ field: string; message: string }> = [];
       if (!raw.name) rowErrors.push({ field: '姓名', message: '姓名不能为空' });
       if (!/^1\d{10}$/.test(raw.phone)) rowErrors.push({ field: '电话', message: '手机号格式不正确' });
@@ -472,6 +549,8 @@ export class ConsultationService {
       if (!status) rowErrors.push({ field: '状态', message: '状态不存在或已停用' });
       if (raw.appointmentScheduled && !['是', '否', '1', '0'].includes(raw.appointmentScheduled)) rowErrors.push({ field: '已预约', message: '请填写是或否' });
       if (raw.paymentAmount && (!/^\d+(\.\d{1,2})?$/.test(raw.paymentAmount) || Number(raw.paymentAmount) > 1000000000)) rowErrors.push({ field: '收款金额', message: '请填写非负金额，最多两位小数' });
+      if (raw.firstFollowUp.length > 5000) rowErrors.push({ field: '首次跟进记录', message: '最多 5000 字' });
+      if (raw.latestFollowUp.length > 5000) rowErrors.push({ field: '最新跟进记录', message: '最多 5000 字' });
       const tagNames = raw.tags.split(',').map((item) => item.trim()).filter(Boolean); const resolvedTags = tagNames.map((name) => tags.find((tag) => tag.name === name));
       if (resolvedTags.some((item) => !item)) rowErrors.push({ field: '标签', message: '包含不存在或已停用标签' });
       let owner = members.find((item) => item.username === raw.owner || item.nickname === raw.owner);
@@ -487,7 +566,7 @@ export class ConsultationService {
         rowNumber, name: raw.name, phoneEncrypted: /^1\d{10}$/.test(raw.phone) ? this.crypto.encryptPhone(raw.phone) : '',
         phoneMasked: /^1\d{10}$/.test(raw.phone) ? this.crypto.maskPhone(raw.phone) : '格式错误', project: raw.project,
         channelSource: raw.channelSource, tags: raw.tags, status: raw.status, recordedAt: raw.recordedAt,
-        firstFollowUp: raw.firstFollowUp, firstFollowUpAt: raw.firstFollowUpAt, nextFollowUpAt: raw.nextFollowUpAt,
+        firstFollowUp: raw.firstFollowUp, latestFollowUp: raw.latestFollowUp, firstFollowUpAt: raw.firstFollowUpAt, nextFollowUpAt: raw.nextFollowUpAt,
         owner: raw.owner, projectId: raw.project, promotionAccountId: promotionAccount?.id, statusId: status?.id,
         appointmentScheduled: raw.appointmentScheduled ? ['是', '1'].includes(raw.appointmentScheduled) : undefined, paymentAmount: raw.paymentAmount ? Number(raw.paymentAmount) : 0,
         tagIds: resolvedTags.filter(Boolean).map((tag) => tag!.id), ownerAdminId: owner?.id, customData, duplicateId: duplicate?.id || null
@@ -517,11 +596,12 @@ export class ConsultationService {
         if (row.duplicateId && duplicateMode === 'SKIP') { failures.push({ rowNumber: row.rowNumber, reason: '重复手机号，已按规则跳过' }); continue; }
         if (row.duplicateId && duplicateMode === 'FOLLOW_UP') {
           this.requirePermission(user, 'CONSULTATION_FOLLOW_UP');
-          if (!row.firstFollowUp) { failures.push({ rowNumber: row.rowNumber, reason: '没有可追加的首次跟进内容' }); continue; }
-          await this.addFollowUp(row.duplicateId, { content: row.firstFollowUp, nextFollowUpAt: row.nextFollowUpAt || undefined }, user, ip, userAgent); success++; continue;
+          const content = row.latestFollowUp || row.firstFollowUp;
+          if (!content) { failures.push({ rowNumber: row.rowNumber, reason: '没有可追加的跟进内容' }); continue; }
+          await this.addFollowUp(row.duplicateId, { content, nextFollowUpAt: row.nextFollowUpAt || undefined }, user, ip, userAgent); success++; continue;
         }
         const phone = row.phoneEncrypted ? this.crypto.decryptPhone(row.phoneEncrypted) : '';
-        await this.create({ name: row.name, phone, projectId: row.projectId, channelSource: row.channelSource, promotionAccountId: row.promotionAccountId, statusId: row.statusId, appointmentScheduled: row.appointmentScheduled, paymentAmount: row.paymentAmount, ownerAdminId: row.ownerAdminId, tagIds: row.tagIds, recordedAt: row.recordedAt || undefined, nextFollowUpAt: row.nextFollowUpAt || undefined, customData: row.customData, firstFollowUp: row.firstFollowUp || undefined, firstFollowUpAt: row.firstFollowUpAt || undefined, forceDuplicate: Boolean(row.duplicateId), duplicateReason: row.duplicateId ? '批量导入明确选择创建重复记录' : undefined }, user, ip, userAgent); success++;
+        await this.create({ name: row.name, phone, projectId: row.projectId, channelSource: row.channelSource, promotionAccountId: row.promotionAccountId, statusId: row.statusId, appointmentScheduled: row.appointmentScheduled, paymentAmount: row.paymentAmount, ownerAdminId: row.ownerAdminId, tagIds: row.tagIds, recordedAt: row.recordedAt || undefined, nextFollowUpAt: row.nextFollowUpAt || undefined, customData: row.customData, firstFollowUp: row.firstFollowUp || undefined, latestFollowUp: row.latestFollowUp || undefined, firstFollowUpAt: row.firstFollowUpAt || undefined, forceDuplicate: Boolean(row.duplicateId), duplicateReason: row.duplicateId ? '批量导入明确选择创建重复记录' : undefined }, user, ip, userAgent); success++;
       } catch (error) { failures.push({ rowNumber: row.rowNumber, reason: error instanceof Error ? error.message : '导入失败' }); }
     }
     await this.prisma.consultationImportBatch.update({ where: { id: batchId }, data: { status: failures.length && !success ? 'FAILED' : 'COMMITTED', successCount: success, failedCount: failures.length + batch.failedCount, committedAt: new Date(), optionsJson: { duplicateMode, failures } } });

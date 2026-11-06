@@ -11,7 +11,12 @@ export const adminPermissionGroups = [
     { value: 'EXPORT_FULL_PHONE', label: '导出完整手机号', pages: '挂号数据导出' },
   ] },
   { label: '网咨数据', items: [
-    { value: 'CONSULTATION_VIEW', label: '查看网咨表单', pages: '网咨数据 / 全部表单、今日需回访、渠道报表、网咨报表' },
+    { value: 'CONSULTATION_VIEW', label: '查看网咨表单', pages: '网咨数据 / 全部表单、今日需回访' },
+    { value: 'CONSULTATION_CHANNEL_REPORT', label: '查看渠道报表', pages: '网咨数据 / 渠道报表' },
+    { value: 'CONSULTATION_TEAM_REPORT', label: '查看网咨报表', pages: '网咨数据 / 网咨报表' },
+    { value: 'CONSULTATION_SCHEDULE_VIEW', label: '查看排班并修改本人排班', pages: '网咨数据 / 网咨排班表' },
+    { value: 'CONSULTATION_SCHEDULE_MANAGE', label: '修改全部网咨排班', pages: '网咨数据 / 网咨排班表（需同时有查看权限）' },
+    { value: 'CONSULTATION_DELETE', label: '彻底删除网咨表单', pages: '网咨数据 / 全部表单（单独授权）' },
     { value: 'CONSULTATION_CREATE', label: '手动录单', pages: '网咨数据 / 全部表单' },
     { value: 'CONSULTATION_EDIT', label: '编辑网咨资料', pages: '基础资料、状态、回访时间、标签' },
     { value: 'CONSULTATION_FOLLOW_UP', label: '新增跟进记录', pages: '网咨表单 / 跟进记录' },

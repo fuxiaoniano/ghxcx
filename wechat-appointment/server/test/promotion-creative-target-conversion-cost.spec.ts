@@ -1,6 +1,12 @@
 import { PromotionDataSyncService } from '../src/modules/operations/promotion-data-sync.service';
+import { PromotionCreativeBatchService } from '../src/modules/operations/promotion-creative-batch.service';
 
 describe('Tencent creative asset actual conversion cost', () => {
+  it('rejects the legacy target-cost sort instead of sorting by actual cost', async () => {
+    const service = new PromotionCreativeBatchService({} as any, {} as any, {} as any, {} as any) as any;
+    service.account = jest.fn().mockResolvedValue({ id: 'a', accountNo: '123', project: 'test' });
+    await expect(service.assets({ accountId: 'a', sortBy: 'TARGET_CONVERSION_COST' }, {})).rejects.toThrow('素材没有可确认的统一目标成本');
+  });
   it('uses the returned conversions_cost in cents and keeps missing values empty', async () => {
     const service = new PromotionDataSyncService({} as any, {} as any) as any;
     service.platformGet = jest.fn(async (url: string, _token: string, query: Record<string, string>) => {

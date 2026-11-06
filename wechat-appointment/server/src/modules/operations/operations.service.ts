@@ -1,6 +1,9 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ContentStatus, Prisma } from '@prisma/client';
+import { createHash, randomBytes } from 'crypto';
 import dayjs from 'dayjs';
+import Redis from 'ioredis';
 import { AdminCurrentUser } from '../../common/decorators/current-user.decorator';
 import { BusinessException } from '../../common/utils/business-exception';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -57,7 +60,16 @@ function normalizeAccessToken(input?: string) {
 
 @Injectable()
 export class OperationsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditLogsService, private readonly crypto: CryptoService, private readonly syncService: PromotionDataSyncService, @Optional() private readonly dataScopes?: DataScopeService, @Optional() private readonly promotionAccess?: PromotionAccountAccessService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditLogsService,
+    private readonly crypto: CryptoService,
+    private readonly syncService: PromotionDataSyncService,
+    @Optional() private readonly dataScopes?: DataScopeService,
+    @Optional() private readonly promotionAccess?: PromotionAccountAccessService,
+    @Inject('REDIS') @Optional() private readonly redis?: Redis,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   async accounts(user?: AdminCurrentUser) {
     const rows = await this.prisma.promotionAccount.findMany({
@@ -275,6 +287,50 @@ export class OperationsService {
   async myTencentUserToken(user: AdminCurrentUser) {
     const row = await this.prisma.tencentUserToken.findUnique({ where: { adminUserId: user.adminUserId } });
     return { hasUserToken: Boolean(row?.tokenCipher && (!row.expiresAt || row.expiresAt > new Date())), userTokenExpiresAt: row?.expiresAt || null };
+  }
+
+  async createTencentUserTokenAuthorization(user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
+    if (!this.redis || !this.config) throw new BusinessException(503912, '腾讯授权服务暂不可用，请稍后重试', 503);
+    const serverBase = this.validHttpsBase(this.config.get<string>('SERVER_BASE_URL'), 'SERVER_BASE_URL');
+    const state = randomBytes(32).toString('hex');
+    const stateKey = this.tencentUserTokenStateKey(state);
+    const stored = await this.redis.set(stateKey, JSON.stringify({ adminUserId: user.adminUserId }), 'EX', 600, 'NX');
+    if (stored !== 'OK') throw new BusinessException(503912, '腾讯授权会话创建失败，请稍后重试', 503);
+    const redirectUri = `${serverBase}/api/admin/operations/tencent-user-token-auth/callback`;
+    const authorizationUrl = `https://ad.qq.com/account-center/single/user-authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
+    await this.audit.create({ adminUserId: user.adminUserId, action: 'START_TENCENT_USER_TOKEN_AUTH', resourceType: 'tencent_user_tokens', resourceId: user.adminUserId, ip, userAgent: Array.isArray(userAgent) ? userAgent.join(',') : userAgent });
+    return { authorizationUrl, expiresIn: 600 };
+  }
+
+  async completeTencentUserTokenAuthorization(input: { state?: string; userStatus?: string; userToken?: string; expireTime?: string }, ip?: string, userAgent?: string | string[]) {
+    const frontendBase = this.validHttpsBase(this.config?.get<string>('FRONTEND_BASE_URL'), 'FRONTEND_BASE_URL');
+    const callback = (status: 'success' | 'cancelled' | 'error') => `${frontendBase}/promotion/accounts?user_token_status=${status}`;
+    if (!this.redis || !/^[a-f0-9]{64}$/i.test(input.state || '')) return { redirectUrl: callback('error') };
+    const stateKey = this.tencentUserTokenStateKey(input.state!);
+    const raw = await this.redis.eval("local value=redis.call('get',KEYS[1]); if value then redis.call('del',KEYS[1]) end; return value", 1, stateKey);
+    if (typeof raw !== 'string') return { redirectUrl: callback('error') };
+    let adminUserId = '';
+    try { adminUserId = String((JSON.parse(raw) as { adminUserId?: string }).adminUserId || ''); } catch { return { redirectUrl: callback('error') }; }
+    const member = adminUserId ? await this.prisma.adminUser.findFirst({ where: { id: adminUserId, status: 'ACTIVE', deletedAt: null }, select: { id: true } }) : null;
+    if (!member) return { redirectUrl: callback('error') };
+    if (input.userStatus !== '2') {
+      await this.audit.create({ adminUserId, action: 'CANCEL_TENCENT_USER_TOKEN_AUTH', resourceType: 'tencent_user_tokens', resourceId: adminUserId, ip, userAgent: Array.isArray(userAgent) ? userAgent.join(',') : userAgent });
+      return { redirectUrl: callback('cancelled') };
+    }
+    const token = input.userToken?.trim() || '';
+    if (!token || token.length > 4000) return { redirectUrl: callback('error') };
+    const expirySeconds = Number(input.expireTime || 0);
+    const expiresAt = Number.isFinite(expirySeconds) && expirySeconds > Math.floor(Date.now() / 1000)
+      ? new Date(expirySeconds * 1000)
+      : new Date(Date.now() + 15 * 86400_000);
+    const tokenCipher = this.crypto.encryptText(token);
+    await this.prisma.tencentUserToken.upsert({
+      where: { adminUserId },
+      create: { adminUserId, tokenCipher, expiresAt },
+      update: { tokenCipher, expiresAt },
+    });
+    await this.audit.create({ adminUserId, action: 'COMPLETE_TENCENT_USER_TOKEN_AUTH', resourceType: 'tencent_user_tokens', resourceId: adminUserId, afterJson: { hasUserToken: true, userTokenExpiresAt: expiresAt.toISOString() }, ip, userAgent: Array.isArray(userAgent) ? userAgent.join(',') : userAgent });
+    return { redirectUrl: callback('success') };
   }
 
   async saveMyTencentUserToken(dto: TencentUserTokenDto, user: AdminCurrentUser, ip?: string, userAgent?: string | string[]) {
@@ -954,6 +1010,14 @@ export class OperationsService {
   private safeAccountCredential(row: any) {
     if (!row) return { hasAccessToken: false, hasClientSecret: false, hasRefreshToken: false, hasUserToken: false };
     return { accountId: row.accountId, clientId: row.clientId || '', authorizedAccountId: row.authorizedAccountId || null, userTokenExpiresAt: row.userTokenExpiresAt || null, accessTokenExpiresAt: row.accessTokenExpiresAt || null, refreshTokenExpiresAt: row.refreshTokenExpiresAt || null, hasAccessToken: Boolean(row.accessTokenCipher), hasClientSecret: Boolean(row.clientSecretCipher), hasRefreshToken: Boolean(row.refreshTokenCipher), hasUserToken: Boolean(row.userTokenCipher), lastValidatedAt: row.lastValidatedAt || null, updatedAt: row.updatedAt || null };
+  }
+  private tencentUserTokenStateKey(state: string) { return `tencent:user-token-auth:${createHash('sha256').update(state).digest('hex')}`; }
+  private validHttpsBase(value: string | undefined, name: string) {
+    try {
+      const url = new URL(String(value || ''));
+      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('invalid');
+      return url.toString().replace(/\/$/, '');
+    } catch { throw new BusinessException(503912, `${name} 配置无效，暂不能发起腾讯授权`, 503); }
   }
   private async accountScope(user?: AdminCurrentUser, capability: PromotionAccountCapability = 'DATA'): Promise<Prisma.PromotionAccountWhereInput> {
     if (!user) return {};

@@ -19,15 +19,33 @@ import {
 } from 'class-validator';
 import { AdminStatus, ConsultationFieldType, ConsultationStatusCategory } from '@prisma/client';
 
+export class ConsultationValidityRuleDto {
+  @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) validTagIds!: string[];
+  @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) invalidTagIds!: string[];
+}
+
+export class ConsultationScheduleQueryDto {
+  @IsString() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) month!: string;
+}
+
+export class SaveConsultationScheduleDto {
+  @IsString() @MaxLength(32) adminUserId!: string;
+  @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) date!: string;
+  @IsIn(['MORNING', 'REST']) shift!: 'MORNING' | 'REST';
+}
+
 export class ConsultationListQueryDto {
   @IsOptional() @IsString() @MaxLength(80) keyword?: string;
   @IsOptional() @IsString() @MaxLength(32) projectId?: string;
+  @IsOptional() @IsString() @MaxLength(32) promotionAccountId?: string;
   @IsOptional() @IsString() @MaxLength(120) channelSource?: string;
   @IsOptional() @Transform(({ value }) => Array.isArray(value) ? value : String(value).split(',').filter(Boolean)) @IsString({ each: true }) tagIds?: string[];
   @IsOptional() @Transform(({ value }) => Array.isArray(value) ? value : String(value).split(',').filter(Boolean)) @IsString({ each: true }) statusIds?: string[];
   @IsOptional() @IsString() @MaxLength(32) ownerAdminId?: string;
   @IsOptional() @IsDateString() recordedFrom?: string;
   @IsOptional() @IsDateString() recordedTo?: string;
+  @IsOptional() @IsDateString() createdFrom?: string;
+  @IsOptional() @IsDateString() createdTo?: string;
   @IsOptional() @IsDateString() followedFrom?: string;
   @IsOptional() @IsDateString() followedTo?: string;
   @IsOptional() @IsDateString() callbackFrom?: string;
@@ -62,6 +80,7 @@ export class CreateConsultationDto {
   @IsOptional() @IsBoolean() forceDuplicate?: boolean;
   @IsOptional() @IsString() @MaxLength(500) duplicateReason?: string;
   @IsOptional() @IsString() @MaxLength(5000) firstFollowUp?: string;
+  @IsOptional() @IsString() @MaxLength(5000) latestFollowUp?: string;
   @IsOptional() @IsDateString() firstFollowUpAt?: string;
 }
 
@@ -92,8 +111,11 @@ export class ConsultationAssignDto {
   @IsOptional() @IsString() @MaxLength(500) reason?: string;
 }
 
-export class ConsultationBulkAssignDto extends ConsultationAssignDto {
+export class ConsultationBulkAssignDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(500) @IsString({ each: true }) ids!: string[];
+  @IsOptional() @IsString() @MaxLength(32) ownerAdminId?: string;
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @IsString({ each: true }) ownerAdminIds?: string[];
+  @IsOptional() @IsString() @MaxLength(500) reason?: string;
 }
 
 export class ConsultationBulkTagsDto {

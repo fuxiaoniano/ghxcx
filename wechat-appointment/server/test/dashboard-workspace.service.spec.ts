@@ -7,6 +7,10 @@ describe('dashboard workspace ownership', () => {
   };
   const service = new DashboardWorkspaceService(prisma as never);
 
+  it('defaults to callbacks and consultation forms', async () => {
+    await expect(service.preferences('admin-a')).resolves.toEqual({ modules: ['PAGE:/consultations/callbacks', 'PAGE:/consultations'] });
+  });
+
   it('scopes todo reads to the signed-in account', async () => {
     await service.todos('admin-a');
     expect(prisma.adminDashboardTodo.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { adminUserId: 'admin-a' } }));

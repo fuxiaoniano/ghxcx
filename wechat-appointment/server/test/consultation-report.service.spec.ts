@@ -5,10 +5,11 @@ describe('consultation reports', () => {
   const user = { adminUserId: 'member-a', username: 'member-a', role: 'STAFF', permissions: ['CONSULTATION_VIEW'], dataScope: 'SELF' as const };
   const scope = { OR: [{ ownerAdminId: { in: ['member-a'] } }, { createdByAdminId: { in: ['member-a'] } }] };
   const rows = [
-    { id: '1', recordedAt: new Date('2026-10-28T02:00:00Z'), channelSource: '腾讯营销', appointmentScheduled: true, paymentAmount: new Prisma.Decimal(200), customData: { quote: 15 }, project: { name: '口腔' }, promotionAccount: { id: 'account-a', name: '腾讯01', project: '口腔' }, owner: { id: 'member-a', username: 'member-a', nickname: '小王', team: { id: 'team-a', name: '网咨一组' } }, status: { code: 'VISITED', category: ConsultationStatusCategory.IN_PROGRESS } },
-    { id: '2', recordedAt: new Date('2026-10-28T03:00:00Z'), channelSource: '腾讯营销', appointmentScheduled: false, paymentAmount: new Prisma.Decimal(0), customData: { quote: 5 }, project: { name: '口腔' }, promotionAccount: { id: 'account-b', name: '腾讯02', project: '口腔' }, owner: { id: 'member-b', username: 'member-b', nickname: '小李', team: { id: 'team-b', name: '网咨二组' } }, status: { code: 'INVALID', category: ConsultationStatusCategory.INVALID } }
+    { id: '1', recordedAt: new Date('2026-10-28T02:00:00Z'), channelSource: '腾讯营销', appointmentScheduled: true, paymentAmount: new Prisma.Decimal(200), customData: { quote: 15 }, tags: [{ tagId: 'valid' }], project: { name: '口腔' }, promotionAccount: { id: 'account-a', name: '腾讯01', project: '口腔' }, owner: { id: 'member-a', username: 'member-a', nickname: '小王', team: { id: 'team-a', name: '网咨一组' } }, status: { code: 'VISITED', category: ConsultationStatusCategory.IN_PROGRESS } },
+    { id: '2', recordedAt: new Date('2026-10-28T03:00:00Z'), channelSource: '腾讯营销', appointmentScheduled: false, paymentAmount: new Prisma.Decimal(0), customData: { quote: 5 }, tags: [], project: { name: '口腔' }, promotionAccount: { id: 'account-b', name: '腾讯02', project: '口腔' }, owner: { id: 'member-b', username: 'member-b', nickname: '小李', team: { id: 'team-b', name: '网咨二组' } }, status: { code: 'INVALID', category: ConsultationStatusCategory.INVALID } }
   ];
   const prisma = {
+    systemConfig: { findUnique: jest.fn().mockResolvedValue({ valueJson: { validTagIds: ['valid'], invalidTagIds: [] } }) },
     consultationFieldConfig: { findMany: jest.fn().mockResolvedValue([{ code: 'quote', name: '报价' }]) },
     consultationForm: { findMany: jest.fn().mockResolvedValue(rows) }
   };
@@ -39,5 +40,16 @@ describe('consultation reports', () => {
     expect(result.tree.map(team => team.label).sort()).toEqual(['网咨一组', '网咨二组'].sort());
     expect(result.tree.find(team => team.label === '网咨一组')?.children.map(member => member.label)).toEqual(['小王']);
     expect(result.tree.find(team => team.label === '网咨一组')?.children[0].children).toEqual([]);
+  });
+
+  it.each(['channel', 'daily'] as const)('applies selected tags to %s report', async (mode) => {
+    prisma.systemConfig.findUnique.mockResolvedValueOnce({ valueJson: { validTagIds: ['valid'], invalidTagIds: ['invalid'] } } as never);
+    prisma.consultationForm.findMany.mockResolvedValueOnce([
+      { ...rows[0], tags: [{ tagId: 'invalid' }] },
+      { ...rows[1], tags: [{ tagId: 'valid' }] },
+    ] as never);
+    const result = await service.report({ mode, from: '2026-10-28', to: '2026-10-28' }, user);
+    expect(result.summary.valid).toBe(1);
+    expect(result.tree.flatMap((node) => node.children).length).toBeGreaterThan(0);
   });
 });

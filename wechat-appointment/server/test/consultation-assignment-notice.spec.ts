@@ -10,7 +10,12 @@ describe('网咨转交公众号通知', () => {
   const prisma = {
     consultationForm: { findUnique: jest.fn().mockResolvedValue(form) },
     adminUser: { findUnique: jest.fn().mockResolvedValue(owner) },
-    auditLog: { create: jest.fn().mockResolvedValue({}) }
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    consultationAssignmentNoticeJob: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
+    }
   };
   const configs = { getAppointmentNotifyConfig: jest.fn().mockResolvedValue({
     enabled: false, templateId: 'appointment-template', assignmentEnabled: true, assignmentTemplateId: 'assignment-template'
@@ -39,6 +44,18 @@ describe('网咨转交公众号通知', () => {
     const post = jest.spyOn(axios, 'post');
     await service.sendConsultationAssignmentNotice('form-1', 'new-owner');
     expect(post).not.toHaveBeenCalled();
+    post.mockRestore();
+  });
+
+  it('持久任务领取后记录公众号发送结果，避免服务重启静默漏单', async () => {
+    prisma.consultationAssignmentNoticeJob.findMany.mockResolvedValueOnce([{
+      id: 'job-1', formId: 'form-1', ownerAdminId: 'new-owner'
+    }]);
+    const post = jest.spyOn(axios, 'post').mockResolvedValueOnce({ data: { errcode: 0, msgid: 123 } });
+    await (service as any).runAssignmentNoticeWorker();
+    expect(prisma.consultationAssignmentNoticeJob.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'job-1' }, data: expect.objectContaining({ status: 'SENT' })
+    }));
     post.mockRestore();
   });
 });

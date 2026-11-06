@@ -42,4 +42,28 @@ describe('Logged-in Tencent User Token settings', () => {
     await expect(service.saveMyTencentUserToken({ userToken: 'token', clearUserToken: true }, user)).rejects.toThrow('不能同时');
     expect(prisma.tencentUserToken.upsert).not.toHaveBeenCalled();
   });
+
+  it('keeps Tencent callback tokens on the server and consumes one-time state', async () => {
+    const { prisma, audit, crypto } = setup();
+    (prisma as any).adminUser = { findFirst: jest.fn().mockResolvedValue({ id: 'employee-a' }) };
+    const redis = {
+      set: jest.fn().mockResolvedValue('OK'),
+      eval: jest.fn().mockResolvedValue(JSON.stringify({ adminUserId: 'employee-a' })),
+    };
+    const config = { get: jest.fn((key: string) => key === 'SERVER_BASE_URL' ? 'https://api.example.com' : 'https://admin.example.com') };
+    const service = new OperationsService(prisma as never, audit as never, crypto as never, {} as never, undefined, undefined, redis as never, config as never);
+    const authorization = await service.createTencentUserTokenAuthorization(user);
+    expect(authorization.authorizationUrl).toContain(encodeURIComponent('https://api.example.com/api/admin/operations/tencent-user-token-auth/callback'));
+    expect(authorization.authorizationUrl).not.toContain('user_token=');
+    expect(redis.set).toHaveBeenCalledWith(expect.stringMatching(/^tencent:user-token-auth:/), expect.stringContaining('employee-a'), 'EX', 600, 'NX');
+
+    const result = await service.completeTencentUserTokenAuthorization({
+      state: 'a'.repeat(64), userStatus: '2', userToken: 'server-only-token', expireTime: String(Math.floor(Date.now() / 1000) + 3600),
+    });
+    expect(result.redirectUrl).toBe('https://admin.example.com/promotion/accounts?user_token_status=success');
+    expect(redis.eval).toHaveBeenCalledTimes(1);
+    expect(crypto.encryptText).toHaveBeenCalledWith('server-only-token');
+    expect(JSON.stringify(audit.create.mock.calls)).not.toContain('server-only-token');
+    expect(result.redirectUrl).not.toContain('server-only-token');
+  });
 });

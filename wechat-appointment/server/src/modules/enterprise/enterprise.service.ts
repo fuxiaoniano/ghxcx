@@ -12,8 +12,6 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
 import { normalizeUploadFilename } from '../../common/utils/upload-filename';
-import { NotificationsService } from '../notifications/notifications.service';
-import { FollowupForwarderService } from '../followup-forwarder/followup-forwarder.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { AdminCurrentUser } from '../../common/decorators/current-user.decorator';
 import {
@@ -27,14 +25,13 @@ import {
 } from './dto';
 
 type AuditContext = { user: AdminCurrentUser; ip?: string; userAgent?: string };
+const POST_CREATE_JOB_KINDS = ['FOLLOWUP_FORWARD', 'USER_NOTICE', 'STAFF_NOTICE'] as const;
 
 /** 新企业官网业务服务；所有写入均复用原 Prisma、用户、通知、回访和审计基础设施。 */
 @Injectable()
 export class EnterpriseService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
-    private readonly followupForwarder: FollowupForwarderService,
     private readonly auditLogs: AuditLogsService,
     @Inject('REDIS') private readonly redis: Redis
   ) {}
@@ -197,12 +194,12 @@ export class EnterpriseService {
             symptomDescription: dto.symptomDescription,
             gender: dto.gender || null,
             source: dto.source || 'mini_program_enterprise',
-            remark: dto.symptomDescription
+            remark: dto.symptomDescription,
+            postCreateJobs: { create: POST_CREATE_JOB_KINDS.map((kind) => ({ kind })) }
           },
           include: { clinic: true, doctor: true, dentalCategory: true, dentalProject: true, package: true }
         });
       });
-      await this.afterAppointmentCreated(appointment.id);
       return this.appointmentView(appointment);
     } catch (error) {
       await this.redis.del(lockKey).catch(() => undefined);
@@ -237,11 +234,11 @@ export class EnterpriseService {
           packageId: packageItem.id,
           appointmentDate: date.toDate(),
           source: dto.source || 'mini_program_package',
-          remark: `套餐申请：${packageItem.title}`
+          remark: `套餐申请：${packageItem.title}`,
+          postCreateJobs: { create: POST_CREATE_JOB_KINDS.map((kind) => ({ kind })) }
         },
         include: { clinic: true, doctor: true, dentalCategory: true, dentalProject: true, package: true }
       });
-      await this.afterAppointmentCreated(appointment.id);
       return this.appointmentView(appointment);
     } catch (error) {
       await this.redis.del(lockKey).catch(() => undefined);
@@ -512,15 +509,6 @@ export class EnterpriseService {
       if (!(await this.prisma.appointment.findUnique({ where: { appointmentNo: no } }))) return no;
     }
     return `${prefix}${dayjs().format('YYYYMMDDHHmmss')}${Math.floor(1000 + Math.random() * 9000)}`;
-  }
-
-  private async afterAppointmentCreated(id: string) {
-    void this.followupForwarder.forwardAppointment(id).catch(() => undefined);
-    // 预约已成功写库后，通知异步执行；微信故障不会影响用户看到成功结果。
-    void Promise.all([
-      this.notifications.sendAppointmentSuccess(id).catch(() => undefined),
-      this.notifications.sendStaffAppointmentNotice(id).catch(() => undefined)
-    ]);
   }
 
   private async doctorDepartmentIds(data: DoctorDto) {

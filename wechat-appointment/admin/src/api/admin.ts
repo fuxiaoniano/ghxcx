@@ -1025,6 +1025,7 @@ export const getPromotionAccountCredential = (id: string) => http.get<unknown, P
 export const savePromotionAccountCredential = (id: string, data: { accessToken?: string; clientId?: string; clientSecret?: string; refreshToken?: string; userToken?: string; userTokenExpiresAt?: string; clearAccessToken?: boolean; clearClientSecret?: boolean; clearRefreshToken?: boolean; clearUserToken?: boolean }) => http.put<unknown, PromotionAccountCredentialStatus>(`${operationsBase}/accounts/${id}/credentials`, data);
 export interface TencentUserTokenStatus { hasUserToken: boolean; userTokenExpiresAt: string | null; }
 export const getMyTencentUserToken = () => http.get<unknown, TencentUserTokenStatus>(`${operationsBase}/my-tencent-user-token`);
+export const createMyTencentUserTokenAuthorization = () => http.post<unknown, { authorizationUrl: string; expiresIn: number }>(`${operationsBase}/my-tencent-user-token/authorization`);
 export const saveMyTencentUserToken = (data: { userToken?: string; userTokenExpiresAt?: string; clearUserToken?: boolean }) => http.put<unknown, TencentUserTokenStatus>(`${operationsBase}/my-tencent-user-token`, data);
 export interface PromotionAccountAccessGrantItem { id: string; adminUserId: string; username?: string; nickname?: string; role?: string; grant?: { canViewData: boolean; canViewMaterials: boolean; canViewCreatives: boolean; canCreateCreatives: boolean }; canViewData?: boolean; canViewMaterials?: boolean; canViewCreatives?: boolean; canCreateCreatives?: boolean; }
 export const getPromotionAccountAccessGrants = (id: string) => http.get<unknown, PromotionAccountAccessGrantItem[]>(`${operationsBase}/accounts/${id}/access-grants`);
@@ -1234,10 +1235,14 @@ export const getConsultations = (params: Record<string, unknown>) => http.get<un
 export const getConsultation = (id: string) => http.get<unknown, ConsultationFormItem>(`${consultationBase}/${id}`);
 export const createConsultation = (data: Record<string, unknown>) => http.post<unknown, ConsultationFormItem>(consultationBase, data);
 export const updateConsultation = (id: string, data: Record<string, unknown>) => http.patch<unknown, ConsultationFormItem>(`${consultationBase}/${id}`, data);
+export const deleteConsultation = (id: string) => http.delete(`${consultationBase}/${id}`);
+export interface ConsultationScheduleResult { month: string; days: number; members: Array<{ id: string; username: string; nickname: string; teamId?: string | null }>; entries: Array<{ adminUserId: string; date: string; shift: 'MORNING' | 'REST' }> }
+export const getConsultationSchedule = (month: string) => http.get<unknown, ConsultationScheduleResult>(`${consultationBase}/schedule`, { params: { month } });
+export const saveConsultationSchedule = (data: { adminUserId: string; date: string; shift: 'MORNING' | 'REST' }) => http.put(`${consultationBase}/schedule`, data);
 export const addConsultationFollowUp = (id: string, data: Record<string, unknown>) => http.post<unknown, ConsultationFormItem>(`${consultationBase}/${id}/follow-ups`, data);
 export const assignConsultation = (id: string, data: { ownerAdminId: string; reason?: string }) => http.patch(`${consultationBase}/${id}/assign`, data);
-export const bulkAssignConsultations = (data: { ids: string[]; ownerAdminId: string; reason?: string }) => http.post(`${consultationBase}/bulk-assign`, data);
-export const previewBulkAssignConsultations = (data: { ids: string[]; ownerAdminId: string; reason?: string }) => http.post(`${consultationBase}/bulk-assign/preview`, data);
+export const bulkAssignConsultations = (data: { ids: string[]; ownerAdminIds: string[]; reason?: string }) => http.post(`${consultationBase}/bulk-assign`, data);
+export const previewBulkAssignConsultations = (data: { ids: string[]; ownerAdminIds: string[]; reason?: string }) => http.post(`${consultationBase}/bulk-assign/preview`, data);
 export const bulkAddConsultationTags = (data: { ids: string[]; tagIds: string[] }) => http.post(`${consultationBase}/bulk-tags/add`, data);
 export const bulkRemoveConsultationTags = (data: { ids: string[]; tagIds: string[] }) => http.post(`${consultationBase}/bulk-tags/remove`, data);
 export const getConsultationCallbacks = () => http.get<unknown, { counts: { today: number; overdue: number; completed: number }; today: ConsultationFormItem[]; overdue: ConsultationFormItem[] }>(`${consultationBase}/callbacks/today`);
@@ -1251,6 +1256,9 @@ export const createConsultationStatus = (data: Record<string, unknown>) => http.
 export const updateConsultationStatus = (id: string, data: Record<string, unknown>) => http.patch<unknown, ConsultationStatusItem>(`${consultationBase}/settings/statuses/${id}`, data);
 export const deleteConsultationStatus = (id: string) => http.delete(`${consultationBase}/settings/statuses/${id}`);
 export const getConsultationTags = () => http.get<unknown, ConsultationTagItem[]>(`${consultationBase}/settings/tags`);
+export interface ConsultationValidityRule { validTagIds: string[]; invalidTagIds: string[]; }
+export const getConsultationValidityRule = () => http.get<unknown, ConsultationValidityRule>(`${consultationBase}/settings/validity-rule`);
+export const saveConsultationValidityRule = (data: ConsultationValidityRule) => http.put<unknown, ConsultationValidityRule>(`${consultationBase}/settings/validity-rule`, data);
 export const createConsultationTag = (data: Record<string, unknown>) => http.post<unknown, ConsultationTagItem>(`${consultationBase}/settings/tags`, data);
 export const updateConsultationTag = (id: string, data: Record<string, unknown>) => http.patch<unknown, ConsultationTagItem>(`${consultationBase}/settings/tags/${id}`, data);
 export const deleteConsultationTag = (id: string) => http.delete(`${consultationBase}/settings/tags/${id}`);

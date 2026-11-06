@@ -18,7 +18,7 @@ describe('AppointmentsService', () => {
   };
 
   function createService(redisSetResult: 'OK' | null = 'OK') {
-    const prisma = {
+    const prisma: any = {
       user: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'user_1',
@@ -34,8 +34,13 @@ describe('AppointmentsService', () => {
         create: jest.fn().mockResolvedValue(appointment),
         findMany: jest.fn(),
         findFirst: jest.fn()
+      },
+      appointmentPostCreateJob: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
+    prisma.$transaction = jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations));
     const notifications = {
       sendAppointmentSuccess: jest.fn().mockResolvedValue({}),
       sendStaffAppointmentNotice: jest.fn().mockResolvedValue({})
@@ -79,7 +84,7 @@ describe('AppointmentsService', () => {
   }
 
   it('creates appointment with phone copied from current user', async () => {
-    const { service, prisma, notifications, followupForwarder } = createService();
+    const { service, prisma } = createService();
     const result = await service.create('user_1', {
       name: '张三',
       ageRange: '40-50岁',
@@ -94,13 +99,11 @@ describe('AppointmentsService', () => {
           phoneEncrypted: 'encrypted',
           phoneHash: 'hash',
           phoneMasked: '138****8000',
-          landingPageId: 'landing_1'
+          landingPageId: 'landing_1',
+          postCreateJobs: { create: expect.arrayContaining([{ kind: 'USER_NOTICE' }, { kind: 'STAFF_NOTICE' }, { kind: 'FOLLOWUP_FORWARD' }]) }
         })
       })
     );
-    expect(notifications.sendAppointmentSuccess).toHaveBeenCalledWith('appt_1');
-    expect(notifications.sendStaffAppointmentNotice).toHaveBeenCalledWith('appt_1');
-    expect(followupForwarder.forwardAppointment).toHaveBeenCalledWith('appt_1');
     expect(result.phoneMasked).toBe('138****8000');
   });
 
@@ -117,7 +120,7 @@ describe('AppointmentsService', () => {
   });
 
   it('creates an H5 appointment with encrypted phone and triggers notifications', async () => {
-    const { service, prisma, crypto, notifications, followupForwarder } = createService();
+    const { service, prisma, crypto } = createService();
     prisma.appointment.create.mockResolvedValue({
       ...appointment,
       phoneMasked: '139****9000',
@@ -144,8 +147,22 @@ describe('AppointmentsService', () => {
       })
     );
     expect(JSON.stringify(prisma.appointment.create.mock.calls[0][0])).not.toContain('13900009000');
-    expect(notifications.sendStaffAppointmentNotice).toHaveBeenCalledWith('appt_1');
-    expect(followupForwarder.forwardAppointment).toHaveBeenCalledWith('appt_1');
     expect(result.phoneMasked).toBe('139****9000');
+  });
+
+  it('processes a pending persisted post-create job after a worker restart', async () => {
+    const { service, prisma, notifications } = createService();
+    prisma.appointmentPostCreateJob.findFirst.mockResolvedValue({ id: 'job', appointmentId: 'appt_1', kind: 'USER_NOTICE', status: 'PENDING', attemptCount: 0, updatedAt: new Date() });
+    await (service as any).runPostCreateWorker();
+    expect(notifications.sendAppointmentSuccess).toHaveBeenCalledWith('appt_1');
+    expect(prisma.appointmentPostCreateJob.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'SUCCEEDED' }) }));
+  });
+
+  it('marks an interrupted post-create job unknown instead of resending it', async () => {
+    const { service, prisma, notifications } = createService();
+    prisma.appointmentPostCreateJob.findFirst.mockResolvedValue(null);
+    await (service as any).runPostCreateWorker();
+    expect(prisma.appointmentPostCreateJob.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: 'PROCESSING' }), data: { status: 'UNKNOWN', lastErrorCode: 'INTERRUPTED_NEEDS_REVIEW' } }));
+    expect(notifications.sendAppointmentSuccess).not.toHaveBeenCalled();
   });
 });

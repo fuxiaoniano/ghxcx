@@ -3,7 +3,7 @@
     <section class="login-shell">
       <div class="identity-panel">
         <div class="identity-brand">
-          <span class="identity-mark">种</span>
+          <span class="identity-mark"><img src="/admin-favicon.png" alt="" /></span>
           <div><strong>傅小念的运营工作台</strong></div>
         </div>
         <div class="identity-message">
@@ -15,7 +15,7 @@
       </div>
 
       <div class="login-panel">
-        <div class="mobile-brand"><span class="identity-mark">管</span><strong>傅小念的运营工作台</strong></div>
+        <div class="mobile-brand"><span class="identity-mark"><img src="/admin-favicon.png" alt="" /></span><strong>傅小念的运营工作台</strong></div>
         <div class="form-heading">
           <span>ADMIN CONSOLE</span>
           <h2>{{ loginMode === 'wechat' ? '微信扫码登录' : '账号密码登录' }}</h2>
@@ -175,7 +175,8 @@ onBeforeUnmount(stopPolling);
 .identity-panel { position: relative; display: flex; flex-direction: column; justify-content: space-between; padding: 42px; overflow: hidden; color: var(--admin-text); background: #e8f2ff; }
 .identity-brand, .mobile-brand, .identity-footer, .scan-status, .pc-wechat-link { display: flex; align-items: center; }
 .identity-brand, .mobile-brand { gap: 12px; }
-.identity-mark { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; color: #fff; background: var(--admin-primary); border: 0; border-radius: 14px; font-size: 19px; font-weight: 750; }
+.identity-mark { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; overflow: hidden; background: var(--admin-primary); border: 0; border-radius: 12px; }
+.identity-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .identity-brand > div { display: flex; flex-direction: column; }
 .identity-brand strong { font-size: 17px; }
 .identity-brand span:last-child { color: var(--admin-text-muted); font-size: 12px; }
