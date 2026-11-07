@@ -413,6 +413,7 @@ export interface PromotionDailyMetricItem {
   validLeads: number;
   appointments: number;
   transactions: number;
+  transactionAmount: number;
   revenue: number;
   customMetrics: Record<string, string | number>;
   calculated: PromotionCalculatedMetrics;
@@ -420,6 +421,8 @@ export interface PromotionDailyMetricItem {
   syncSource?: string;
   syncedAt?: string | null;
   isArchived: boolean;
+  patientArrivalCount?: number;
+  patientOnly?: boolean;
   account: PromotionAccountItem;
 }
 
@@ -427,6 +430,47 @@ export interface PromotionFilterData {
   rows: PromotionDailyMetricItem[];
   fields: PromotionMetricFieldItem[];
   accounts: PromotionAccountItem[];
+}
+
+export interface PromotionArrivalFieldItem {
+  id: string;
+  key: string;
+  label: string;
+  dataType: 'TEXT' | 'NUMBER' | 'DATE';
+  required: boolean;
+  enabled: boolean;
+  sort: number;
+}
+export interface PromotionArrivalPatientItem {
+  id: string;
+  accountId: string;
+  name: string;
+  phone: string;
+  project: string;
+  channelSource: string;
+  accountName: string;
+  arrivalDate: string;
+  visitType: '初诊' | '复诊';
+  transactionAmount: number;
+  receivedAmount: number;
+  onlineConsultant?: string | null;
+  consultant?: string | null;
+  customData: Record<string, string | number>;
+  createdAt: string;
+  updatedAt: string;
+  account: PromotionAccountItem;
+}
+export interface PromotionArrivalPatientPayload {
+  accountId: string;
+  name: string;
+  phone?: string;
+  arrivalDate: string;
+  visitType: '初诊' | '复诊';
+  transactionAmount: number;
+  receivedAmount: number;
+  onlineConsultant?: string;
+  consultant?: string;
+  customData?: Record<string, string | number>;
 }
 
 export interface PromotionDataSyncConfigItem {
@@ -1031,6 +1075,16 @@ export interface PromotionAccountAccessGrantItem { id: string; adminUserId: stri
 export const getPromotionAccountAccessGrants = (id: string) => http.get<unknown, PromotionAccountAccessGrantItem[]>(`${operationsBase}/accounts/${id}/access-grants`);
 export const savePromotionAccountAccessGrants = (id: string, grants: Array<Pick<PromotionAccountAccessGrantItem, 'adminUserId' | 'canViewData' | 'canViewMaterials' | 'canViewCreatives' | 'canCreateCreatives'>>) => http.put<unknown, { accountId: string; grants: PromotionAccountAccessGrantItem[] }>(`${operationsBase}/accounts/${id}/access-grants`, { grants });
 export const getPromotionDailyMetrics = (params: Record<string, string>) => http.get<unknown, PromotionDailyMetricItem[]>(`${operationsBase}/daily`, { params: operationParams(params) });
+const arrivalPatientsBase = `${operationsBase}/arrival-patients`;
+export const getPromotionArrivalPatientMeta = () => http.get<unknown, { accounts: PromotionAccountItem[]; fields: PromotionArrivalFieldItem[] }>(`${arrivalPatientsBase}/meta`);
+export const getPromotionArrivalPatients = (params: Record<string, unknown>) => http.get<unknown, { items: PromotionArrivalPatientItem[]; total: number; page: number; pageSize: number }>(arrivalPatientsBase, { params });
+export const createPromotionArrivalPatient = (data: PromotionArrivalPatientPayload) => http.post<unknown, PromotionArrivalPatientItem>(arrivalPatientsBase, data);
+export const updatePromotionArrivalPatient = (id: string, data: PromotionArrivalPatientPayload) => http.patch<unknown, PromotionArrivalPatientItem>(`${arrivalPatientsBase}/${id}`, data);
+export const deletePromotionArrivalPatient = (id: string) => http.delete<unknown, { id: string; deleted: boolean }>(`${arrivalPatientsBase}/${id}`);
+export const createPromotionArrivalField = (data: Omit<PromotionArrivalFieldItem, 'id' | 'key'>) => http.post<unknown, PromotionArrivalFieldItem>(`${arrivalPatientsBase}/fields`, data);
+export const updatePromotionArrivalField = (id: string, data: Omit<PromotionArrivalFieldItem, 'id' | 'key'>) => http.patch<unknown, PromotionArrivalFieldItem>(`${arrivalPatientsBase}/fields/${id}`, data);
+export const deletePromotionArrivalField = (id: string) => http.delete<unknown, { id: string; deleted: boolean }>(`${arrivalPatientsBase}/fields/${id}`);
+export function importPromotionPatientCharges(file: File) { const data = new FormData(); data.append('file', file); return http.post<unknown, { imported: number; failed: number; errors: Array<{ row: number; message: string }> }>(`${arrivalPatientsBase}/import`, data, { headers: { 'Content-Type': 'multipart/form-data' } }); }
 export const getPromotionDashboard = (params: Record<string, string>) => http.get<unknown, PromotionFilterData>(`${operationsBase}/dashboard`, { params: operationParams(params) });
 export const getPromotionFilterData = (params: Record<string, string>) => http.get<unknown, PromotionFilterData>(`${operationsBase}/filter-data`, { params: operationParams(params) });
 export const createPromotionDailyMetric = (data: PromotionDailyMetricPayload) => http.post<unknown, PromotionDailyMetricItem>(`${operationsBase}/daily`, data);
@@ -1275,6 +1329,8 @@ async function downloadAdminFile(path: string, filename: string, params?: Record
 export const downloadConsultationTemplate = () => downloadAdminFile(`${consultationBase}/import/template`, '网咨数据导入模板.xlsx');
 export const downloadConsultationImportErrors = (batchId: string) => downloadAdminFile(`${consultationBase}/import/${batchId}/errors`, '网咨导入错误明细.xlsx');
 export const exportConsultations = (params: Record<string, unknown>) => downloadAdminFile(`${consultationBase}/export/file`, `网咨数据-${new Date().toISOString().slice(0, 10)}.xlsx`, params);
+export const downloadPromotionPatientChargeTemplate = () => downloadAdminFile(`${arrivalPatientsBase}/import/template`, '患者收费导入模板.xlsx');
+export const exportPromotionPatientCharges = (params: Record<string, unknown>) => downloadAdminFile(`${arrivalPatientsBase}/export`, `患者收费明细-${new Date().toISOString().slice(0, 10)}.xlsx`, params);
 
 export type SmartMonitorAccount = { id: string; name: string; accountNo: string; platform: string; project: string; status: string; policy: { enabled: boolean; autoEnabled: boolean; emergencyStop: boolean } };
 export type SmartMonitorMetrics = { targetCpa: number | null; targetSource: string | null; spend: number | null; impressions: number | null; clicks: number | null; conversions: number | null; actualCpa: number | null; costRatio: number | null; reportSource: string | null; reportPeriodStart: string | null; reportPeriodEnd: string | null; fetchedAt: string | null; reportAgeMinutes: number | null; backfillStatus: string | null; evidenceHours: number; recommendation: string; assessment: { state: 'INSUFFICIENT' | 'NORMAL' | 'WARNING'; evidence: string; ratio: number | null } };

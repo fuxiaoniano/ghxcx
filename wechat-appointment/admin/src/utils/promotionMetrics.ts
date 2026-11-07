@@ -29,7 +29,7 @@ export function aggregatePromotionRows(
       id: `summary-${key}`,
       statDate: periodLabel || row.statDate,
       spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0,
-      appointments: 0, transactions: 0, revenue: 0, customMetrics: {}, details: [],
+      appointments: 0, transactions: 0, transactionAmount: 0, revenue: 0, customMetrics: {}, details: [],
       calculated: { clickRate: null, validRate: null, averageCost: null, validCost: null, conversionRate: null, arrivalRate: null, validArrivalRate: null, arrivalCost: null, roi: null },
     };
     current.details.push(row);
@@ -40,6 +40,7 @@ export function aggregatePromotionRows(
     current.validLeads += Number(row.validLeads || 0);
     current.appointments += Number(row.appointments || 0);
     current.transactions += Number(row.transactions || 0);
+    current.transactionAmount += Number(row.transactionAmount || 0);
     current.revenue += Number(row.revenue || 0);
     for (const [fieldKey, raw] of Object.entries(row.customMetrics || {})) {
       if (numericCustomKeys.has(fieldKey)) current.customMetrics[fieldKey] = Number(current.customMetrics[fieldKey] || 0) + Number(raw || 0);
@@ -56,6 +57,7 @@ export function aggregatePromotionRows(
     row.isArchived = row.details.every((detail) => detail.isArchived);
     row.spend = Number(row.spend.toFixed(2));
     row.revenue = Number(row.revenue.toFixed(2));
+    row.transactionAmount = Number(row.transactionAmount.toFixed(2));
     row.calculated = {
       clickRate: row.impressions ? row.clicks / row.impressions : null,
       validRate: row.leads ? row.validLeads / row.leads : null,

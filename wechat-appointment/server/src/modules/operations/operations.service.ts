@@ -228,7 +228,7 @@ export class OperationsService {
   private async periodReport(dateFrom: string, dateTo: string, noteDate: string, periodType: 'day' | 'week' | 'month', user?: AdminCurrentUser) {
     const noteStatDate = this.date(noteDate);
     const [metrics, notes] = await Promise.all([
-      this.prisma.promotionDailyMetric.findMany({ where: { statDate: { gte: this.date(dateFrom), lte: this.date(dateTo) }, account: await this.accountScope(user) }, include: { account: true }, orderBy: [{ account: { platform: 'asc' } }, { account: { name: 'asc' } }] }),
+      this.mergedMetrics({ dateFrom, dateTo }, user),
       this.prisma.promotionDailyReportNote.findMany({ where: { statDate: noteStatDate, periodType } }),
     ]);
     const noteMap = new Map(notes.map((note) => [`${note.project}:${note.channel}`, note]));
@@ -410,13 +410,8 @@ export class OperationsService {
   }
 
   async daily(query: DateRangeQueryDto, user?: AdminCurrentUser) {
-    const where = await this.dateWhere(query, user);
-    const rows = await this.prisma.promotionDailyMetric.findMany({
-      where,
-      include: { account: true },
-      orderBy: [{ statDate: 'desc' }, { account: { name: 'asc' } }]
-    });
-    return rows.map((row) => this.metricItem(row));
+    const rows = await this.mergedMetrics(query, user);
+    return rows.sort((left, right) => dayjs(right.statDate).valueOf() - dayjs(left.statDate).valueOf() || left.account.name.localeCompare(right.account.name, 'zh-CN')).map((row) => this.metricItem(row));
   }
 
   async filterData(query: DateRangeQueryDto, user?: AdminCurrentUser) {
@@ -756,9 +751,7 @@ export class OperationsService {
   async summary(query: DateRangeQueryDto, unit: SummaryUnit, user?: AdminCurrentUser) {
     if (unit === 'week' && query.dateFrom && query.dateTo) return this.customRangeSummary(query, user);
     // 先按账户取完整历史，再用日期范围决定展示哪些自然周/月；这样不会把一个自然周期截成半周或半月。
-    const rows = await this.prisma.promotionDailyMetric.findMany({
-      where: { ...(query.accountId ? { accountId: query.accountId } : {}), account: await this.accountFilter(query, user) }, include: { account: true }, orderBy: { statDate: 'asc' }
-    });
+    const rows = await this.mergedMetrics({ accountId: query.accountId, accountName: query.accountName, project: query.project, platform: query.platform }, user);
     const selectedKeys = new Set(rows
       .filter((row) => this.inDateRange(dayjs(row.statDate).format('YYYY-MM-DD'), query))
       .map((row) => `${unit === 'week' ? this.monday(dayjs(row.statDate).format('YYYY-MM-DD')) : dayjs(row.statDate).startOf('month').format('YYYY-MM-DD')}:${this.accountGroupKey(row.account)}`));
@@ -789,15 +782,7 @@ export class OperationsService {
     const dayCount = Math.max(1, dayjs(dateTo).diff(dayjs(dateFrom), 'day') + 1);
     const previousFrom = dayjs(dateFrom).subtract(dayCount, 'day').format('YYYY-MM-DD');
     const previousTo = dayjs(dateFrom).subtract(1, 'day').format('YYYY-MM-DD');
-    const rows = await this.prisma.promotionDailyMetric.findMany({
-      where: {
-        ...(query.accountId ? { accountId: query.accountId } : {}),
-        account: await this.accountFilter(query, user),
-        statDate: { gte: this.date(previousFrom), lte: this.date(dateTo) },
-      },
-      include: { account: true },
-      orderBy: { statDate: 'asc' },
-    });
+    const rows = await this.mergedMetrics({ ...query, dateFrom: previousFrom, dateTo }, user);
     const currentGroups = new Map<string, ReturnType<OperationsService['newRangeSummary']>>();
     const previousGroups = new Map<string, ReturnType<OperationsService['newRangeSummary']>>();
     for (const row of rows) {
@@ -826,7 +811,7 @@ export class OperationsService {
 
   private async ensureDefaultFields() {
     const defaults = [
-      ['spend', '消费', 10], ['impressions', '展现', 20], ['clicks', '点击', 30], ['clickRate', '点击率', 40], ['leads', '总表单', 50], ['validLeads', '有效表单', 60], ['validRate', '有效率', 70], ['averageCost', '平均成本', 80], ['validCost', '有效成本', 90], ['appointments', '到院', 100], ['transactions', '成交', 110], ['conversionRate', '成交率', 120], ['arrivalRate', '到诊率', 130], ['validArrivalRate', '有效到诊率', 140], ['arrivalCost', '到院成本', 150], ['revenue', '实收', 160], ['roi', '投产比', 170],
+      ['spend', '消费', 10], ['impressions', '展现', 20], ['clicks', '点击', 30], ['clickRate', '点击率', 40], ['leads', '总表单', 50], ['validLeads', '有效表单', 60], ['validRate', '有效率', 70], ['averageCost', '平均成本', 80], ['validCost', '有效成本', 90], ['appointments', '到院', 100], ['transactions', '成交', 110], ['transactionAmount', '成交金额', 115], ['conversionRate', '成交率', 120], ['arrivalRate', '到诊率', 130], ['validArrivalRate', '有效到诊率', 140], ['arrivalCost', '到院成本', 150], ['revenue', '实收', 160], ['roi', '投产比', 170],
     ] as const;
     await Promise.all(defaults.map(([key, label, sort]) => this.prisma.promotionMetricField.upsert({ where: { key }, update: {}, create: { key, label, source: 'SYSTEM', dataType: 'NUMBER', sort } })));
   }
@@ -845,6 +830,57 @@ export class OperationsService {
       if (query.dateTo) where.statDate.lte = this.date(query.dateTo);
     }
     return where;
+  }
+
+  /**
+   * 患者收费是独立业务明细，读取统计时按账户和日期合并，避免平台日报同步覆盖患者数据，
+   * 也避免患者编辑/删除时对累计值进行不可逆加减。
+   */
+  private async mergedMetrics(query: DateRangeQueryDto, user?: AdminCurrentUser): Promise<any[]> {
+    const metrics = await this.prisma.promotionDailyMetric.findMany({ where: await this.dateWhere(query, user), include: { account: true }, orderBy: [{ statDate: 'asc' }, { account: { name: 'asc' } }] });
+    const arrivalDelegate = (this.prisma as any).promotionArrivalPatient;
+    if (!arrivalDelegate?.findMany) return metrics;
+    const account = await this.accountFilter(query, user);
+    const arrivals = await arrivalDelegate.findMany({
+      where: {
+        account: account,
+        ...(query.accountId ? { accountId: query.accountId } : {}),
+        ...(query.dateFrom || query.dateTo ? { arrivalDate: {
+          ...(query.dateFrom ? { gte: this.date(query.dateFrom) } : {}),
+          ...(query.dateTo ? { lte: this.date(query.dateTo) } : {}),
+        } } : {}),
+      },
+      include: { account: true },
+      orderBy: { arrivalDate: 'asc' },
+    });
+    const phoneHashes = [...new Set(arrivals.map((item: any) => item.phoneHash).filter((value: unknown): value is string => typeof value === 'string' && Boolean(value)))];
+    const allChargesForPhones = phoneHashes.length ? await arrivalDelegate.findMany({ where: { phoneHash: { in: phoneHashes } }, select: { id: true, phoneHash: true }, orderBy: [{ arrivalDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] }) : [];
+    const firstChargeByPhone = new Map<string, string>();
+    for (const item of allChargesForPhones) if (!firstChargeByPhone.has(item.phoneHash)) firstChargeByPhone.set(item.phoneHash, item.id);
+    const byKey = new Map<string, any>();
+    for (const metric of metrics) {
+      const key = `${metric.accountId}:${dayjs(metric.statDate).format('YYYY-MM-DD')}`;
+      byKey.set(key, { ...metric, transactionAmount: 0, patientArrivalCount: 0, patientOnly: false });
+    }
+    for (const patient of arrivals) {
+      const date = dayjs(patient.arrivalDate).format('YYYY-MM-DD');
+      const key = `${patient.accountId}:${date}`;
+      const current = byKey.get(key) || {
+        id: `arrival:${key}`, accountId: patient.accountId, statDate: patient.arrivalDate,
+        spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0,
+        transactionAmount: 0, customMetrics: {}, remark: null, syncSource: 'ARRIVAL_PATIENTS', syncedAt: null, isArchived: false,
+        createdAt: patient.createdAt, updatedAt: patient.updatedAt, account: patient.account, patientArrivalCount: 0, patientOnly: true,
+      };
+      const firstCharge = !patient.phoneHash || firstChargeByPhone.get(patient.phoneHash) === patient.id;
+      if (firstCharge) current.appointments = Number(current.appointments) + 1;
+      if (firstCharge && (Number(patient.transactionAmount) > 0 || Number(patient.receivedAmount) > 0)) current.transactions = Number(current.transactions) + 1;
+      current.transactionAmount = Number(current.transactionAmount || 0) + Number(patient.transactionAmount || 0);
+      current.revenue = Number(current.revenue) + Number(patient.receivedAmount || 0);
+      current.patientArrivalCount = Number(current.patientArrivalCount || 0) + (firstCharge ? 1 : 0);
+      current.chargeRecordCount = Number(current.chargeRecordCount || 0) + 1;
+      byKey.set(key, current);
+    }
+    return Array.from(byKey.values()).sort((left, right) => dayjs(left.statDate).valueOf() - dayjs(right.statDate).valueOf() || left.account.name.localeCompare(right.account.name, 'zh-CN'));
   }
 
   private inDateRange(date: string, query: DateRangeQueryDto) {
@@ -928,8 +964,8 @@ export class OperationsService {
     return '优化定向、素材和落地页，提高有效表单占比';
   }
 
-  private addToSummary(target: ReturnType<OperationsService['newSummary']>, row: { statDate: Date; spend: Prisma.Decimal | number; impressions: number; clicks: number; leads: number; validLeads: number; appointments: number; transactions: number; revenue: Prisma.Decimal | number; customMetrics?: Prisma.JsonValue | null }) {
-    target.spend += Number(row.spend); target.impressions += row.impressions; target.clicks += row.clicks; target.leads += row.leads; target.validLeads += row.validLeads; target.appointments += row.appointments; target.transactions += row.transactions; target.revenue += Number(row.revenue);
+  private addToSummary(target: ReturnType<OperationsService['newSummary']>, row: { statDate: Date; spend: Prisma.Decimal | number; impressions: number; clicks: number; leads: number; validLeads: number; appointments: number; transactions: number; transactionAmount?: Prisma.Decimal | number; revenue: Prisma.Decimal | number; customMetrics?: Prisma.JsonValue | null }) {
+    target.spend += Number(row.spend); target.impressions += row.impressions; target.clicks += row.clicks; target.leads += row.leads; target.validLeads += row.validLeads; target.appointments += row.appointments; target.transactions += row.transactions; target.transactionAmount += Number(row.transactionAmount || 0); target.revenue += Number(row.revenue);
     target.recordedDates.add(dayjs(row.statDate).format('YYYY-MM-DD'));
     target.days = target.recordedDates.size;
     const metrics = row.customMetrics && typeof row.customMetrics === 'object' && !Array.isArray(row.customMetrics) ? row.customMetrics : {};
@@ -939,9 +975,9 @@ export class OperationsService {
     }
   }
 
-  private normalizedSummary<T extends { spend: number; revenue: number; recordedDates: Set<string> }>(row: T) {
+  private normalizedSummary<T extends { spend: number; transactionAmount?: number; revenue: number; recordedDates: Set<string> }>(row: T) {
     const { recordedDates: _recordedDates, ...values } = row;
-    return { ...values, spend: this.money(row.spend), revenue: this.money(row.revenue) };
+    return { ...values, spend: this.money(row.spend), transactionAmount: this.money(row.transactionAmount || 0), revenue: this.money(row.revenue) };
   }
 
   private async salaryConfig(): Promise<SalaryConfig> {
@@ -983,13 +1019,13 @@ export class OperationsService {
   private monday(value: string) { const date = dayjs(value); return date.subtract((date.day() + 6) % 7, 'day').format('YYYY-MM-DD'); }
   private newSummary(periodStart: string, unit: SummaryUnit, account: { id: string; name: string; project: string; platform: string; accountNo: string | null }) {
     const end = unit === 'week' ? dayjs(periodStart).add(6, 'day').format('YYYY-MM-DD') : dayjs(periodStart).endOf('month').format('YYYY-MM-DD');
-    return { periodStart, periodEnd: end, periodLabel: unit === 'week' ? `${periodStart} 至 ${end}` : dayjs(periodStart).format('YYYY年MM月'), account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0, customMetrics: {} as Record<string, string | number> };
+    return { periodStart, periodEnd: end, periodLabel: unit === 'week' ? `${periodStart} 至 ${end}` : dayjs(periodStart).format('YYYY年MM月'), account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, transactionAmount: 0, revenue: 0, customMetrics: {} as Record<string, string | number> };
   }
   private newRangeSummary(periodStart: string, periodEnd: string, account: { id: string; name: string; project: string; platform: string; accountNo: string | null }) {
-    return { periodStart, periodEnd, periodLabel: `${periodStart} 至 ${periodEnd}`, account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0, customMetrics: {} as Record<string, string | number> };
+    return { periodStart, periodEnd, periodLabel: `${periodStart} 至 ${periodEnd}`, account, days: 0, recordedDates: new Set<string>(), spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, transactionAmount: 0, revenue: 0, customMetrics: {} as Record<string, string | number> };
   }
   private metricItem(row: any) {
-    const item = { ...row, statDate: dayjs(row.statDate).format('YYYY-MM-DD'), spend: Number(row.spend), revenue: Number(row.revenue), customMetrics: row.customMetrics || {} };
+    const item = { ...row, statDate: dayjs(row.statDate).format('YYYY-MM-DD'), spend: Number(row.spend), transactionAmount: Number(row.transactionAmount || 0), revenue: Number(row.revenue), customMetrics: row.customMetrics || {} };
     return { ...item, calculated: this.calculated(item) };
   }
   /** 所有页面共用同一统计口径；分母为 0 时返回 null，避免展示 NaN / Infinity。 */

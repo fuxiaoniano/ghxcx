@@ -394,6 +394,8 @@ model AdminUser {
   consultationImports        ConsultationImportBatch[]   @relation("ConsultationImportOperator")
   consultationListPreference ConsultationListPreference?
   consultationAssignmentNoticeJobs ConsultationAssignmentNoticeJob[] @relation("ConsultationAssignmentNoticeOwner")
+  createdPromotionArrivalPatients PromotionArrivalPatient[] @relation("PromotionArrivalPatientCreator")
+  updatedPromotionArrivalPatients PromotionArrivalPatient[] @relation("PromotionArrivalPatientUpdater")
 
   @@index([unionId])
   @@index([customRoleId])
@@ -889,6 +891,7 @@ model PromotionAccount {
   createdAt                 DateTime                            @default(now())
   updatedAt                 DateTime                            @updatedAt
   metrics                   PromotionDailyMetric[]
+  arrivalPatients           PromotionArrivalPatient[]
   consultations             ConsultationForm[]
   creativeMaterialSnapshots PromotionCreativeMaterialSnapshot[]
   creativeTemplateCaches    PromotionCreativeTemplateCache[]
@@ -1446,6 +1449,52 @@ model PromotionDailyMetric {
   @@unique([accountId, statDate])
   @@index([statDate])
   @@map("promotion_daily_metrics")
+}
+
+model PromotionArrivalPatient {
+  id                 String           @id @default(cuid()) @db.VarChar(32)
+  accountId          String           @db.VarChar(32)
+  name               String           @db.VarChar(80)
+  phoneEncrypted     String           @db.Text
+  phoneHash          String           @db.VarChar(64)
+  phoneMasked        String           @db.VarChar(20)
+  project            String           @db.VarChar(40)
+  channelSource      String           @db.VarChar(80)
+  accountName        String           @db.VarChar(120)
+  arrivalDate        DateTime         @db.Date
+  visitType          String           @default("初诊") @db.VarChar(16)
+  transactionAmount  Decimal          @default(0) @db.Decimal(12, 2)
+  receivedAmount     Decimal          @default(0) @db.Decimal(12, 2)
+  onlineConsultant   String?          @db.VarChar(80)
+  consultant         String?          @db.VarChar(80)
+  customData         Json?
+  createdByAdminId   String?          @db.VarChar(32)
+  updatedByAdminId   String?          @db.VarChar(32)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  account            PromotionAccount @relation(fields: [accountId], references: [id], onDelete: Restrict, map: "pap_account_fk")
+  createdBy          AdminUser?       @relation("PromotionArrivalPatientCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull, map: "pap_creator_fk")
+  updatedBy          AdminUser?       @relation("PromotionArrivalPatientUpdater", fields: [updatedByAdminId], references: [id], onDelete: SetNull, map: "pap_updater_fk")
+
+  @@index([accountId, arrivalDate], map: "pap_account_date_ix")
+  @@index([arrivalDate], map: "pap_date_ix")
+  @@index([phoneHash], map: "pap_phone_hash_ix")
+  @@map("promotion_arrival_patients")
+}
+
+model PromotionArrivalField {
+  id        String   @id @default(cuid()) @db.VarChar(32)
+  key       String   @unique @db.VarChar(80)
+  label     String   @db.VarChar(80)
+  dataType  String   @default("TEXT") @db.VarChar(16)
+  required  Boolean  @default(false)
+  enabled   Boolean  @default(true)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, sort], map: "paf_enabled_sort_ix")
+  @@map("promotion_arrival_fields")
 }
 
 model PromotionDataSyncConfig {

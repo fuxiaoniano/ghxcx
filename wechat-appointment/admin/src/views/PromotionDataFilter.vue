@@ -70,6 +70,7 @@ const columns: Column[] = [
   { key: 'validCost', label: '有效成本', type: 'number', width: 58 },
   { key: 'appointments', label: '到院', type: 'integer', direct: true, width: 44 },
   { key: 'transactions', label: '成交', type: 'integer', direct: true, width: 44 },
+  { key: 'transactionAmount', label: '成交金额', type: 'number', direct: true, width: 58 },
   { key: 'conversionRate', label: '成交率', type: 'rate', width: 48 },
   { key: 'arrivalRate', label: '到诊率', type: 'rate', width: 48 },
   { key: 'validArrivalRate', label: '有效到诊率', type: 'rate', width: 48 },
@@ -140,8 +141,8 @@ function format(value: number | null, type: Column['type']) {
 const display = (row: PromotionDailyMetricItem, column: Column) => format(rawValue(row, column), column.type);
 
 function totals() {
-  const sum = (key: 'spend' | 'impressions' | 'clicks' | 'leads' | 'validLeads' | 'appointments' | 'transactions' | 'revenue') => aggregatedRows.value.reduce((total, row) => total + row[key], 0);
-  const base = { spend: sum('spend'), impressions: sum('impressions'), clicks: sum('clicks'), leads: sum('leads'), validLeads: sum('validLeads'), appointments: sum('appointments'), transactions: sum('transactions'), revenue: sum('revenue') };
+  const sum = (key: 'spend' | 'impressions' | 'clicks' | 'leads' | 'validLeads' | 'appointments' | 'transactions' | 'transactionAmount' | 'revenue') => aggregatedRows.value.reduce((total, row) => total + row[key], 0);
+  const base = { spend: sum('spend'), impressions: sum('impressions'), clicks: sum('clicks'), leads: sum('leads'), validLeads: sum('validLeads'), appointments: sum('appointments'), transactions: sum('transactions'), transactionAmount: sum('transactionAmount'), revenue: sum('revenue') };
   return { ...base, clickRate: base.impressions ? base.clicks / base.impressions : null, validRate: base.leads ? base.validLeads / base.leads : null, averageCost: base.leads ? base.spend / base.leads : null, validCost: base.validLeads ? base.spend / base.validLeads : null, conversionRate: base.appointments ? base.transactions / base.appointments : null, arrivalRate: base.leads ? base.appointments / base.leads : null, validArrivalRate: base.validLeads ? base.appointments / base.validLeads : null, arrivalCost: base.appointments ? base.spend / base.appointments : null, roi: base.spend ? base.revenue / base.spend : null };
 }
 function summary({ columns: tableColumns }: { columns: Array<{ label: string }> }) {

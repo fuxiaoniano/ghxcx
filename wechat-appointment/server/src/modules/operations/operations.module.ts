@@ -11,10 +11,12 @@ import { SmartMonitorController } from './smart-monitor.controller';
 import { SmartMonitorService } from './smart-monitor.service';
 import { SmartMonitorActionsService } from './smart-monitor-actions.service';
 import { TencentUserTokenAuthController } from './tencent-user-token-auth.controller';
+import { PromotionArrivalPatientsController } from './promotion-arrival-patients.controller';
+import { PromotionArrivalPatientsService } from './promotion-arrival-patients.service';
 
 @Module({
   imports: [AuditLogsModule, CryptoModule],
-  controllers: [OperationsController, SmartMonitorController, TencentUserTokenAuthController],
-  providers: [PromotionAccountAccessService, OperationsService, PromotionDataSyncService, PromotionCreativeBatchService, MultiAccountCreativeBatchService, SmartMonitorService, SmartMonitorActionsService]
+  controllers: [OperationsController, SmartMonitorController, TencentUserTokenAuthController, PromotionArrivalPatientsController],
+  providers: [PromotionAccountAccessService, OperationsService, PromotionDataSyncService, PromotionCreativeBatchService, MultiAccountCreativeBatchService, SmartMonitorService, SmartMonitorActionsService, PromotionArrivalPatientsService]
 })
 export class OperationsModule {}

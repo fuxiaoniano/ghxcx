@@ -40,6 +40,7 @@ const PromotionMonthlyReport = () => import('../views/PromotionMonthlyReport.vue
 const PromotionAccounts = () => import('../views/PromotionAccounts.vue');
 const PromotionSyncSettings = () => import('../views/PromotionSyncSettings.vue');
 const PromotionSalary = () => import('../views/PromotionSalary.vue');
+const PromotionArrivalPatients = () => import('../views/PromotionArrivalPatients.vue');
 const PromotionOperations = () => import('../views/PromotionOperations.vue');
 const SmartMonitor = () => import('../views/SmartMonitor.vue');
 const PromotionCreativeBatch = () => import('../views/PromotionCreativeBatch.vue');
@@ -86,6 +87,7 @@ export const router = createRouter({
         { path: 'operations/weekly-report', component: PromotionWeeklyReport, meta: { permission: 'PROMOTION_WEEKLY_REPORT' } },
         { path: 'operations/monthly-report', component: PromotionMonthlyReport, meta: { permission: 'PROMOTION_MONTHLY_REPORT' } },
         { path: 'operations/salary', component: PromotionSalary, meta: { permission: 'PROMOTION_SALARY' } },
+        { path: 'operations/arrival-patients', component: PromotionArrivalPatients, meta: { permission: 'PROMOTION_ARRIVAL_PATIENT_VIEW' } },
         { path: 'promotion-operations', redirect: '/promotion-operations/account-health' },
         { path: 'promotion-operations/account-analysis', redirect: '/promotion-operations/account-health' },
         { path: 'promotion-operations/account-health', component: PromotionOperations, meta: { permission: 'PROMOTION_OPERATIONS' } },

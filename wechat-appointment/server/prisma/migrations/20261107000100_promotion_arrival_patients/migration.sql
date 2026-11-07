@@ -1,0 +1,43 @@
+CREATE TABLE `promotion_arrival_fields` (
+  `id` VARCHAR(32) NOT NULL,
+  `key` VARCHAR(80) NOT NULL,
+  `label` VARCHAR(80) NOT NULL,
+  `dataType` VARCHAR(16) NOT NULL DEFAULT 'TEXT',
+  `required` BOOLEAN NOT NULL DEFAULT false,
+  `enabled` BOOLEAN NOT NULL DEFAULT true,
+  `sort` INTEGER NOT NULL DEFAULT 0,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  UNIQUE INDEX `promotion_arrival_fields_key_key`(`key`),
+  INDEX `paf_enabled_sort_ix`(`enabled`, `sort`),
+  PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE `promotion_arrival_patients` (
+  `id` VARCHAR(32) NOT NULL,
+  `accountId` VARCHAR(32) NOT NULL,
+  `name` VARCHAR(80) NOT NULL,
+  `phoneEncrypted` TEXT NOT NULL,
+  `phoneHash` VARCHAR(64) NOT NULL,
+  `phoneMasked` VARCHAR(20) NOT NULL,
+  `project` VARCHAR(40) NOT NULL,
+  `channelSource` VARCHAR(80) NOT NULL,
+  `accountName` VARCHAR(120) NOT NULL,
+  `arrivalDate` DATE NOT NULL,
+  `transactionAmount` DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  `receivedAmount` DECIMAL(12, 2) NOT NULL DEFAULT 0,
+  `onlineConsultant` VARCHAR(80) NULL,
+  `consultant` VARCHAR(80) NULL,
+  `customData` JSON NULL,
+  `createdByAdminId` VARCHAR(32) NULL,
+  `updatedByAdminId` VARCHAR(32) NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL,
+  INDEX `pap_account_date_ix`(`accountId`, `arrivalDate`),
+  INDEX `pap_date_ix`(`arrivalDate`),
+  INDEX `pap_phone_hash_ix`(`phoneHash`),
+  CONSTRAINT `pap_account_fk` FOREIGN KEY (`accountId`) REFERENCES `promotion_accounts`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `pap_creator_fk` FOREIGN KEY (`createdByAdminId`) REFERENCES `admin_users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `pap_updater_fk` FOREIGN KEY (`updatedByAdminId`) REFERENCES `admin_users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
