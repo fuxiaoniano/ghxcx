@@ -384,12 +384,33 @@ export class ConsultationService {
     const scope = await this.dataScopes.ownershipWhere(user, 'ownerAdminId', 'createdByAdminId');
     const active: Prisma.ConsultationFormWhereInput = { status: { category: { notIn: [ConsultationStatusCategory.COMPLETED, ConsultationStatusCategory.INVALID] } } };
     const scoped = Object.keys(scope).length ? scope as Prisma.ConsultationFormWhereInput : {};
-    const [today, overdue, completedForms] = await Promise.all([
+    const [today, overdue, completedAudits] = await Promise.all([
       this.prisma.consultationForm.findMany({ where: { AND: [active, scoped], nextFollowUpAt: { gte: start, lte: end } }, include: this.formInclude(), orderBy: { nextFollowUpAt: 'asc' } }),
       this.prisma.consultationForm.findMany({ where: { AND: [active, scoped], nextFollowUpAt: { lt: businessNow.toDate() } }, include: this.formInclude(), orderBy: { nextFollowUpAt: 'asc' } }),
-      this.prisma.consultationFollowUp.groupBy({ by: ['formId'], where: { createdAt: { gte: start, lte: end }, form: scoped } })
+      this.prisma.auditLog.findMany({
+        where: {
+          action: 'CREATE_CONSULTATION_FOLLOW_UP',
+          resourceType: 'consultation_forms',
+          resourceId: { not: null },
+          createdAt: { gte: start, lte: end }
+        },
+        select: { resourceId: true, beforeJson: true }
+      })
     ]);
-    return { counts: { today: today.length, overdue: overdue.length, completed: completedForms.length }, today: today.map((row) => this.formItem(row, user, false, [])), overdue: overdue.map((row) => this.formItem(row, user, false, [])) };
+    // A follow-up completed today only belongs to today's callback total when the
+    // form was scheduled for today before that follow-up cleared/rescheduled it.
+    const completedIds = [...new Set(completedAudits.flatMap((audit) => {
+      const snapshot = audit.beforeJson;
+      if (!audit.resourceId || !snapshot || Array.isArray(snapshot) || typeof snapshot !== 'object') return [];
+      const scheduledValue = (snapshot as Prisma.JsonObject).nextFollowUpAt;
+      if (typeof scheduledValue !== 'string') return [];
+      const scheduledAt = new Date(scheduledValue);
+      return Number.isNaN(scheduledAt.getTime()) || scheduledAt < start || scheduledAt > end ? [] : [audit.resourceId];
+    }))];
+    const completed = completedIds.length
+      ? await this.prisma.consultationForm.count({ where: { AND: [scoped, { id: { in: completedIds } }] } })
+      : 0;
+    return { counts: { today: today.length, overdue: overdue.length, completed }, today: today.map((row) => this.formItem(row, user, false, [])), overdue: overdue.map((row) => this.formItem(row, user, false, [])) };
   }
 
   async eligibleMembers() {

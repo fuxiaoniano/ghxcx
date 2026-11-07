@@ -44,6 +44,7 @@
     </div>
     <el-table ref="formTable" class="desktop-form-table" :data="rows" v-loading="loading" row-key="id" @selection-change="selected = $event" table-layout="fixed">
       <el-table-column type="selection" width="46" fixed="left" />
+      <el-table-column label="序号" width="64" align="center" fixed="left"><template #default="{$index}">{{ rowNumber($index) }}</template></el-table-column>
       <template v-for="field in visibleFields" :key="field.code">
         <el-table-column :label="field.listTitle || field.name" :min-width="field.listWidth" show-overflow-tooltip>
           <template #default="{ row }">
@@ -62,8 +63,8 @@
     </el-table>
     <div class="mobile-form-list" v-loading="loading" aria-label="表单列表">
       <div v-if="rows.length" class="mobile-list-toolbar"><el-checkbox :model-value="rows.length > 0 && selected.length === rows.length" :indeterminate="selected.length > 0 && selected.length < rows.length" @change="toggleCurrentPage">全选本页</el-checkbox><span>共 {{ total }} 条</span></div>
-      <article v-for="row in rows" :key="row.id" class="mobile-form-card">
-        <div class="mobile-card-head"><el-checkbox :model-value="selected.some(item => item.id === row.id)" :aria-label="`选择${row.name}的表单`" @change="(checked:boolean)=>toggleMobileSelection(row,checked)" /><div class="mobile-card-title"><strong>{{ row.name }}</strong><span>{{ row.phoneMasked || row.phone }}</span></div><el-tag size="small" :color="row.status?.color" effect="dark">{{ row.status?.name || '—' }}</el-tag></div>
+      <article v-for="(row, index) in rows" :key="row.id" class="mobile-form-card">
+        <div class="mobile-card-head"><el-checkbox :model-value="selected.some(item => item.id === row.id)" :aria-label="`选择${row.name}的表单`" @change="(checked:boolean)=>toggleMobileSelection(row,checked)" /><span class="mobile-card-index">#{{ rowNumber(index) }}</span><div class="mobile-card-title"><strong>{{ row.name }}</strong><span>{{ row.phoneMasked || row.phone }}</span></div><el-tag size="small" :color="row.status?.color" effect="dark">{{ row.status?.name || '—' }}</el-tag></div>
         <div class="mobile-card-main"><strong>{{ row.project?.name || '—' }}</strong><span>{{ row.channelSource || '—' }}<template v-if="row.accountName"> · {{ row.accountName }}</template></span></div>
         <div v-if="row.tags?.length" class="mobile-card-tags"><el-tag v-for="tag in row.tags" :key="tag.id" size="small" :color="tag.color" effect="dark">{{ tag.name }}</el-tag></div>
         <div class="mobile-card-grid"><div><span>负责人</span><strong>{{ row.owner?.nickname || row.owner?.username || '—' }}</strong></div><div><span>创建时间</span><strong>{{ fmt(row.createdAt) }}</strong></div><div v-if="row.nextFollowUpAt"><span>下次回访</span><strong :class="{ overdue: row.overdue }">{{ fmt(row.nextFollowUpAt) }}</strong></div><div v-if="row.lastFollowUpAt"><span>最近跟进</span><strong>{{ fmt(row.lastFollowUpAt) }}</strong></div><div v-for="field in mobileExtraFields" :key="field.code"><span>{{ field.listTitle || field.name }}</span><strong>{{ mobileFieldValue(field.code, row) }}</strong></div></div>
@@ -139,6 +140,7 @@ const formEnabled=(code:string)=>metadata.fields.some((field)=>field.code===code
 const visibleFields=computed(()=>{const prefs=new Map(columnPrefs.value.map(i=>[i.code,i]));return metadata.fields.filter(i=>i.enabled&&i.showInList&&(prefs.has(i.code)?prefs.get(i.code).visible:true)).map(i=>({...i,listOrder:prefs.get(i.code)?.order??i.listOrder,listWidth:prefs.get(i.code)?.width??i.listWidth})).sort((a,b)=>a.listOrder-b.listOrder)});
 const mobileExtraFields=computed(()=>visibleFields.value.filter(field=>!['name','phone','project','channelSource','accountName','status','tags','owner','createdAt','lastFollowUpAt','nextFollowUpAt'].includes(field.code)));
 const activeFilterCount=computed(()=>[query.keyword,query.projectId,query.promotionAccountId,query.channelSource,query.ownerAdminId,query.overdue,query.statusIds.length,query.tagIds.length,createdRange.value?.length,followedRange.value?.length,callbackRange.value?.length,...Object.values(customFilters)].filter(value=>Array.isArray(value)?value.length:Boolean(value)).length);
+const rowNumber=(index:number)=>(query.page-1)*query.pageSize+index+1;
 function mobileFieldValue(code:string,row:ConsultationFormItem){let value:any;if(code==='overdue')value=row.overdue?'已逾期':'否';else if(code==='createdBy')value=row.createdBy?.nickname||row.createdBy?.username;else if(code==='lastFollowUpContent')value=row.lastFollowUpContent;else if(['recordedAt','updatedAt'].includes(code))value=fmt(row[code as 'recordedAt'|'updatedAt']);else value=row.customData?.[code];return Array.isArray(value)?value.join('、'):(value??'—')}
 function cellComponent(code:string,row:any){let value:any='—';if(code==='name')value=row.name;else if(code==='phone')value=row.phone;else if(code==='project')value=row.project?.name;else if(code==='channelSource')value=row.channelSource;else if(code==='accountName')value=row.accountName;else if(code==='status')return{render:()=>h('span',{class:'status-pill',style:{background:row.status?.color}},row.status?.name)};else if(code==='tags')value=(row.tags||[]).map((i:any)=>i.name).join('、');else if(code==='owner')value=row.owner?.nickname||row.owner?.username;else if(code==='overdue')value=row.overdue?'已逾期':'否';else if(['recordedAt','lastFollowUpAt','nextFollowUpAt','createdAt','updatedAt'].includes(code))value=fmt(row[code]);else if(code==='createdBy')value=row.createdBy?.nickname||row.createdBy?.username;else if(code==='lastFollowUpContent')value=row.lastFollowUpContent;else value=row.customData?.[code];return{render:()=>h('span',Array.isArray(value)?value.join('、'):(value??'—'))}}
 async function loadMeta(){Object.assign(metadata,await getConsultationMetadata());columnPrefs.value=metadata.fields.filter(i=>i.enabled&&i.showInList).map(i=>({code:i.code,name:i.listTitle||i.name,visible:metadata.preference?.find(p=>p.code===i.code)?.visible??true,order:metadata.preference?.find(p=>p.code===i.code)?.order??i.listOrder,width:metadata.preference?.find(p=>p.code===i.code)?.width??i.listWidth})).sort((a,b)=>a.order-b.order)}
@@ -200,6 +202,7 @@ onMounted(async()=>{await loadMeta();await load()});
   .mobile-card-head{display:flex;align-items:center;gap:10px;min-width:0}
   .mobile-card-head :deep(.el-checkbox){flex:none;margin-right:0;min-height:36px}
   .mobile-card-head :deep(.el-checkbox__inner){width:18px;height:18px}
+  .mobile-card-index{flex:none;color:var(--admin-text-muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
   .mobile-card-title{display:flex;align-items:baseline;gap:8px;min-width:0;flex:1;flex-wrap:wrap}
   .mobile-card-title strong{font-size:16px;line-height:1.3;overflow-wrap:anywhere}
   .mobile-card-title span{color:var(--admin-text-muted);font-size:13px;white-space:nowrap}
@@ -218,5 +221,10 @@ onMounted(async()=>{await loadMeta();await load()});
   .mobile-card-actions :deep(.el-button){min-height:42px}
   .mobile-pagination{display:flex;justify-content:center;margin-top:14px;max-width:100%;overflow-x:auto}
   .bulk-bar{position:sticky;bottom:8px;z-index:2;box-shadow:0 5px 18px rgba(18,45,80,.15)}
+}
+@media(max-width:420px){
+  .heading-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mobile-card-head{gap:7px}
+  .mobile-card-head :deep(.el-tag){max-width:34%}
 }
 </style>
