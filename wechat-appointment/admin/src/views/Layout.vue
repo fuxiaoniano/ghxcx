@@ -34,9 +34,9 @@
       <div v-if="navigationPending" class="route-progress" role="progressbar" aria-label="页面正在打开" />
       <el-header v-if="!embedded" class="header">
         <div class="header-left">
-          <el-button class="collapse-button" text :aria-label="isMobile ? (mobileNavigationOpen ? '收起导航' : '展开导航') : (sidebarCollapsed ? '展开导航' : '收起导航')" @click="toggleSidebar">
+          <button class="collapse-button" type="button" :aria-expanded="isMobile ? mobileNavigationOpen : undefined" :aria-label="isMobile ? (mobileNavigationOpen ? '收起导航' : '展开导航') : (sidebarCollapsed ? '展开导航' : '收起导航')" @click.stop="toggleSidebar">
             <el-icon size="18"><Expand v-if="isMobile ? !mobileNavigationOpen : sidebarCollapsed" /><Fold v-else /></el-icon>
-          </el-button>
+          </button>
           <div class="breadcrumb-copy">
             <span>傅小念的运营工作台</span>
             <strong>{{ currentPageTitle }}</strong>
@@ -103,8 +103,9 @@ const route = useRoute();
 const router = useRouter();
 const embedded = window.self !== window.top;
 const auth = useAuthStore();
+const mobileViewport = window.matchMedia('(max-width: 900px)');
 const sidebarCollapsed = ref(localStorage.getItem('admin_sidebar_collapsed') === '1');
-const isMobile = ref(false);
+const isMobile = ref(mobileViewport.matches);
 const mobileNavigationOpen = ref(false);
 const canAccess = (permission: string) => auth.hasPermission(permission);
 const preloadedRoutes = new Set<string>();
@@ -120,7 +121,8 @@ function preloadRoute(path: string) {
   Promise.resolve((component as () => Promise<unknown>)()).catch(() => preloadedRoutes.delete(path));
 }
 function toggleSidebar() {
-  if (isMobile.value) {
+  updateViewport();
+  if (mobileViewport.matches) {
     mobileNavigationOpen.value = !mobileNavigationOpen.value;
     return;
   }
@@ -131,14 +133,30 @@ function closeMobileNavigation() {
   mobileNavigationOpen.value = false;
 }
 function updateViewport() {
-  isMobile.value = window.innerWidth <= 900;
+  isMobile.value = mobileViewport.matches;
   if (!isMobile.value) closeMobileNavigation();
+}
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeMobileNavigation();
 }
 onMounted(() => {
   updateViewport();
   window.addEventListener('resize', updateViewport);
+  window.addEventListener('orientationchange', updateViewport);
+  window.addEventListener('pageshow', updateViewport);
+  window.visualViewport?.addEventListener('resize', updateViewport);
+  mobileViewport.addEventListener?.('change', updateViewport);
+  document.addEventListener('keydown', handleEscape);
 });
-onBeforeUnmount(() => window.removeEventListener('resize', updateViewport));
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewport);
+  window.removeEventListener('orientationchange', updateViewport);
+  window.removeEventListener('pageshow', updateViewport);
+  window.visualViewport?.removeEventListener('resize', updateViewport);
+  mobileViewport.removeEventListener?.('change', updateViewport);
+  document.removeEventListener('keydown', handleEscape);
+});
+watch(() => route.path, () => { if (mobileViewport.matches) closeMobileNavigation(); });
 
 const pageTitles: Record<string, string> = {
   '/tencent-ad-leads': '腾讯线索',
@@ -543,10 +561,26 @@ const roleLabel = computed(() => {
 }
 
 .collapse-button {
+  display: inline-flex;
+  flex: 0 0 40px;
   width: 40px;
   height: 40px;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   color: var(--admin-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.collapse-button:hover,
+.collapse-button:focus-visible {
+  color: var(--admin-primary);
+  background: var(--admin-primary-soft);
+  outline: none;
 }
 
 .breadcrumb-copy {

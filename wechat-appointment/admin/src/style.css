@@ -657,3 +657,9 @@ select {
 .el-dialog .el-table .el-table__body-wrapper { overflow-x: auto; }
 .el-dialog .el-dialog__footer .el-button { margin-left: 0; min-height: 34px; }
 .el-dialog .el-dialog__footer { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 768px), (pointer: coarse) {
+  .el-date-editor input[data-mobile-date-picker-guard="true"] {
+    caret-color: transparent;
+  }
+}
