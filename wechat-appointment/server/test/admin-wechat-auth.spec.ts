@@ -97,7 +97,7 @@ describe('AdminService WeChat member flow', () => {
       }),
       buildAdminOauthUrl: jest.fn().mockReturnValue('https://wechat.example/oauth')
     };
-    const config = { get: jest.fn().mockReturnValue('https://zbsfxn.cqzbskq.com') };
+    const config = { get: jest.fn().mockReturnValue('https://wechat.fuxiaonian.net') };
     const service = new AdminService(
       prisma as any,
       auth as any,
@@ -151,7 +151,7 @@ describe('AdminService WeChat member flow', () => {
     const session = await service.createWechatLoginSession();
 
     expect(session.oauthUrl).toBe(
-      `https://zbsfxn.cqzbskq.com/api/admin/auth/wechat/oauth?sessionId=${session.sessionId}`
+      `https://wechat.fuxiaonian.net/api/admin/auth/wechat/oauth?sessionId=${session.sessionId}`
     );
 
     const confirmation = await service.completeWechatLogin('wechat-code', session.sessionId);

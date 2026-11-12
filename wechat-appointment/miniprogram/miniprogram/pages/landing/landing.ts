@@ -11,7 +11,7 @@ const defaultMissingTeethTypes = ['单颗缺失', '多颗缺失', '半口缺失'
 
 const emptyConfig: LandingPageConfig = {
   pageKey: 'default',
-  brandName: '种博士口腔',
+  brandName: '傅小念口腔',
   brandHtml: '',
   activityTitle: '舒适化种牙咨询',
   activityHtml: '',
@@ -24,7 +24,7 @@ const emptyConfig: LandingPageConfig = {
   privacyAgreement: '我已阅读并同意隐私协议，提交信息仅用于挂号咨询和工作人员联系。',
   customerServicePhone: '',
   footerText: '',
-  shareTitle: '种博士口腔-舒适化种牙',
+  shareTitle: '傅小念口腔预约咨询',
   shareImageUrl: '',
   formTopImages: [DEFAULT_HERO_IMAGE],
   display: {

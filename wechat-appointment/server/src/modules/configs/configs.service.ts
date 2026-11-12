@@ -786,7 +786,7 @@ export class ConfigsService {
   }
 
   getDefaultOfficialAccountMenu(): OfficialAccountMenuConfig {
-    const base = this.env.get<string>('SERVER_BASE_URL') || 'https://zbsfxn.cqzbskq.com';
+    const base = this.env.get<string>('SERVER_BASE_URL') || 'https://wechat.fuxiaonian.net';
     const fallbackBase = base.replace(/\/$/, '');
     const miniAppId = this.env.get<string>('MINI_APP_ID') || 'wx99b598314f56c2f1';
     return {

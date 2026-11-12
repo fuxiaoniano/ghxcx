@@ -39,7 +39,7 @@ async function bootstrap() {
 
   if (config.get<string>('NODE_ENV') !== 'production' || config.get<string>('SWAGGER_ENABLED') === 'true') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('微信公众号阅读者挂号服务系统 API')
+      .setTitle('傅小念的运营工作台 API')
       .setDescription('小程序、公众号、管理后台统一接口文档')
       .setVersion('1.0.0')
       .addBearerAuth()

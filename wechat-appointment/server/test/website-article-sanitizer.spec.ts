@@ -2,7 +2,7 @@ import { normalizeWechatText, sanitizeWechatArticleHtml } from '../src/modules/w
 
 describe('website WeChat article sanitizer', () => {
   it('keeps Chinese UTF-8 text and removes replacement/control characters', () => {
-    expect(normalizeWechatText('  重庆种博士\u0000口腔�科普  ')).toBe('重庆种博士口腔科普');
+    expect(normalizeWechatText('  示例\u0000口腔�科普  ')).toBe('示例口腔科普');
   });
 
   it('removes scripts and fixed WeChat layout while preserving responsive content', () => {

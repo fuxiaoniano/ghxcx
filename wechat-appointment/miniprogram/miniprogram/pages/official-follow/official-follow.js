@@ -1,8 +1,8 @@
 "use strict";
 Page({
-    data: { officialAccountName: '重庆种博士口腔', componentError: false },
+    data: { officialAccountName: '傅小念口腔', componentError: false },
     onLoad(options) {
-        let officialAccountName = '重庆种博士口腔';
+        let officialAccountName = '傅小念口腔';
         try {
             officialAccountName = options.name ? decodeURIComponent(options.name) : officialAccountName;
         }

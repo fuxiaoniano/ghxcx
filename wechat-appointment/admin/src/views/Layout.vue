@@ -1,5 +1,5 @@
 <template>
-  <el-container class="layout" :class="{ 'is-collapsed': sidebarCollapsed, 'mobile-nav-open': mobileNavigationOpen, 'layout--embedded': embedded }">
+  <el-container class="layout" :class="{ 'is-collapsed': sidebarCollapsed, 'is-mobile-layout': isMobile, 'mobile-nav-open': mobileNavigationOpen, 'layout--embedded': embedded }">
     <el-aside v-if="!embedded" :width="isMobile ? '232px' : (sidebarCollapsed ? '76px' : '232px')" class="aside">
       <div class="brand">
         <div class="brand-mark">管</div>
@@ -104,8 +104,10 @@ const router = useRouter();
 const embedded = window.self !== window.top;
 const auth = useAuthStore();
 const mobileViewport = window.matchMedia('(max-width: 900px)');
+const touchViewport = window.matchMedia('(hover: none) and (pointer: coarse)');
 const sidebarCollapsed = ref(localStorage.getItem('admin_sidebar_collapsed') === '1');
-const isMobile = ref(mobileViewport.matches);
+const isMobileLayout = () => mobileViewport.matches || (navigator.maxTouchPoints > 0 && touchViewport.matches && window.innerWidth <= 1366);
+const isMobile = ref(isMobileLayout());
 const mobileNavigationOpen = ref(false);
 const canAccess = (permission: string) => auth.hasPermission(permission);
 const preloadedRoutes = new Set<string>();
@@ -122,7 +124,7 @@ function preloadRoute(path: string) {
 }
 function toggleSidebar() {
   updateViewport();
-  if (mobileViewport.matches) {
+  if (isMobile.value) {
     mobileNavigationOpen.value = !mobileNavigationOpen.value;
     return;
   }
@@ -133,7 +135,7 @@ function closeMobileNavigation() {
   mobileNavigationOpen.value = false;
 }
 function updateViewport() {
-  isMobile.value = mobileViewport.matches;
+  isMobile.value = isMobileLayout();
   if (!isMobile.value) closeMobileNavigation();
 }
 function handleEscape(event: KeyboardEvent) {
@@ -146,6 +148,7 @@ onMounted(() => {
   window.addEventListener('pageshow', updateViewport);
   window.visualViewport?.addEventListener('resize', updateViewport);
   mobileViewport.addEventListener?.('change', updateViewport);
+  touchViewport.addEventListener?.('change', updateViewport);
   document.addEventListener('keydown', handleEscape);
 });
 onBeforeUnmount(() => {
@@ -154,9 +157,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('pageshow', updateViewport);
   window.visualViewport?.removeEventListener('resize', updateViewport);
   mobileViewport.removeEventListener?.('change', updateViewport);
+  touchViewport.removeEventListener?.('change', updateViewport);
   document.removeEventListener('keydown', handleEscape);
 });
-watch(() => route.path, () => { if (mobileViewport.matches) closeMobileNavigation(); });
+watch(() => route.path, () => { if (isMobile.value) closeMobileNavigation(); });
 
 const pageTitles: Record<string, string> = {
   '/tencent-ad-leads': '腾讯线索',
@@ -706,6 +710,47 @@ const roleLabel = computed(() => {
   .collapse-button {
     display: inline-flex;
   }
+}
+
+/* iPad/Safari desktop-site mode can report a layout viewport wider than 900px.
+   The runtime adds this class only for real touch devices up to 1366px. */
+.is-mobile-layout .aside {
+  position: fixed;
+  z-index: 1002;
+  width: 232px !important;
+  height: 100dvh;
+  transform: translateX(-100%);
+  transition: transform .22s ease;
+  box-shadow: none;
+}
+
+.is-mobile-layout.mobile-nav-open .aside {
+  transform: translateX(0);
+  box-shadow: 8px 0 24px rgba(15, 23, 42, .24);
+}
+
+.is-mobile-layout .mobile-nav-mask {
+  position: fixed;
+  z-index: 1001;
+  inset: 0;
+  background: rgba(15, 23, 42, .4);
+}
+
+.is-mobile-layout .navigation :deep(.el-menu) {
+  width: 100%;
+}
+
+.is-mobile-layout .navigation :deep(.el-menu-item) {
+  padding-left: 20px !important;
+}
+
+.is-mobile-layout .main-shell,
+.is-mobile-layout.is-collapsed .main-shell {
+  margin-left: 0;
+}
+
+.is-mobile-layout .collapse-button {
+  display: inline-flex;
 }
 
 @media (max-width: 640px) {

@@ -9,7 +9,7 @@ const defaultAgeRanges = ['40岁以下', '40-50岁', '50-60岁', '60岁以上'];
 const defaultMissingTeethTypes = ['单颗缺失', '多颗缺失', '半口缺失', '全口缺失', '不确定'];
 const emptyConfig = {
     pageKey: 'default',
-    brandName: '种博士口腔',
+    brandName: '傅小念口腔',
     brandHtml: '',
     activityTitle: '舒适化种牙咨询',
     activityHtml: '',
@@ -22,7 +22,7 @@ const emptyConfig = {
     privacyAgreement: '我已阅读并同意隐私协议，提交信息仅用于挂号咨询和工作人员联系。',
     customerServicePhone: '',
     footerText: '',
-    shareTitle: '种博士口腔-舒适化种牙',
+    shareTitle: '傅小念口腔预约咨询',
     shareImageUrl: '',
     formTopImages: [DEFAULT_HERO_IMAGE],
     display: {
