@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://wechat.fuxiaonian.net/api/website/sitemap.xml

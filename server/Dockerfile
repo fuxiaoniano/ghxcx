@@ -1,7 +1,8 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
+ARG NPM_REGISTRY=https://registry.npmjs.org
 COPY package*.json ./
-RUN npm install
+RUN npm install --registry="$NPM_REGISTRY" --no-audit --no-fund
 
 FROM node:22-alpine AS builder
 WORKDIR /app

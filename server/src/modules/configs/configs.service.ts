@@ -120,6 +120,8 @@ export interface OfficialAccountMenuConfig {
 export interface AppointmentNotifyConfig {
   enabled: boolean;
   templateId?: string;
+  assignmentEnabled?: boolean;
+  assignmentTemplateId?: string;
 }
 
 export interface FollowupForwardConfig {
@@ -243,8 +245,8 @@ const defaultOfficialAutoReply: OfficialAutoReplyConfig = {
   subscribeMiniProgramType: 'LINK',
   subscribeMiniProgramAppId: '',
   subscribeMiniProgramPagePath: 'pages/home/home?source=oa_subscribe',
-  subscribeMiniProgramLinkText: '点击进入种博士口腔小程序',
-  subscribeMiniProgramCardTitle: '种博士口腔预约挂号',
+  subscribeMiniProgramLinkText: '点击进入傅小念口腔服务',
+  subscribeMiniProgramCardTitle: '傅小念口腔预约挂号',
   subscribeMiniProgramCoverUrl: '',
   messageReplyEnabled: true,
   messageReply:
@@ -485,7 +487,9 @@ export class ConfigsService {
     const value = row?.valueJson as unknown as Partial<AppointmentNotifyConfig> | undefined;
     return {
       enabled: value?.enabled ?? true,
-      templateId: value?.templateId || this.env.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS')
+        templateId: value?.templateId || this.env.get<string>('OFFICIAL_ACCOUNT_TEMPLATE_APPOINTMENT_SUCCESS'),
+        assignmentEnabled: value?.assignmentEnabled ?? false,
+        assignmentTemplateId: value?.assignmentTemplateId || ''
     };
   }
 
@@ -782,7 +786,7 @@ export class ConfigsService {
   }
 
   getDefaultOfficialAccountMenu(): OfficialAccountMenuConfig {
-    const base = this.env.get<string>('SERVER_BASE_URL') || 'https://zbsfxn.cqzbskq.com';
+    const base = this.env.get<string>('SERVER_BASE_URL') || 'https://wechat.fuxiaonian.net';
     const fallbackBase = base.replace(/\/$/, '');
     const miniAppId = this.env.get<string>('MINI_APP_ID') || 'wx99b598314f56c2f1';
     return {

@@ -2,7 +2,6 @@
   <div class="page-heading">
     <div>
       <h1 class="page-title">挂号管理</h1>
-      <p>查询、跟进和管理全部预约记录</p>
     </div>
     <span class="record-count">共 {{ total }} 条记录</span>
   </div>
@@ -373,7 +372,7 @@ onMounted(async () => {
 .record-id-line code {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: #244357;
+  color: #1d1d1f;
   font-family: Consolas, Monaco, monospace;
 }
 

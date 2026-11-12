@@ -1,66 +1,44 @@
 <template>
-  <el-container
-    class="layout"
-    :class="{
-      'is-collapsed': !isMobile && sidebarCollapsed,
-      'is-mobile-nav-open': isMobile && mobileNavOpen
-    }"
-  >
-    <el-aside id="admin-navigation" :width="isMobile ? '280px' : sidebarCollapsed ? '76px' : '232px'" class="aside">
+  <el-container class="layout" :class="{ 'is-collapsed': sidebarCollapsed, 'is-mobile-layout': isMobile, 'mobile-nav-open': mobileNavigationOpen, 'layout--embedded': embedded }">
+    <el-aside v-if="!embedded" :width="isMobile ? '232px' : (sidebarCollapsed ? '76px' : '232px')" class="aside">
       <div class="brand">
-        <div class="brand-mark">种</div>
-        <div v-show="isMobile || !sidebarCollapsed" class="brand-copy">
-          <strong>种博士口腔</strong>
-          <span>预约管理中心</span>
+        <div class="brand-mark">管</div>
+        <div v-show="!sidebarCollapsed || isMobile" class="brand-copy">
+          <strong>傅小念的运营工作台</strong>
+
         </div>
       </div>
 
       <nav class="navigation" aria-label="后台主导航">
-        <el-menu
-          router
-          :default-active="$route.path"
-          :collapse="!isMobile && sidebarCollapsed"
-          :collapse-transition="false"
-          @select="handleMenuSelect"
-        >
-          <el-menu-item index="/dashboard"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
-          <el-sub-menu index="business"><template #title><el-icon><Tickets /></el-icon><span>业务管理</span></template><el-menu-item index="/tencent-ad-leads">腾讯广告线索</el-menu-item><el-menu-item index="/appointments">挂号管理</el-menu-item><el-menu-item index="/users">用户管理</el-menu-item><el-menu-item index="/notifications">通知记录</el-menu-item></el-sub-menu>
-          <el-sub-menu index="content"><template #title><el-icon><Menu /></el-icon><span>内容管理</span></template><el-menu-item v-if="canAccess('HOME_MANAGE')" index="/home-manage">首页管理</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/department-manage">科室与项目</el-menu-item><el-menu-item v-if="canAccess('DOCTOR_MANAGE')" index="/doctor-manage">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('PACKAGE_MANAGE')" index="/package-manage">套餐管理</el-menu-item><el-menu-item v-if="canAccess('HOME_MANAGE') || canAccess('DOCTOR_MANAGE') || canAccess('PACKAGE_MANAGE')" index="/media-library">图片库</el-menu-item><el-menu-item index="/mini-program-links">页面跳转链接</el-menu-item></el-sub-menu>
-          <el-sub-menu v-if="canAccess('WEBSITE_MANAGE')" index="website"><template #title><el-icon><Monitor /></el-icon><span>官网内容</span></template><el-menu-item index="/website-settings">官网设置</el-menu-item><el-menu-item index="/website-pages">官网页面</el-menu-item><el-menu-item index="/website-articles">口腔资讯</el-menu-item></el-sub-menu>
-          <el-sub-menu index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item index="/official-menu">公众号菜单</el-menu-item><el-menu-item index="/official-auto-reply">自动回复</el-menu-item><el-menu-item index="/admin-users">成员与预约通知</el-menu-item></el-sub-menu>
-          <el-sub-menu index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item index="/configs">系统配置</el-menu-item><el-menu-item index="/followup-forward">回访接口</el-menu-item><el-menu-item index="/audit-logs">审计日志</el-menu-item></el-sub-menu>
+        <el-menu router :default-active="$route.path" :collapse="isMobile ? false : sidebarCollapsed" :collapse-transition="false" @select="closeMobileNavigation">
+          <el-menu-item index="/dashboard" @mouseenter="preloadRoute('/dashboard')" @focusin="preloadRoute('/dashboard')"><el-icon><DataLine /></el-icon><template #title>仪表盘</template></el-menu-item>
+          <el-sub-menu v-if="['BUSINESS_LEADS','BUSINESS_APPOINTMENTS','BUSINESS_USERS','BUSINESS_NOTIFICATIONS'].some(canAccess)" index="business"><template #title><el-icon><Tickets /></el-icon><span>线索管理</span></template><el-menu-item v-if="canAccess('BUSINESS_LEADS')" index="/tencent-ad-leads" @mouseenter="preloadRoute('/tencent-ad-leads')" @focusin="preloadRoute('/tencent-ad-leads')">腾讯线索</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_APPOINTMENTS')" index="/appointments" @mouseenter="preloadRoute('/appointments')" @focusin="preloadRoute('/appointments')">挂号管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_USERS')" index="/users" @mouseenter="preloadRoute('/users')" @focusin="preloadRoute('/users')">用户管理</el-menu-item><el-menu-item v-if="canAccess('BUSINESS_NOTIFICATIONS')" index="/notifications" @mouseenter="preloadRoute('/notifications')" @focusin="preloadRoute('/notifications')">通知记录</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('CONSULTATION_VIEW') || canAccess('CONSULTATION_CHANNEL_REPORT') || canAccess('CONSULTATION_TEAM_REPORT') || canAccess('CONSULTATION_SCHEDULE_VIEW') || canAccess('CONSULTATION_SETTINGS')" index="consultations"><template #title><el-icon><ChatLineRound /></el-icon><span>网咨数据</span></template><el-menu-item v-if="canAccess('CONSULTATION_VIEW')" index="/consultations" @mouseenter="preloadRoute('/consultations')" @focusin="preloadRoute('/consultations')">全部表单</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_VIEW')" index="/consultations/callbacks" @mouseenter="preloadRoute('/consultations/callbacks')" @focusin="preloadRoute('/consultations/callbacks')">今日需回访</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_CHANNEL_REPORT')" index="/consultations/channel-report" @mouseenter="preloadRoute('/consultations/channel-report')" @focusin="preloadRoute('/consultations/channel-report')">渠道报表</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_TEAM_REPORT')" index="/consultations/report" @mouseenter="preloadRoute('/consultations/report')" @focusin="preloadRoute('/consultations/report')">网咨报表</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_SCHEDULE_VIEW')" index="/consultations/schedule" @mouseenter="preloadRoute('/consultations/schedule')" @focusin="preloadRoute('/consultations/schedule')">网咨排班表</el-menu-item><el-menu-item v-if="canAccess('CONSULTATION_SETTINGS')" index="/consultations/settings" @mouseenter="preloadRoute('/consultations/settings')" @focusin="preloadRoute('/consultations/settings')">网咨设置</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['PROMOTION_HOME','PROMOTION_DAILY','PROMOTION_WEEKLY','PROMOTION_MONTHLY','PROMOTION_FILTER','PROMOTION_DAILY_REPORT','PROMOTION_WEEKLY_REPORT','PROMOTION_MONTHLY_REPORT','PROMOTION_ACCOUNTS','PROMOTION_SYNC','PROMOTION_FIELDS','PROMOTION_SALARY','PROMOTION_ARRIVAL_PATIENT_VIEW'].some(canAccess)" index="operations"><template #title><el-icon><DataLine /></el-icon><span>推广数据</span></template><el-menu-item v-if="canAccess('PROMOTION_HOME')" index="/operations/dashboard" @mouseenter="preloadRoute('/operations/dashboard')" @focusin="preloadRoute('/operations/dashboard')">数据首页</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_DAILY')" index="/operations/daily" @mouseenter="preloadRoute('/operations/daily')" @focusin="preloadRoute('/operations/daily')">日统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_WEEKLY')" index="/operations/weekly" @mouseenter="preloadRoute('/operations/weekly')" @focusin="preloadRoute('/operations/weekly')">周统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MONTHLY')" index="/operations/monthly" @mouseenter="preloadRoute('/operations/monthly')" @focusin="preloadRoute('/operations/monthly')">月统计</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_FILTER')" index="/operations/filter" @mouseenter="preloadRoute('/operations/filter')" @focusin="preloadRoute('/operations/filter')">数据筛选</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_ARRIVAL_PATIENT_VIEW')" index="/operations/arrival-patients" @mouseenter="preloadRoute('/operations/arrival-patients')" @focusin="preloadRoute('/operations/arrival-patients')">患者收费</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_DAILY_REPORT')" index="/operations/daily-report" @mouseenter="preloadRoute('/operations/daily-report')" @focusin="preloadRoute('/operations/daily-report')">推广日报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_WEEKLY_REPORT')" index="/operations/weekly-report" @mouseenter="preloadRoute('/operations/weekly-report')" @focusin="preloadRoute('/operations/weekly-report')">推广周报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MONTHLY_REPORT')" index="/operations/monthly-report" @mouseenter="preloadRoute('/operations/monthly-report')" @focusin="preloadRoute('/operations/monthly-report')">推广月报</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_ACCOUNTS')" index="/operations/accounts" @mouseenter="preloadRoute('/operations/accounts')" @focusin="preloadRoute('/operations/accounts')">推广账户</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_SYNC')" index="/operations/sync-settings" @mouseenter="preloadRoute('/operations/sync-settings')" @focusin="preloadRoute('/operations/sync-settings')">数据同步设置</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_FIELDS')" index="/operations/fields" @mouseenter="preloadRoute('/operations/fields')" @focusin="preloadRoute('/operations/fields')">字段设置</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_SALARY')" index="/operations/salary" @mouseenter="preloadRoute('/operations/salary')" @focusin="preloadRoute('/operations/salary')">工资测算</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('PROMOTION_OPERATIONS') || canAccess('PROMOTION_SMART_MONITOR_VIEW') || canAccess('PROMOTION_CREATIVE_BATCH_VIEW') || canAccess('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW') || canAccess('PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW')" index="promotion-operations"><template #title><el-icon><TrendCharts /></el-icon><span>推广运营</span></template><el-menu-item v-if="canAccess('PROMOTION_OPERATIONS')" index="/promotion-operations/account-health" @mouseenter="preloadRoute('/promotion-operations/account-health')" @focusin="preloadRoute('/promotion-operations/account-health')">账户健康</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_OPERATIONS')" index="/promotion-operations/material-analysis" @mouseenter="preloadRoute('/promotion-operations/material-analysis')" @focusin="preloadRoute('/promotion-operations/material-analysis')">素材分析</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_SMART_MONITOR_VIEW')" index="/promotion/smart-monitor" @mouseenter="preloadRoute('/promotion/smart-monitor')" @focusin="preloadRoute('/promotion/smart-monitor')">智能监控</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_CREATIVE_BATCH_VIEW')" index="/promotion-operations/creative-batches" @mouseenter="preloadRoute('/promotion-operations/creative-batches')" @focusin="preloadRoute('/promotion-operations/creative-batches')">新建创意</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW')" index="/promotion/multi-account-creative-batch" @mouseenter="preloadRoute('/promotion/multi-account-creative-batch')" @focusin="preloadRoute('/promotion/multi-account-creative-batch')">批量新建</el-menu-item><el-menu-item v-if="canAccess('PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW')" index="/promotion/creative-default-components" @mouseenter="preloadRoute('/promotion/creative-default-components')" @focusin="preloadRoute('/promotion/creative-default-components')">默认组件</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['CONTENT_HOME','CONTENT_DEPARTMENTS','CONTENT_DOCTORS','CONTENT_PACKAGES','CONTENT_MEDIA','CONTENT_LINKS','SYSTEM_CONFIGS','WECHAT_GROUP_NOTIFY_VIEW'].some(canAccess)" index="content"><template #title><el-icon><Menu /></el-icon><span>小程序页</span></template><el-menu-item v-if="canAccess('CONTENT_HOME')" index="/home-manage" @mouseenter="preloadRoute('/home-manage')" @focusin="preloadRoute('/home-manage')">首页管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DEPARTMENTS')" index="/department-manage" @mouseenter="preloadRoute('/department-manage')" @focusin="preloadRoute('/department-manage')">科室与项目</el-menu-item><el-menu-item v-if="canAccess('CONTENT_DOCTORS')" index="/doctor-manage" @mouseenter="preloadRoute('/doctor-manage')" @focusin="preloadRoute('/doctor-manage')">医生与出诊</el-menu-item><el-menu-item v-if="canAccess('CONTENT_PACKAGES')" index="/package-manage" @mouseenter="preloadRoute('/package-manage')" @focusin="preloadRoute('/package-manage')">套餐管理</el-menu-item><el-menu-item v-if="canAccess('CONTENT_MEDIA')" index="/media-library" @mouseenter="preloadRoute('/media-library')" @focusin="preloadRoute('/media-library')">图片库</el-menu-item><el-menu-item v-if="canAccess('CONTENT_LINKS')" index="/mini-program-links" @mouseenter="preloadRoute('/mini-program-links')" @focusin="preloadRoute('/mini-program-links')">页面跳转链接</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_CONFIGS')" index="/configs" @mouseenter="preloadRoute('/configs')" @focusin="preloadRoute('/configs')">留资页面</el-menu-item><el-menu-item v-if="canAccess('WECHAT_GROUP_NOTIFY_VIEW')" index="/wechat-group-notifications" @mouseenter="preloadRoute('/wechat-group-notifications')" @focusin="preloadRoute('/wechat-group-notifications')">微信群挂号通知</el-menu-item><el-menu-item v-if="canAccess('WECHAT_GROUP_NOTIFY_VIEW')" index="/wechat-group-notifications/sender" @mouseenter="preloadRoute('/wechat-group-notifications/sender')" @focusin="preloadRoute('/wechat-group-notifications/sender')">专用微信账号</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="['WEBSITE_SETTINGS','WEBSITE_CATEGORIES','WEBSITE_ARTICLES'].some(canAccess)" index="website"><template #title><el-icon class="website-nav-icon"><Monitor /></el-icon><span>官网内容</span></template><el-menu-item v-if="canAccess('WEBSITE_SETTINGS')" index="/website-settings" @mouseenter="preloadRoute('/website-settings')" @focusin="preloadRoute('/website-settings')">官网设置</el-menu-item><el-menu-item v-if="canAccess('WEBSITE_CATEGORIES')" index="/website-categories" @mouseenter="preloadRoute('/website-categories')" @focusin="preloadRoute('/website-categories')">资讯分类</el-menu-item><el-menu-item v-if="canAccess('WEBSITE_ARTICLES')" index="/website-articles" @mouseenter="preloadRoute('/website-articles')" @focusin="preloadRoute('/website-articles')">口腔资讯</el-menu-item></el-sub-menu>
+          <el-sub-menu v-if="canAccess('WECHAT_MENU') || canAccess('WECHAT_AUTO_REPLY') || canAccess('SYSTEM_OFFICIAL_BINDING') || canAccess('SYSTEM_APPOINTMENT_NOTIFY')" index="wechat"><template #title><el-icon><ChatLineRound /></el-icon><span>微信运营</span></template><el-menu-item v-if="canAccess('WECHAT_MENU')" index="/official-menu" @mouseenter="preloadRoute('/official-menu')" @focusin="preloadRoute('/official-menu')">公众号菜单</el-menu-item><el-menu-item v-if="canAccess('WECHAT_AUTO_REPLY')" index="/official-auto-reply" @mouseenter="preloadRoute('/official-auto-reply')" @focusin="preloadRoute('/official-auto-reply')">自动回复</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_OFFICIAL_BINDING') || canAccess('SYSTEM_APPOINTMENT_NOTIFY')" index="/official-binding" @mouseenter="preloadRoute('/official-binding')" @focusin="preloadRoute('/official-binding')">公众号绑定</el-menu-item></el-sub-menu>
+          <el-sub-menu index="system"><template #title><el-icon><Setting /></el-icon><span>系统管理</span></template><el-menu-item v-if="canAccess('SYSTEM_MEMBERS')" index="/admin-users" @mouseenter="preloadRoute('/admin-users')" @focusin="preloadRoute('/admin-users')">成员管理</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_MEMBERS')" index="/admin-teams" @mouseenter="preloadRoute('/admin-teams')" @focusin="preloadRoute('/admin-teams')">团队管理</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_ROLES')" index="/admin-roles" @mouseenter="preloadRoute('/admin-roles')" @focusin="preloadRoute('/admin-roles')">角色管理</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_FOLLOWUP')" index="/followup-forward" @mouseenter="preloadRoute('/followup-forward')" @focusin="preloadRoute('/followup-forward')">回访接口</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_WEBSITE_ANALYTICS')" index="/website-analytics" @mouseenter="preloadRoute('/website-analytics')" @focusin="preloadRoute('/website-analytics')">官网浏览统计</el-menu-item><el-menu-item v-if="canAccess('SYSTEM_AUDIT')" index="/audit-logs" @mouseenter="preloadRoute('/audit-logs')" @focusin="preloadRoute('/audit-logs')">审计日志</el-menu-item><el-menu-item index="/change-password" @mouseenter="preloadRoute('/change-password')" @focusin="preloadRoute('/change-password')">修改密码</el-menu-item></el-sub-menu>
         </el-menu>
       </nav>
 
       <div class="sidebar-footer">
         <span class="status-dot" />
-        <span v-show="isMobile || !sidebarCollapsed">系统运行中</span>
+        <span v-show="!sidebarCollapsed || isMobile">系统运行中</span>
       </div>
     </el-aside>
-
-    <button
-      v-if="isMobile && mobileNavOpen"
-      class="mobile-nav-backdrop"
-      type="button"
-      aria-label="关闭导航"
-      @click="closeMobileNav"
-    />
+    <div v-if="!embedded && isMobile && mobileNavigationOpen" class="mobile-nav-mask" @click="closeMobileNavigation" />
 
     <el-container class="main-shell">
-      <el-header class="header">
+      <div v-if="navigationPending" class="route-progress" role="progressbar" aria-label="页面正在打开" />
+      <el-header v-if="!embedded" class="header">
         <div class="header-left">
-          <el-button
-            class="collapse-button"
-            text
-            aria-controls="admin-navigation"
-            :aria-expanded="isMobile ? mobileNavOpen : !sidebarCollapsed"
-            :aria-label="navigationButtonLabel"
-            @click="toggleSidebar"
-          >
-            <el-icon size="18"><Expand v-if="isMobile ? !mobileNavOpen : sidebarCollapsed" /><Fold v-else /></el-icon>
-          </el-button>
+          <button class="collapse-button" type="button" :aria-expanded="isMobile ? mobileNavigationOpen : undefined" :aria-label="isMobile ? (mobileNavigationOpen ? '收起导航' : '展开导航') : (sidebarCollapsed ? '展开导航' : '收起导航')" @click.stop="toggleSidebar">
+            <el-icon size="18"><Expand v-if="isMobile ? !mobileNavigationOpen : sidebarCollapsed" /><Fold v-else /></el-icon>
+          </button>
           <div class="breadcrumb-copy">
-            <span>管理后台</span>
+            <span>傅小念的运营工作台</span>
             <strong>{{ currentPageTitle }}</strong>
           </div>
         </div>
@@ -69,14 +47,15 @@
           <button class="account-button" type="button">
             <span class="account-avatar">{{ accountInitial }}</span>
             <span class="account-copy">
-              <strong>{{ auth.user?.nickname || auth.user?.username || '管理员' }}</strong>
+              <strong>{{ accountName }}</strong>
               <small>{{ roleLabel }}</small>
             </span>
             <el-icon><ArrowDown /></el-icon>
           </button>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item disabled>{{ auth.user?.nickname || auth.user?.username }} · {{ roleLabel }}</el-dropdown-item>
+              <el-dropdown-item disabled>{{ accountName }} · {{ roleLabel }}</el-dropdown-item>
+              <el-dropdown-item @click="router.push('/change-password')">修改密码</el-dropdown-item>
               <el-dropdown-item divided @click="auth.logout">
                 <el-icon><SwitchButton /></el-icon>退出登录
               </el-dropdown-item>
@@ -84,6 +63,13 @@
           </template>
         </el-dropdown>
       </el-header>
+
+      <nav v-if="!embedded" class="page-tabs" aria-label="已打开的后台页面">
+        <div v-for="tab in openTabs" :key="tab.path" class="page-tab" :class="{ active: route.path === tab.path }">
+          <RouterLink :to="tab.path" class="page-tab-main" :aria-current="route.path === tab.path ? 'page' : undefined" :title="tab.title">{{ tab.title }}</RouterLink>
+          <button type="button" class="page-tab-close" :aria-label="`关闭${tab.title}`" :title="`关闭${tab.title}`" @click.stop="closeTab(tab.path)">×</button>
+        </div>
+      </nav>
 
       <el-main class="main-content">
         <div class="page-container">
@@ -96,7 +82,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { navigationPending } from '../router';
 import {
   ArrowDown,
   ChatLineRound,
@@ -108,58 +95,100 @@ import {
   Setting,
   SwitchButton,
   Tickets,
+  TrendCharts,
 } from '@element-plus/icons-vue';
 import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
+const router = useRouter();
+const embedded = window.self !== window.top;
 const auth = useAuthStore();
+const mobileViewport = window.matchMedia('(max-width: 900px)');
+const touchViewport = window.matchMedia('(hover: none) and (pointer: coarse)');
 const sidebarCollapsed = ref(localStorage.getItem('admin_sidebar_collapsed') === '1');
-const isMobile = ref(window.matchMedia('(max-width: 900px)').matches);
-const mobileNavOpen = ref(false);
+const isMobileLayout = () => mobileViewport.matches || (navigator.maxTouchPoints > 0 && touchViewport.matches && window.innerWidth <= 1366);
+const isMobile = ref(isMobileLayout());
+const mobileNavigationOpen = ref(false);
 const canAccess = (permission: string) => auth.hasPermission(permission);
-
+const preloadedRoutes = new Set<string>();
+function preloadRoute(path: string) {
+  if (preloadedRoutes.has(path)) return;
+  const resolved = router.resolve(path);
+  const record = resolved.matched[resolved.matched.length - 1];
+  const permission = String(record?.meta.permission || '');
+  if (permission && !auth.hasPermission(permission)) return;
+  const component = record?.components?.default;
+  if (typeof component !== 'function') return;
+  preloadedRoutes.add(path);
+  Promise.resolve((component as () => Promise<unknown>)()).catch(() => preloadedRoutes.delete(path));
+}
 function toggleSidebar() {
+  updateViewport();
   if (isMobile.value) {
-    mobileNavOpen.value = !mobileNavOpen.value;
+    mobileNavigationOpen.value = !mobileNavigationOpen.value;
     return;
   }
   sidebarCollapsed.value = !sidebarCollapsed.value;
   localStorage.setItem('admin_sidebar_collapsed', sidebarCollapsed.value ? '1' : '0');
 }
-
-function closeMobileNav() {
-  mobileNavOpen.value = false;
+function closeMobileNavigation() {
+  mobileNavigationOpen.value = false;
 }
-
-function handleMenuSelect() {
-  if (isMobile.value) closeMobileNav();
-}
-
 function updateViewport() {
-  const nextIsMobile = window.innerWidth <= 900;
-  if (!nextIsMobile) mobileNavOpen.value = false;
-  isMobile.value = nextIsMobile;
+  isMobile.value = isMobileLayout();
+  if (!isMobile.value) closeMobileNavigation();
 }
-
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && mobileNavOpen.value) closeMobileNav();
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeMobileNavigation();
 }
-
 onMounted(() => {
   updateViewport();
-  window.addEventListener('resize', updateViewport, { passive: true });
-  window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('resize', updateViewport);
+  window.addEventListener('orientationchange', updateViewport);
+  window.addEventListener('pageshow', updateViewport);
+  window.visualViewport?.addEventListener('resize', updateViewport);
+  mobileViewport.addEventListener?.('change', updateViewport);
+  touchViewport.addEventListener?.('change', updateViewport);
+  document.addEventListener('keydown', handleEscape);
 });
-
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewport);
-  window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('orientationchange', updateViewport);
+  window.removeEventListener('pageshow', updateViewport);
+  window.visualViewport?.removeEventListener('resize', updateViewport);
+  mobileViewport.removeEventListener?.('change', updateViewport);
+  touchViewport.removeEventListener?.('change', updateViewport);
+  document.removeEventListener('keydown', handleEscape);
 });
-
-watch(() => route.fullPath, closeMobileNav);
+watch(() => route.path, () => { if (isMobile.value) closeMobileNavigation(); });
 
 const pageTitles: Record<string, string> = {
-  '/tencent-ad-leads': '腾讯广告线索',
+  '/tencent-ad-leads': '腾讯线索',
+  '/consultations': '全部网咨表单',
+  '/consultations/callbacks': '今日需回访',
+  '/consultations/channel-report': '渠道报表',
+  '/consultations/report': '网咨报表',
+  '/consultations/settings': '网咨设置',
+  '/consultations/schedule': '网咨排班表',
+  '/operations/dashboard': '数据首页',
+  '/operations/daily': '推广数据日统计',
+  '/operations/weekly': '推广数据周统计',
+  '/operations/monthly': '推广数据月统计',
+  '/operations/filter': '数据筛选',
+  '/operations/accounts': '推广账户',
+  '/operations/sync-settings': '推广数据同步设置',
+  '/operations/fields': '推广数据字段设置',
+  '/operations/daily-report': '推广日报',
+  '/operations/weekly-report': '推广周报',
+  '/operations/monthly-report': '推广月报',
+  '/operations/salary': '工资测算',
+  '/operations/arrival-patients': '患者收费',
+  '/promotion-operations/account-health': '账户健康',
+  '/promotion-operations/material-analysis': '素材分析',
+  '/promotion/smart-monitor': '智能监控',
+  '/promotion-operations/creative-batches': '新建创意',
+  '/promotion/multi-account-creative-batch': '批量新建',
+  '/promotion/creative-default-components': '默认组件',
   '/dashboard': '仪表盘',
   '/appointments': '挂号管理',
   '/users': '用户管理',
@@ -171,30 +200,69 @@ const pageTitles: Record<string, string> = {
   '/media-library': '图片库',
   '/mini-program-links': '页面跳转链接',
   '/website-settings': '官网设置',
-  '/website-pages': '官网页面',
+  '/website-categories': '资讯分类',
   '/website-articles': '口腔资讯',
-  '/configs': '系统配置',
+  '/configs': '留资页面',
+  '/wechat-group-notifications': '微信群挂号通知',
+  '/wechat-group-notifications/sender': '专用微信账号',
   '/official-menu': '公众号菜单',
   '/official-auto-reply': '自动回复',
-  '/appointment-notify': '成员与通知',
+  '/appointment-notify': '公众号绑定',
   '/followup-forward': '回访接口',
-  '/admin-users': '成员与通知',
+  '/website-analytics': '官网浏览统计',
+  '/admin-users': '成员管理',
+  '/admin-teams': '团队管理',
+  '/change-password': '修改密码',
+  '/admin-roles': '角色管理',
+  '/official-binding': '公众号绑定',
   '/audit-logs': '审计日志'
 };
 
-const currentPageTitle = computed(() => pageTitles[route.path] || '管理后台');
-const navigationButtonLabel = computed(() => {
-  if (isMobile.value) return mobileNavOpen.value ? '关闭导航' : '打开导航';
-  return sidebarCollapsed.value ? '展开导航' : '收起导航';
-});
-const accountInitial = computed(() => (auth.user?.nickname || auth.user?.username || '管').slice(0, 1).toUpperCase());
+const currentPageTitle = computed(() => pageTitles[route.path] || '傅小念的运营工作台');
+interface PageTab { path: string; title: string }
+const openTabs = ref<PageTab[]>([]);
+const tabStorageKey = computed(() => `admin_page_tabs_${auth.user?.id || 'anonymous'}`);
+function permittedTab(path: string): PageTab | null {
+  const resolved = router.resolve(path);
+  if (resolved.path !== path || !pageTitles[path]) return null;
+  const permission = String(resolved.matched[resolved.matched.length - 1]?.meta.permission || '');
+  return permission && !auth.hasPermission(permission) ? null : { path, title: pageTitles[path] };
+}
+function saveTabs() {
+  try { sessionStorage.setItem(tabStorageKey.value, JSON.stringify(openTabs.value.map(tab => tab.path))); } catch { /* 无存储权限时仅保留当前会话内的标签 */ }
+}
+watch(() => auth.user?.id, () => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(tabStorageKey.value) || '[]') as unknown;
+    openTabs.value = Array.isArray(saved) ? [...new Set(saved.filter((item): item is string => typeof item === 'string'))].map(permittedTab).filter((item): item is PageTab => !!item).slice(-12) : [];
+  } catch { openTabs.value = []; }
+}, { immediate: true });
+watch(() => route.path, path => {
+  if (embedded) return;
+  const tab = permittedTab(path);
+  if (!tab) return;
+  if (!openTabs.value.some(item => item.path === path)) {
+    openTabs.value.push(tab);
+    if (openTabs.value.length > 12) openTabs.value.shift();
+  }
+  saveTabs();
+}, { immediate: true });
+function closeTab(path: string) {
+  const index = openTabs.value.findIndex(item => item.path === path);
+  if (index < 0) return;
+  openTabs.value.splice(index, 1);
+  saveTabs();
+  if (route.path === path) router.push(openTabs.value[Math.min(index, openTabs.value.length - 1)]?.path || '/dashboard');
+}
+const accountName = computed(() => auth.user?.username === 'admin' ? 'admin' : (auth.user?.nickname || auth.user?.username || '管理员'));
+const accountInitial = computed(() => accountName.value.slice(0, 1).toUpperCase());
 const roleLabel = computed(() => {
   const labels: Record<string, string> = {
     SUPER_ADMIN: '超级管理员',
     MANAGER: '经理',
     STAFF: '员工'
   };
-  return labels[auth.user?.role || ''] || auth.user?.role || '管理员';
+  return auth.user?.roleName || labels[auth.user?.role || ''] || auth.user?.role || '管理员';
 });
 </script>
 
@@ -213,7 +281,7 @@ const roleLabel = computed(() => {
   flex-direction: column;
   overflow: hidden;
   background: var(--admin-sidebar);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--admin-border);
   transition: width 200ms ease;
 }
 
@@ -223,8 +291,8 @@ const roleLabel = computed(() => {
   align-items: center;
   gap: 12px;
   padding: 0 16px;
-  color: #ffffff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--admin-text);
+  border-bottom: 1px solid var(--admin-border);
 }
 
 .brand-mark {
@@ -235,8 +303,8 @@ const roleLabel = computed(() => {
   place-items: center;
   color: #ffffff;
   background: var(--admin-primary);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
+  border: 0;
+  border-radius: 14px;
   font-size: 18px;
   font-weight: 750;
 }
@@ -254,7 +322,7 @@ const roleLabel = computed(() => {
 }
 
 .brand-copy span {
-  color: #9ba9bc;
+  color: var(--admin-text-muted);
   font-size: 12px;
 }
 
@@ -263,13 +331,13 @@ const roleLabel = computed(() => {
   padding: 14px 10px;
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-color: #344158 transparent;
+  scrollbar-color: #d2d2d7 transparent;
   scrollbar-width: thin;
 }
 
 .nav-group-label {
   padding: 4px 12px 7px;
-  color: #76958f;
+  color: var(--admin-text-muted);
   font-size: 11px;
   font-weight: 650;
 }
@@ -287,48 +355,62 @@ const roleLabel = computed(() => {
   height: 44px;
   margin-bottom: 4px;
   padding: 0 12px !important;
-  color: #c3cbd8;
-  border-radius: 6px;
+  color: var(--admin-text-secondary);
+  border-radius: 12px;
+  transition: color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
 
 .navigation :deep(.el-sub-menu__title) {
   height: 44px;
   margin-bottom: 4px;
   padding: 0 12px !important;
-  color: #c3cbd8;
-  border-radius: 6px;
+  color: var(--admin-text-secondary);
+  border-radius: 12px;
+  transition: color 160ms ease, background-color 160ms ease;
 }
 
 .navigation :deep(.el-sub-menu__title:hover) {
-  color: #ffffff;
+  color: var(--admin-primary);
   background: var(--admin-sidebar-hover);
 }
 
 .navigation :deep(.el-sub-menu .el-menu-item) {
   min-width: 0;
   padding-left: 46px !important;
-  color: #aeb9c9;
+  color: var(--admin-text-secondary);
 }
 
 .navigation :deep(.el-menu-item .el-icon) {
   width: 20px;
   margin-right: 12px;
-  color: #93a4bb;
+  color: var(--admin-text-muted);
 }
 
 .navigation :deep(.el-menu-item:hover) {
-  color: #ffffff;
+  color: var(--admin-primary);
   background: var(--admin-sidebar-hover);
+  transform: translateX(2px);
 }
 
 .navigation :deep(.el-menu-item.is-active) {
-  color: #ffffff;
-  background: var(--admin-primary);
+  color: var(--admin-primary);
+  background: var(--admin-sidebar-hover);
   font-weight: 600;
+  box-shadow: none;
 }
 
 .navigation :deep(.el-menu-item.is-active .el-icon) {
-  color: #ffffff;
+  color: var(--admin-primary);
+}
+
+.navigation :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
+  color: var(--admin-primary);
+  background: var(--admin-primary-soft);
+  font-weight: 600;
+}
+
+.navigation :deep(.el-sub-menu.is-active > .el-sub-menu__title > .el-icon) {
+  color: var(--admin-primary);
 }
 
 .is-collapsed .brand,
@@ -354,8 +436,13 @@ const roleLabel = computed(() => {
 
 .is-collapsed .navigation :deep(.el-menu-item),
 .is-collapsed .navigation :deep(.el-sub-menu__title) {
+  display: flex;
   justify-content: center;
+  flex-wrap: nowrap;
   padding: 0 !important;
+  overflow: hidden;
+  white-space: nowrap;
+  transform: none;
 }
 
 .is-collapsed .navigation :deep(.el-menu-item > .el-icon),
@@ -363,8 +450,48 @@ const roleLabel = computed(() => {
   margin: 0 !important;
 }
 
-.is-collapsed .navigation :deep(.el-sub-menu__icon-arrow) {
-  display: none;
+/* 收起状态下，激活子菜单也必须保留图标（Element Plus 会覆盖该布局）。 */
+.is-collapsed .navigation :deep(.el-sub-menu > .el-sub-menu__title > .el-icon:first-child) {
+  display: inline-flex !important;
+  flex: 0 0 20px;
+  width: 20px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  visibility: visible !important;
+}
+
+.is-collapsed .navigation :deep(.el-sub-menu > .el-sub-menu__title > .el-icon:first-child svg) {
+  display: block !important;
+  width: 20px;
+  height: 20px;
+}
+
+/* Element Plus 收起子菜单时会重置图标布局；官网图标保持固定占位。 */
+.is-collapsed .navigation :deep(.website-nav-icon) {
+  display: inline-flex !important;
+  flex: 0 0 20px;
+  width: 20px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  color: var(--admin-text-muted) !important;
+  visibility: visible !important;
+}
+
+.is-collapsed .navigation :deep(.website-nav-icon svg) {
+  display: block !important;
+  width: 20px;
+  height: 20px;
+}
+
+.is-collapsed .navigation :deep(.el-sub-menu__icon-arrow),
+.is-collapsed .navigation :deep(.el-sub-menu > .el-sub-menu__title > .el-sub-menu__icon-arrow),
+.is-collapsed .navigation :deep(.el-icon-arrow-right),
+.is-collapsed .navigation :deep(.el-sub-menu__title > svg:last-child) {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  visibility: hidden !important;
 }
 
 .sidebar-footer {
@@ -373,8 +500,8 @@ const roleLabel = computed(() => {
   align-items: center;
   gap: 9px;
   padding: 0 22px;
-  color: #9ba9bc;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--admin-text-muted);
+  border-top: 1px solid var(--admin-border);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -383,15 +510,29 @@ const roleLabel = computed(() => {
   flex: 0 0 8px;
   width: 8px;
   height: 8px;
-  background: #4ade80;
+  background: #30a46c;
   border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.12);
+  box-shadow: 0 0 0 3px rgba(48, 164, 108, 0.14);
 }
 
 .main-shell {
   min-width: 0;
   margin-left: 232px;
   transition: margin-left 200ms ease;
+}
+.route-progress{position:fixed;z-index:80;top:0;right:0;left:232px;height:3px;background:linear-gradient(90deg,transparent,var(--admin-primary),transparent);background-size:200% 100%;animation:route-progress 1s linear infinite;pointer-events:none}
+.is-collapsed .route-progress,.layout--embedded .route-progress{left:0}
+@keyframes route-progress{from{background-position:200% 0}to{background-position:0 0}}
+@media(max-width:900px){.route-progress{left:0}}
+@media(prefers-reduced-motion:reduce){.route-progress{animation:none}}
+
+.layout--embedded .main-shell,
+.layout--embedded.is-collapsed .main-shell {
+  margin-left: 0;
+}
+
+.layout--embedded .main-content {
+  padding: 10px;
 }
 
 .is-collapsed .main-shell {
@@ -403,12 +544,14 @@ const roleLabel = computed(() => {
   z-index: 20;
   top: 0;
   display: flex;
-  height: 64px;
+  height: 56px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
-  background: rgba(255, 255, 255, 0.97);
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--admin-border);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
 }
 
 .header-left,
@@ -422,10 +565,26 @@ const roleLabel = computed(() => {
 }
 
 .collapse-button {
+  display: inline-flex;
+  flex: 0 0 40px;
   width: 40px;
   height: 40px;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   color: var(--admin-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.collapse-button:hover,
+.collapse-button:focus-visible {
+  color: var(--admin-primary);
+  background: var(--admin-primary-soft);
+  outline: none;
 }
 
 .breadcrumb-copy {
@@ -451,13 +610,13 @@ const roleLabel = computed(() => {
   color: inherit;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 20px;
   cursor: pointer;
 }
 
 .account-button:hover,
 .account-button:focus-visible {
-  background: #f4f6f9;
+  background: var(--admin-primary-soft);
   border-color: var(--admin-border);
   outline: none;
 }
@@ -469,7 +628,7 @@ const roleLabel = computed(() => {
   place-items: center;
   color: #ffffff;
   background: var(--admin-primary);
-  border-radius: 6px;
+  border-radius: 50%;
   font-weight: 700;
 }
 
@@ -494,9 +653,17 @@ const roleLabel = computed(() => {
 
 .main-content {
   min-width: 0;
-  padding: 24px;
+  padding: 16px;
   background: var(--admin-bg);
 }
+.page-tabs{position:sticky;z-index:19;top:56px;display:flex;align-items:center;gap:6px;min-width:0;min-height:40px;padding:3px 16px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--admin-border);background:#fff;box-shadow:none;scrollbar-width:thin}
+.page-tab{display:flex;align-items:center;flex:none;max-width:210px;height:34px;border:1px solid transparent;border-radius:18px;background:#f5f5f7;color:var(--admin-text-secondary)}
+.page-tab.active{border-color:transparent;background:var(--admin-primary-soft);color:var(--admin-primary);box-shadow:none}
+.page-tab-main,.page-tab-close{height:100%;border:0;background:transparent;color:inherit;cursor:pointer}
+.page-tab-main{display:inline-flex;align-items:center;min-width:0;max-width:175px;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;font-size:12px;font-weight:600}
+.page-tab-main:focus-visible{border-radius:7px 0 0 7px;outline:2px solid var(--admin-primary);outline-offset:-2px}
+.page-tab-close{flex:none;width:28px;padding:0;font-size:19px;line-height:1}
+.page-tab-close:hover,.page-tab-close:focus-visible{border-radius:0 18px 18px 0;background:#d1e8ff;outline:none}
 
 .page-container {
   width: 100%;
@@ -504,51 +671,35 @@ const roleLabel = computed(() => {
   margin: 0 auto;
 }
 
-.mobile-nav-backdrop {
-  display: none;
-}
-
 @media (max-width: 900px) {
-  .layout.is-mobile-nav-open {
-    height: 100dvh;
-    overflow: hidden;
-  }
-
   .aside {
-    z-index: 50;
-    width: min(280px, calc(100vw - 48px)) !important;
-    max-width: 280px;
+    position: fixed;
+    z-index: 1002;
+    width: 232px !important;
+    height: 100dvh;
     transform: translateX(-100%);
-    box-shadow: 18px 0 48px rgba(15, 23, 42, 0.24);
-    transition: transform 200ms ease;
+    transition: transform .22s ease;
+    box-shadow: none;
   }
 
-  .is-mobile-nav-open .aside {
+  .mobile-nav-open .aside {
     transform: translateX(0);
+    box-shadow: 8px 0 24px rgba(15, 23, 42, .24);
   }
 
-  .brand-copy,
-  .sidebar-footer span:not(.status-dot) {
-    display: flex !important;
+  .mobile-nav-mask {
+    position: fixed;
+    z-index: 1001;
+    inset: 0;
+    background: rgba(15, 23, 42, .4);
   }
 
   .navigation :deep(.el-menu) {
     width: 100%;
   }
 
-  .navigation :deep(.el-menu-item),
-  .navigation :deep(.el-sub-menu__title) {
-    justify-content: flex-start;
-    padding: 0 12px !important;
-  }
-
-  .navigation :deep(.el-menu-item .el-icon),
-  .navigation :deep(.el-sub-menu__title > .el-icon) {
-    margin-right: 12px !important;
-  }
-
-  .navigation :deep(.el-sub-menu .el-menu-item) {
-    padding-left: 46px !important;
+  .navigation :deep(.el-menu-item) {
+    padding-left: 20px !important;
   }
 
   .main-shell,
@@ -559,51 +710,68 @@ const roleLabel = computed(() => {
   .collapse-button {
     display: inline-flex;
   }
+}
 
-  .mobile-nav-backdrop {
-    position: fixed;
-    z-index: 40;
-    inset: 0;
-    display: block;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-    background: rgba(15, 23, 42, 0.5);
-    border: 0;
-    cursor: pointer;
-  }
+/* iPad/Safari desktop-site mode can report a layout viewport wider than 900px.
+   The runtime adds this class only for real touch devices up to 1366px. */
+.is-mobile-layout .aside {
+  position: fixed;
+  z-index: 1002;
+  width: 232px !important;
+  height: 100dvh;
+  transform: translateX(-100%);
+  transition: transform .22s ease;
+  box-shadow: none;
+}
+
+.is-mobile-layout.mobile-nav-open .aside {
+  transform: translateX(0);
+  box-shadow: 8px 0 24px rgba(15, 23, 42, .24);
+}
+
+.is-mobile-layout .mobile-nav-mask {
+  position: fixed;
+  z-index: 1001;
+  inset: 0;
+  background: rgba(15, 23, 42, .4);
+}
+
+.is-mobile-layout .navigation :deep(.el-menu) {
+  width: 100%;
+}
+
+.is-mobile-layout .navigation :deep(.el-menu-item) {
+  padding-left: 20px !important;
+}
+
+.is-mobile-layout .main-shell,
+.is-mobile-layout.is-collapsed .main-shell {
+  margin-left: 0;
+}
+
+.is-mobile-layout .collapse-button {
+  display: inline-flex;
 }
 
 @media (max-width: 640px) {
-  .main-shell,
-  .is-collapsed .main-shell {
-    margin-left: 0;
+  .aside {
+    width: min(82vw, 280px) !important;
+  }
+
+  .brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
   }
 
   .header {
-    height: 60px;
-    padding: 0 max(10px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
-  }
-
-  .header-left {
-    min-width: 0;
-    gap: 6px;
-  }
-
-  .breadcrumb-copy {
-    min-width: 0;
-  }
-
-  .breadcrumb-copy span {
-    display: none;
-  }
-
-  .breadcrumb-copy strong {
-    max-width: calc(100vw - 132px);
-    overflow: hidden;
-    font-size: 15px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    height: 52px;
+    padding: 0 12px;
   }
 
   .account-copy,
@@ -612,7 +780,8 @@ const roleLabel = computed(() => {
   }
 
   .main-content {
-    padding: 12px 10px calc(18px + env(safe-area-inset-bottom));
+    padding: 14px 10px;
   }
+  .page-tabs{top:52px;padding:3px 10px;min-height:39px}.page-tab{max-width:155px}.page-tab-main{max-width:119px}
 }
 </style>

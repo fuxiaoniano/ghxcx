@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { WechatOfficialAccountController } from './wechat-official-account.controller';
 import { WechatOfficialAccountService } from './wechat-official-account.service';
 import { WechatMiniModule } from '../wechat-mini/wechat-mini.module';
+import { CryptoModule } from '../crypto/crypto.module';
 
 @Module({
-  imports: [WechatMiniModule],
+  imports: [WechatMiniModule, CryptoModule],
   controllers: [WechatOfficialAccountController],
   providers: [WechatOfficialAccountService],
   exports: [WechatOfficialAccountService]

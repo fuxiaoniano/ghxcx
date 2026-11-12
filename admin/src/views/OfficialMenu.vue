@@ -1,5 +1,5 @@
 <template>
-  <div class="page-heading"><h1 class="page-title">公众号菜单</h1><p>生成业务入口并维护公众号自定义菜单</p></div>
+  <div class="page-heading"><h1 class="page-title">公众号菜单</h1></div>
   <div class="content-panel">
     <el-alert
       class="menu-tip"
@@ -119,8 +119,8 @@ import {
 const menu = reactive<OfficialAccountMenuConfig>({ button: [] });
 const entrySource = ref('menu_main');
 const publicBase = window.location.origin.includes('fxnadmin.')
-  ? window.location.origin.replace('fxnadmin.', 'zbsfxn.')
-  : 'https://zbsfxn.cqzbskq.com';
+  ? window.location.origin.replace('wechatadmin.', 'wechat.')
+  : 'https://wechat.fuxiaonian.net';
 const miniAppId = import.meta.env.VITE_MINI_APP_ID || 'wx99b598314f56c2f1';
 
 const safeEntrySource = computed(() =>

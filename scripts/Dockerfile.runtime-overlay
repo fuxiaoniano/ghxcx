@@ -1,0 +1,5 @@
+# Fast production deployment: keep the dependency and Prisma layers from the
+# currently validated image, and replace only compiled files in ./overlay.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY overlay/dist/ /app/dist/

@@ -1,0 +1,7 @@
+# Reuse the installed production dependencies; only compiled code and Prisma migrations change.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+WORKDIR /app
+COPY server/dist /app/dist
+COPY server/prisma /app/prisma
+RUN npx prisma generate

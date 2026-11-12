@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { XMLParser } from 'fast-xml-parser';
@@ -9,6 +9,7 @@ import { basename, extname, join, resolve, sep } from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/utils/business-exception';
 import { WechatMiniService } from '../wechat-mini/wechat-mini.service';
+import { CryptoService } from '../crypto/crypto.service';
 import {
   OfficialAutoReplyConfig,
   OfficialAccountMenuButton,
@@ -53,19 +54,40 @@ export interface OfficialAccountJsSdkConfig {
 }
 
 @Injectable()
-export class WechatOfficialAccountService {
+export class WechatOfficialAccountService implements OnModuleInit {
   private readonly parser = new XMLParser({ ignoreAttributes: false });
   private readonly logger = new Logger(WechatOfficialAccountService.name);
+  private binding!: { enabled: boolean; appId: string; appSecret: string; token: string; encodingAesKey: string };
 
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly mini: WechatMiniService,
-    @Inject('REDIS') private readonly redis: Redis
-  ) {}
+    @Inject('REDIS') private readonly redis: Redis,
+    @Optional() private readonly crypto?: CryptoService
+  ) { this.binding = this.envBinding(); }
+
+  async onModuleInit() { await this.reloadBinding(); }
+
+  async bindingStatus() { return { enabled: this.binding.enabled, appId: this.binding.appId, hasAppSecret: Boolean(this.binding.appSecret), hasToken: Boolean(this.binding.token), hasEncodingAesKey: Boolean(this.binding.encodingAesKey), callbackUrl: `${(this.config.get<string>('SERVER_BASE_URL') || '').replace(/\/$/, '')}/wechat/oa/callback` }; }
+
+  async updateBinding(input: { enabled: boolean; appId: string; appSecret?: string; token?: string; encodingAesKey?: string }) {
+    const current = this.binding;
+    const next = { enabled: input.enabled, appId: input.appId.trim(), appSecret: input.appSecret?.trim() || current.appSecret, token: input.token?.trim() || current.token, encodingAesKey: input.encodingAesKey?.trim() || current.encodingAesKey };
+    if (!this.crypto) throw new BusinessException(500021, '公众号密钥加密服务不可用', 500);
+    const value = { enabled: next.enabled, appId: next.appId, appSecretCipher: next.appSecret ? this.crypto.encryptText(next.appSecret) : '', tokenCipher: next.token ? this.crypto.encryptText(next.token) : '', encodingAesKeyCipher: next.encodingAesKey ? this.crypto.encryptText(next.encodingAesKey) : '' };
+    await this.prisma.systemConfig.upsert({ where: { key: 'officialAccountBinding' }, create: { key: 'officialAccountBinding', valueJson: value, description: '微信公众号绑定配置（密钥加密保存）' }, update: { valueJson: value } });
+    this.binding = next;
+    await this.redis.del('wechat:oa:access_token');
+    await this.redis.del('wechat:oa:jsapi_ticket');
+    return this.bindingStatus();
+  }
+
+  private envBinding() { return { enabled: Boolean(this.config.get<string>('OFFICIAL_ACCOUNT_APP_ID')), appId: this.config.get<string>('OFFICIAL_ACCOUNT_APP_ID') || '', appSecret: this.config.get<string>('OFFICIAL_ACCOUNT_APP_SECRET') || '', token: this.config.get<string>('OFFICIAL_ACCOUNT_TOKEN') || '', encodingAesKey: this.config.get<string>('OFFICIAL_ACCOUNT_ENCODING_AES_KEY') || '' }; }
+  private async reloadBinding() { const row = await this.prisma.systemConfig.findUnique({ where: { key: 'officialAccountBinding' } }); if (!row || !this.crypto) return; const value = row.valueJson as any; this.binding = { enabled: Boolean(value.enabled), appId: String(value.appId || ''), appSecret: value.appSecretCipher ? this.crypto.decryptText(value.appSecretCipher) : '', token: value.tokenCipher ? this.crypto.decryptText(value.tokenCipher) : '', encodingAesKey: value.encodingAesKeyCipher ? this.crypto.decryptText(value.encodingAesKeyCipher) : '' }; }
 
   verifySignature(signature: string, timestamp: string, nonce: string): boolean {
-    const token = this.config.get<string>('OFFICIAL_ACCOUNT_TOKEN') || '';
+    const token = this.binding.enabled ? this.binding.token : '';
     const digest = [token, timestamp, nonce]
       .sort()
       .join('')
@@ -76,7 +98,7 @@ export class WechatOfficialAccountService {
   }
 
   verifyMessageSignature(signature: string, timestamp: string, nonce: string, encrypted: string): boolean {
-    const token = this.config.get<string>('OFFICIAL_ACCOUNT_TOKEN') || '';
+    const token = this.binding.enabled ? this.binding.token : '';
     const digest = [token, timestamp, nonce, encrypted].sort().join('');
     return createHash('sha1').update(digest).digest('hex') === signature;
   }
@@ -87,7 +109,7 @@ export class WechatOfficialAccountService {
   }
 
   decryptMessage(encrypted: string): string {
-    const encodingAesKey = this.config.get<string>('OFFICIAL_ACCOUNT_ENCODING_AES_KEY') || '';
+    const encodingAesKey = this.binding.encodingAesKey || '';
     if (encodingAesKey.length !== 43) {
       throw new BusinessException(400204, '公众号 EncodingAESKey 长度必须为 43 位');
     }
@@ -100,7 +122,7 @@ export class WechatOfficialAccountService {
     const messageLength = content.readUInt32BE(16);
     const message = content.subarray(20, 20 + messageLength).toString('utf8');
     const appid = content.subarray(20 + messageLength).toString('utf8');
-    const expectedAppId = this.config.get<string>('OFFICIAL_ACCOUNT_APP_ID');
+    const expectedAppId = this.binding.appId;
     if (expectedAppId && appid && appid !== expectedAppId) {
       throw new BusinessException(400205, '公众号加密消息 AppID 不匹配');
     }
@@ -108,11 +130,11 @@ export class WechatOfficialAccountService {
   }
 
   encryptReplyMessage(replyXml: string, timestamp: string, nonce: string): string {
-    const encodingAesKey = this.config.get<string>('OFFICIAL_ACCOUNT_ENCODING_AES_KEY') || '';
+    const encodingAesKey = this.binding.encodingAesKey || '';
     if (encodingAesKey.length !== 43) {
       throw new BusinessException(400204, '公众号 EncodingAESKey 长度必须为 43 位');
     }
-    const appid = this.config.get<string>('OFFICIAL_ACCOUNT_APP_ID') || '';
+    const appid = this.binding.appId || '';
     const key = Buffer.from(`${encodingAesKey}=`, 'base64');
     const message = Buffer.from(replyXml, 'utf8');
     const messageLength = Buffer.alloc(4);
@@ -739,7 +761,7 @@ export class WechatOfficialAccountService {
   }
 
   private messageSignature(encrypted: string, timestamp: string, nonce: string) {
-    const token = this.config.get<string>('OFFICIAL_ACCOUNT_TOKEN') || '';
+    const token = this.binding.enabled ? this.binding.token : '';
     return createHash('sha1').update([token, timestamp, nonce, encrypted].sort().join('')).digest('hex');
   }
 
@@ -768,9 +790,9 @@ export class WechatOfficialAccountService {
       subscribeMiniProgramPagePath:
         String(value?.subscribeMiniProgramPagePath || 'pages/home/home?source=oa_subscribe').trim(),
       subscribeMiniProgramLinkText:
-        String(value?.subscribeMiniProgramLinkText || '点击进入种博士口腔小程序').trim(),
+        String(value?.subscribeMiniProgramLinkText || '点击进入傅小念口腔服务').trim(),
       subscribeMiniProgramCardTitle:
-        String(value?.subscribeMiniProgramCardTitle || '种博士口腔预约挂号').trim(),
+        String(value?.subscribeMiniProgramCardTitle || '傅小念口腔预约挂号').trim(),
       subscribeMiniProgramCoverUrl: String(value?.subscribeMiniProgramCoverUrl || '').trim(),
       messageReplyEnabled: value?.messageReplyEnabled ?? true,
       messageReply:
@@ -820,10 +842,10 @@ export class WechatOfficialAccountService {
   }
 
   private getOfficialCredentials() {
-    const appid = this.config.get<string>('OFFICIAL_ACCOUNT_APP_ID') || '';
-    const secret = this.config.get<string>('OFFICIAL_ACCOUNT_APP_SECRET') || '';
-    if (!appid || !secret || appid.includes('your-official') || secret.includes('your-official')) {
-      throw new BusinessException(500200, 'Official account AppID/AppSecret are not configured');
+    const appid = this.binding.appId || '';
+    const secret = this.binding.appSecret || '';
+    if (!this.binding.enabled || !appid || !secret || appid.includes('your-official') || secret.includes('your-official')) {
+      throw new BusinessException(500200, '公众号尚未绑定或 AppID/AppSecret 未配置');
     }
     return { appid, secret };
   }

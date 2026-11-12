@@ -1,5 +1,5 @@
 <template>
-  <div class="page-heading"><h1 class="page-title">公众号自动回复</h1><p>配置关注、消息兜底和关键词自动回复</p></div>
+  <div class="page-heading"><h1 class="page-title">公众号自动回复</h1></div>
   <div class="content-panel">
     <el-alert
       class="page-tip"

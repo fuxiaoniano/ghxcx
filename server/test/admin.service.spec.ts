@@ -99,6 +99,38 @@ describe('AdminService', () => {
     expect(audit.create).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'REVEAL_FULL_PHONE' }));
   });
 
+  it('only exposes the legacy landing page key through the generic config endpoint', async () => {
+    const { service, prisma } = await createService();
+    await service.configs();
+    expect(prisma.systemConfig.findMany).toHaveBeenCalledWith({
+      where: { key: 'landingPage' },
+      orderBy: { key: 'asc' }
+    });
+  });
+
+  it('rejects sensitive keys on the generic config update endpoint', async () => {
+    const { service, configs } = await createService();
+    await expect(service.updateConfigs(
+      [{ key: 'followupForward', valueJson: { authToken: 'should-not-be-written-here' } }],
+      { adminUserId: 'admin_1', username: 'admin', role: 'SUPER_ADMIN', permissions: [] }
+    )).rejects.toThrow('专用设置页面');
+    expect(configs.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('prevents delegated managers from granting permissions they do not own', async () => {
+    const { service } = await createService();
+    const delegated = { adminUserId: 'staff_1', username: 'staff', role: 'STAFF', permissions: ['SYSTEM_ROLES'] };
+    expect(() => (service as any).assertCanGrantPermissions(delegated, ['SYSTEM_CONFIGS']))
+      .toThrow('不能授予当前账号不具备的权限');
+  });
+
+  it('lets legacy aggregate permissions grant their compatible granular permissions', async () => {
+    const { service } = await createService();
+    const legacy = { adminUserId: 'staff_1', username: 'staff', role: 'STAFF', permissions: ['MANAGE_ADMINS'] };
+    expect(() => (service as any).assertCanGrantPermissions(legacy, ['SYSTEM_MEMBERS', 'SYSTEM_ROLES']))
+      .not.toThrow();
+  });
+
   it('reveals phone with permission and writes audit log', async () => {
     const { service, audit, crypto } = await createService();
     const result = await service.revealAppointmentPhone(

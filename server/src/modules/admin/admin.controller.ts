@@ -20,17 +20,27 @@ import { Request, Response } from 'express';
 import { mkdirSync } from 'fs';
 import { extname, join } from 'path';
 import { CurrentUser, AdminCurrentUser } from '../../common/decorators/current-user.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { AnyPermissions, Permissions } from '../../common/decorators/permissions.decorator';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { validateStoredImageUpload } from '../../common/utils/validate-image-upload';
 import {
   AssignAppointmentDto,
+  ChangeOwnPasswordDto,
+  CreateAdminRoleDefinitionDto,
+  CreateAdminUserDto,
+  CreateAdminTeamDto,
   CreateAdminWechatInviteDto,
   CreateClinicDto,
   CreateLandingPageDto,
   OfficialAccountMenuDto,
   OfficialAutoReplyDto,
+  UpdateOfficialAccountBindingDto,
+  UpdateAdminLoginPreferenceDto,
   UpdateAdminUserDto,
+  UpdateAdminTeamDto,
+  DeleteAdminUserDto,
+  UpdateAdminRoleDefinitionDto,
   UpdateAppointmentNotifyConfigDto,
   UpdateAppointmentRemarkDto,
   UpdateAppointmentStatusDto,
@@ -52,22 +62,30 @@ const allowedImageExts = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
+  @Post('/account/change-password')
+  changeOwnPassword(@Body() dto: ChangeOwnPasswordDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.changeOwnPassword(dto, user, request.ip, request.headers['user-agent']);
+  }
+
   @Get('/dashboard')
-  dashboard() {
-    return this.admin.dashboard();
+  dashboard(@CurrentUser() user: AdminCurrentUser) {
+    return this.admin.dashboard(user);
   }
 
   @Get('/users')
-  users(@Query() query: Record<string, string>) {
-    return this.admin.users(query);
+  @Permissions('BUSINESS_USERS')
+  users(@Query() query: Record<string, string>, @CurrentUser() user: AdminCurrentUser) {
+    return this.admin.users(query, user);
   }
 
   @Get('/users/:id')
-  userDetail(@Param('id') id: string) {
-    return this.admin.userDetail(id);
+  @Permissions('BUSINESS_USERS')
+  userDetail(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) {
+    return this.admin.userDetail(id, user);
   }
 
   @Post('/users/:id/reveal-phone')
+  @Permissions('BUSINESS_USERS')
   revealUserPhone(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -77,16 +95,19 @@ export class AdminController {
   }
 
   @Get('/appointments')
-  appointments(@Query() query: Record<string, string>) {
-    return this.admin.appointments(query);
+  @Permissions('BUSINESS_APPOINTMENTS')
+  appointments(@Query() query: Record<string, string>, @CurrentUser() user: AdminCurrentUser) {
+    return this.admin.appointments(query, user);
   }
 
   @Get('/appointments/:id')
-  appointmentDetail(@Param('id') id: string) {
-    return this.admin.appointmentDetail(id);
+  @Permissions('BUSINESS_APPOINTMENTS')
+  appointmentDetail(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser) {
+    return this.admin.appointmentDetail(id, user);
   }
 
   @Post('/appointments/:id/reveal-phone')
+  @Permissions('BUSINESS_APPOINTMENTS')
   revealPhone(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -96,7 +117,7 @@ export class AdminController {
   }
 
   @Patch('/appointments/:id/status')
-  @Permissions('MANAGE_APPOINTMENTS')
+  @Permissions('BUSINESS_APPOINTMENTS')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateAppointmentStatusDto,
@@ -107,7 +128,7 @@ export class AdminController {
   }
 
   @Patch('/appointments/:id/remark')
-  @Permissions('MANAGE_APPOINTMENTS')
+  @Permissions('BUSINESS_APPOINTMENTS')
   updateRemark(
     @Param('id') id: string,
     @Body() dto: UpdateAppointmentRemarkDto,
@@ -118,7 +139,7 @@ export class AdminController {
   }
 
   @Patch('/appointments/:id/assign')
-  @Permissions('MANAGE_APPOINTMENTS')
+  @Permissions('BUSINESS_APPOINTMENTS')
   assign(
     @Param('id') id: string,
     @Body() dto: AssignAppointmentDto,
@@ -129,7 +150,7 @@ export class AdminController {
   }
 
   @Post('/appointments/:id/resend-notification')
-  @Permissions('MANAGE_APPOINTMENTS')
+  @Permissions('BUSINESS_APPOINTMENTS')
   resend(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -139,7 +160,7 @@ export class AdminController {
   }
 
   @Post('/appointments/:id/resend-followup-forward')
-  @Permissions('MANAGE_APPOINTMENTS')
+  @Permissions('BUSINESS_APPOINTMENTS')
   resendFollowupForward(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -149,12 +170,13 @@ export class AdminController {
   }
 
   @Get('/notification-logs')
-  notificationLogs(@Query() query: Record<string, string>) {
-    return this.admin.notificationLogs(query);
+  @Permissions('BUSINESS_NOTIFICATIONS')
+  notificationLogs(@Query() query: Record<string, string>, @CurrentUser() user: AdminCurrentUser) {
+    return this.admin.notificationLogs(query, user);
   }
 
   @Post('/notification-logs/:id/retry')
-  @Permissions('MANAGE_APPOINTMENTS')
+  @Permissions('BUSINESS_NOTIFICATIONS')
   retryNotification(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -164,22 +186,25 @@ export class AdminController {
   }
 
   @Get('/audit-logs')
+  @Permissions('SYSTEM_AUDIT')
   auditLogs(@Query() query: Record<string, string>) {
     return this.admin.auditLogs(query);
   }
 
   @Get('/configs')
+  @Permissions('SYSTEM_CONFIGS')
   configs() {
     return this.admin.configs();
   }
 
   @Get('/landing-pages')
+  @Permissions('SYSTEM_CONFIGS')
   landingPages() {
     return this.admin.landingPages();
   }
 
   @Post('/landing-pages')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_CONFIGS')
   createLandingPage(
     @Body() dto: CreateLandingPageDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -189,12 +214,13 @@ export class AdminController {
   }
 
   @Get('/landing-pages/:id')
+  @Permissions('SYSTEM_CONFIGS')
   landingPage(@Param('id') id: string) {
     return this.admin.landingPage(id);
   }
 
   @Patch('/landing-pages/:id')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_CONFIGS')
   updateLandingPage(
     @Param('id') id: string,
     @Body() dto: UpdateLandingPageDto,
@@ -205,7 +231,7 @@ export class AdminController {
   }
 
   @Post('/landing-pages/:id/set-default')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_CONFIGS')
   setDefaultLandingPage(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -215,7 +241,7 @@ export class AdminController {
   }
 
   @Delete('/landing-pages/:id')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_CONFIGS')
   deleteLandingPage(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -225,7 +251,7 @@ export class AdminController {
   }
 
   @Patch('/configs')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_CONFIGS')
   updateConfigs(
     @Body() dto: UpdateConfigsDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -235,13 +261,13 @@ export class AdminController {
   }
 
   @Get('/followup-forward')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_FOLLOWUP')
   followupForwardConfig() {
     return this.admin.followupForwardConfig();
   }
 
   @Patch('/followup-forward')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_FOLLOWUP')
   updateFollowupForwardConfig(
     @Body() dto: UpdateFollowupForwardConfigDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -251,7 +277,7 @@ export class AdminController {
   }
 
   @Post('/landing-assets')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_CONFIGS')
   @UseInterceptors(
     FileInterceptor('file', {
       dest: landingAssetDir,
@@ -267,16 +293,18 @@ export class AdminController {
     if (!file) {
       throw new BadRequestException('请先选择图片');
     }
+    validateStoredImageUpload(file);
     return this.admin.landingAssetUrl(file);
   }
 
   @Get('/official-account/menu')
+  @Permissions('WECHAT_MENU')
   officialAccountMenu() {
     return this.admin.officialAccountMenu();
   }
 
   @Patch('/official-account/menu')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('WECHAT_MENU')
   updateOfficialAccountMenu(
     @Body() dto: OfficialAccountMenuDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -286,7 +314,7 @@ export class AdminController {
   }
 
   @Post('/official-account/menu/publish')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('WECHAT_MENU')
   publishOfficialAccountMenu(
     @CurrentUser() user: AdminCurrentUser,
     @Req() request: Request
@@ -295,12 +323,13 @@ export class AdminController {
   }
 
   @Get('/official-account/auto-reply')
+  @Permissions('WECHAT_AUTO_REPLY')
   officialAutoReply() {
     return this.admin.officialAutoReply();
   }
 
   @Patch('/official-account/auto-reply')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('WECHAT_AUTO_REPLY')
   updateOfficialAutoReply(
     @Body() dto: OfficialAutoReplyDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -309,20 +338,88 @@ export class AdminController {
     return this.admin.updateOfficialAutoReply(dto.autoReply as any, user, request.ip, request.headers['user-agent']);
   }
 
+  @Get('/official-account/binding')
+  @Permissions('SYSTEM_OFFICIAL_BINDING')
+  officialAccountBinding() { return this.admin.officialAccountBinding(); }
+
+  @Patch('/official-account/login-preference')
+  @Permissions('SYSTEM_OFFICIAL_BINDING')
+  updateAdminLoginPreference(@Body() dto: UpdateAdminLoginPreferenceDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.updateAdminLoginPreference(dto.defaultWechatLogin, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Patch('/official-account/binding')
+  @Permissions('SYSTEM_OFFICIAL_BINDING')
+  updateOfficialAccountBinding(@Body() dto: UpdateOfficialAccountBindingDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) { return this.admin.updateOfficialAccountBinding(dto, user, request.ip, request.headers['user-agent']); }
+
+  @Get('/admin-roles')
+  @Permissions('SYSTEM_ROLES')
+  adminRoles() { return this.admin.adminRoles(); }
+
+  @Post('/admin-roles')
+  @Permissions('SYSTEM_ROLES')
+  createAdminRole(@Body() dto: CreateAdminRoleDefinitionDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.createAdminRole(dto, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Patch('/admin-roles/:id')
+  @Permissions('SYSTEM_ROLES')
+  updateAdminRole(@Param('id') id: string, @Body() dto: UpdateAdminRoleDefinitionDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.updateAdminRole(id, dto, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Delete('/admin-roles/:id')
+  @Permissions('SYSTEM_ROLES')
+  deleteAdminRole(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.deleteAdminRole(id, user, request.ip, request.headers['user-agent']);
+  }
+
   @Get('/admin-users')
-  @Permissions('MANAGE_ADMINS')
+  @Permissions('SYSTEM_MEMBERS')
   adminUsers(@Query() query: Record<string, string>) {
     return this.admin.adminUsers(query);
   }
 
+  @Get('/admin-teams')
+  @Permissions('SYSTEM_MEMBERS')
+  adminTeams() { return this.admin.adminTeams(); }
+
+  @Post('/admin-teams')
+  @Permissions('SYSTEM_MEMBERS')
+  createAdminTeam(@Body() dto: CreateAdminTeamDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.createAdminTeam(dto, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Patch('/admin-teams/:id')
+  @Permissions('SYSTEM_MEMBERS')
+  updateAdminTeam(@Param('id') id: string, @Body() dto: UpdateAdminTeamDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.updateAdminTeam(id, dto, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Delete('/admin-teams/:id')
+  @Permissions('SYSTEM_MEMBERS')
+  deleteAdminTeam(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) {
+    return this.admin.deleteAdminTeam(id, user, request.ip, request.headers['user-agent']);
+  }
+
+  @Post('/admin-users')
+  @Permissions('SYSTEM_MEMBERS')
+  createAdminUser(
+    @Body() dto: CreateAdminUserDto,
+    @CurrentUser() user: AdminCurrentUser,
+    @Req() request: Request
+  ) {
+    return this.admin.createAdminUser(dto, user, request.ip, request.headers['user-agent']);
+  }
+
   @Get('/admin-users/invitations')
-  @Permissions('MANAGE_ADMINS')
+  @Permissions('SYSTEM_MEMBERS')
   adminWechatInvitations() {
     return this.admin.adminWechatInvitations();
   }
 
   @Post('/admin-users/invitations')
-  @Permissions('MANAGE_ADMINS')
+  @Permissions('SYSTEM_MEMBERS')
   createAdminWechatInvitation(
     @Body() dto: CreateAdminWechatInviteDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -332,7 +429,7 @@ export class AdminController {
   }
 
   @Delete('/admin-users/invitations/:id')
-  @Permissions('MANAGE_ADMINS')
+  @Permissions('SYSTEM_MEMBERS')
   cancelAdminWechatInvitation(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -342,7 +439,7 @@ export class AdminController {
   }
 
   @Post('/admin-users/:id/wechat-invitation')
-  @Permissions('MANAGE_ADMINS')
+  @Permissions('SYSTEM_MEMBERS')
   createExistingAdminWechatInvitation(
     @Param('id') id: string,
     @CurrentUser() user: AdminCurrentUser,
@@ -352,7 +449,7 @@ export class AdminController {
   }
 
   @Patch('/admin-users/:id')
-  @Permissions('MANAGE_ADMINS')
+  @Permissions('SYSTEM_MEMBERS')
   updateAdminUser(
     @Param('id') id: string,
     @Body() dto: UpdateAdminUserDto,
@@ -362,14 +459,22 @@ export class AdminController {
     return this.admin.updateAdminUser(id, dto, user, request.ip, request.headers['user-agent']);
   }
 
+  @Delete('/admin-users/:id')
+  @Permissions('SYSTEM_MEMBERS')
+  deleteAdminUser(@Param('id') id: string, @Body() dto: DeleteAdminUserDto, @CurrentUser() user: AdminCurrentUser, @Req() request: Request) { return this.admin.deleteAdminUser(id, dto.successorAdminId, user, request.ip, request.headers['user-agent']); }
+
+  @Get('/admin-users/:id/handover-summary')
+  @Permissions('SYSTEM_MEMBERS')
+  adminUserHandoverSummary(@Param('id') id: string) { return this.admin.adminUserHandoverSummary(id); }
+
   @Get('/clinics')
-  @Permissions('MANAGE_CONFIGS')
+  @AnyPermissions('BUSINESS_APPOINTMENTS', 'CONTENT_DEPARTMENTS')
   clinics() {
     return this.admin.clinics();
   }
 
   @Post('/clinics')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('CONTENT_DEPARTMENTS')
   createClinic(
     @Body() dto: CreateClinicDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -379,7 +484,7 @@ export class AdminController {
   }
 
   @Patch('/clinics/:id')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('CONTENT_DEPARTMENTS')
   updateClinic(
     @Param('id') id: string,
     @Body() dto: UpdateClinicDto,
@@ -390,13 +495,13 @@ export class AdminController {
   }
 
   @Get('/appointment-notify')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_APPOINTMENT_NOTIFY')
   appointmentNotifyConfig() {
     return this.admin.appointmentNotifyConfig();
   }
 
   @Patch('/appointment-notify')
-  @Permissions('MANAGE_CONFIGS')
+  @Permissions('SYSTEM_APPOINTMENT_NOTIFY')
   updateAppointmentNotifyConfig(
     @Body() dto: UpdateAppointmentNotifyConfigDto,
     @CurrentUser() user: AdminCurrentUser,
@@ -406,6 +511,7 @@ export class AdminController {
   }
 
   @Get('/export/appointments.csv')
+  @Permissions('BUSINESS_APPOINTMENTS')
   async exportAppointments(
     @Query() query: Record<string, string>,
     @CurrentUser() user: AdminCurrentUser,

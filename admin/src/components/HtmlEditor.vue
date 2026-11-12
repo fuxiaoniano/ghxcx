@@ -113,8 +113,6 @@ function color(value: string | null) {
   display: flex;
   min-height: 46px;
   align-items: center;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
   gap: 8px;
   padding: 7px 9px;
   border-bottom: 1px solid var(--admin-border);
@@ -165,31 +163,5 @@ function color(value: string | null) {
 .visual-editor :deep(img) {
   max-width: 100%;
   height: auto;
-}
-
-@media (max-width: 760px) {
-  .editor-toolbar {
-    flex-wrap: nowrap;
-    scrollbar-width: none;
-  }
-
-  .editor-toolbar::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tool-button,
-  .heading-select {
-    flex: 0 0 auto;
-  }
-
-  .tool-button {
-    width: 40px;
-    height: 40px;
-  }
-
-  .visual-editor {
-    min-height: 260px;
-    padding: 14px;
-  }
 }
 </style>

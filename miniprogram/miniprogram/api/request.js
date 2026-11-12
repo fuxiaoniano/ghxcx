@@ -24,7 +24,7 @@ function request(options) {
             fail(error) {
                 const message = error.errMsg || '网络请求失败';
                 if (message.includes('url not in domain list')) {
-                    reject(new Error('小程序服务器域名未配置，请在微信小程序后台 request 合法域名添加：https://zbsfxn.cqzbskq.com'));
+                    reject(new Error('小程序服务器域名未配置，请在微信小程序后台 request 合法域名添加：https://wechat.fuxiaonian.net'));
                     return;
                 }
                 reject(new Error(message));

@@ -31,7 +31,7 @@ const DEFAULT_CATEGORIES = [
 /** 后台尚未配置或接口短暂不可用时，仍展示企业首页和真实轮播图片。 */
 const DEFAULT_HOME = {
     config: {
-        hospitalName: '重庆种博士口腔',
+        hospitalName: '傅小念口腔',
         slogan: '专业口腔诊疗服务',
         logo: '',
         customerServicePath: '',
@@ -40,7 +40,7 @@ const DEFAULT_HOME = {
         {
             id: 'default-banner-1',
             imageUrl: '/assets/home-banner-default-1.jpg',
-            title: '重庆种博士口腔',
+            title: '傅小念口腔',
             linkType: 'PAGE',
             linkValue: '/pages/booking/booking',
         },

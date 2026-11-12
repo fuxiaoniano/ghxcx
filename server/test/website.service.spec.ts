@@ -4,7 +4,14 @@ import { WebsiteService } from '../src/modules/website/website.service';
 describe('WebsiteService article management', () => {
   function createService() {
     const prisma = {
+      websiteArticleCategory: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'wac_implant', name: '种植修复' }),
+        findMany: jest.fn().mockResolvedValue([{ id: 'wac_implant', name: '种植修复' }])
+      },
       wechatArticle: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn(),
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'article-1', ...data })),
         findUnique: jest.fn(),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve({
@@ -32,6 +39,7 @@ describe('WebsiteService article management', () => {
 
     const result = await service.createArticle({
       title: '  种植牙术后护理  ',
+      categoryId: 'wac_implant',
       author: '院方编辑',
       digest: '术后护理要点',
       seoTitle: '种植牙术后护理指南',
@@ -112,5 +120,46 @@ describe('WebsiteService article management', () => {
 
     await expect(service.deleteArticle('wx-article', { adminUserId: 'admin-1' })).resolves.toEqual({ deleted: true });
     expect(prisma.wechatArticle.delete).toHaveBeenCalledWith({ where: { id: 'wx-article' } });
+  });
+
+  it('filters the admin article list by website visibility status', async () => {
+    const { service, prisma } = createService();
+
+    await service.articles({ page: 1, pageSize: 50, status: ContentStatus.DISABLED }, true);
+
+    expect(prisma.wechatArticle.count).toHaveBeenCalledWith({ where: { status: ContentStatus.DISABLED } });
+    expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: ContentStatus.DISABLED }
+    }));
+  });
+
+  it('shares all historical categories and articles across authorized editors', async () => {
+    const { service, prisma } = createService();
+    await service.categories(true);
+    await service.articles({ page: 1, pageSize: 50 }, true);
+    expect(prisma.websiteArticleCategory.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+    expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+  });
+
+  it('increments only the total read count when a published article is opened', async () => {
+    const { service, prisma } = createService();
+    prisma.wechatArticle.findFirst.mockResolvedValue({
+      id: 'article-1',
+      wechatArticleId: 'manual:test',
+      slug: 'news-test',
+      title: '口腔资讯',
+      status: ContentStatus.ACTIVE,
+      viewCount: 4,
+      category: { id: 'wac_implant', name: '种植修复', slug: 'implant' }
+    });
+    prisma.wechatArticle.update.mockResolvedValue({ viewCount: 5 });
+
+    const result = await service.article('news-test');
+
+    expect(prisma.wechatArticle.update).toHaveBeenCalledWith({
+      where: { id: 'article-1' },
+      data: { viewCount: { increment: 1 } }
+    });
+    expect(result.viewCount).toBe(5);
   });
 });

@@ -2,12 +2,26 @@
   <div class="dashboard-heading">
     <div>
       <h1 class="page-title">仪表盘</h1>
-      <p>预约业务概览与近期动态</p>
     </div>
-    <span class="updated-at">数据实时更新</span>
+    <div class="dashboard-actions"><el-button @click="moduleDrawer=true">自定义模块</el-button><span class="updated-at">数据实时更新</span></div>
   </div>
+  <el-alert v-if="dashboardError" :title="dashboardError" type="warning" show-icon :closable="false" class="dashboard-error"><el-button link type="primary" @click="loadDashboardData">重试加载</el-button></el-alert>
 
-  <div class="metric-grid">
+  <section class="content-panel todos-panel"><div class="panel-heading"><h3>待办事项</h3><div class="todo-heading-actions"><el-button @click="completedDialog=true">已完成事项{{ completedTodos.length ? `（${completedTodos.length}）` : '' }}</el-button><el-button type="primary" @click="showTodoForm=!showTodoForm">{{ showTodoForm ? '收起' : '添加待办' }}</el-button></div></div><div class="todo-grid">
+    <article v-if="showTodoForm" class="todo-card todo-create"><el-input v-model="todoForm.title" maxlength="200" placeholder="待办内容" /><el-date-picker v-model="todoForm.dueAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="指定日期和时间" style="width:100%" /><div class="todo-create-actions"><el-select v-model="todoForm.priority"><el-option label="普通" value="NORMAL" /><el-option label="低" value="LOW" /><el-option label="高" value="HIGH" /><el-option label="紧急" value="URGENT" /></el-select><el-button type="primary" :loading="todoSaving" @click="addTodo">保存</el-button></div></article>
+    <article v-for="todo in activeTodos" :key="todo.id" class="todo-card" :class="`todo-${todo.priority.toLowerCase()}`"><div class="todo-card-top"><el-tag :type="priorityTag(todo.priority)" size="small">{{ priorityLabel(todo.priority) }}</el-tag><el-button link type="danger" @click="removeTodo(todo.id)">删除</el-button></div><strong class="todo-title">{{ todo.title }}</strong><div class="todo-card-bottom"><time>{{ formatDue(todo.dueAt) }}</time><el-checkbox :model-value="false" @change="toggleTodo(todo)">已完成</el-checkbox></div></article>
+  </div><el-empty v-if="!activeTodos.length && !showTodoForm" description="暂无待办事项" :image-size="64" /></section>
+  <el-dialog v-model="completedDialog" title="已完成事项" width="min(760px, 94vw)"><div v-if="completedTodos.length" class="todo-dialog-grid"><article v-for="todo in completedTodos" :key="todo.id" class="todo-card completed" :class="`todo-${todo.priority.toLowerCase()}`"><div class="todo-card-top"><el-tag :type="priorityTag(todo.priority)" size="small">{{ priorityLabel(todo.priority) }}</el-tag><el-button link type="danger" @click="removeTodo(todo.id)">删除</el-button></div><strong class="todo-title">{{ todo.title }}</strong><div class="todo-card-bottom"><time>{{ formatDue(todo.dueAt) }}</time><el-checkbox :model-value="true" @change="toggleTodo(todo)">已完成</el-checkbox></div></article></div><el-empty v-else description="暂无已完成事项" :image-size="64" /></el-dialog>
+
+  <section v-if="selectedMenuModules.length" class="dashboard-embedded-modules">
+    <article v-for="item in selectedMenuModules" :key="item.path" class="content-panel embedded-module">
+      <div class="panel-heading embedded-module-heading"><h3>{{ item.title }}</h3><RouterLink :to="item.path">打开完整页面 →</RouterLink></div>
+      <DashboardPagePreview :path="item.path" :title="item.title" />
+    </article>
+  </section>
+  <el-drawer v-model="moduleDrawer" title="自定义仪表盘" size="min(480px, 100vw)"><div class="module-picker"><h3>仪表盘内容</h3><el-checkbox-group v-model="modules" class="module-options" @change="saveModules"><el-checkbox label="METRICS">数据概览</el-checkbox><el-checkbox label="TREND">挂号趋势</el-checkbox><el-checkbox label="RECENT">最近挂号</el-checkbox></el-checkbox-group><h3>添加左侧菜单页面</h3><el-input v-model="moduleSearch" clearable placeholder="搜索页面" /><el-checkbox-group v-model="modules" @change="saveModules"><div v-for="group in filteredMenuGroups" :key="group.name" class="module-group"><h4>{{ group.name }}</h4><div class="module-options"><el-checkbox v-for="item in group.items" :key="item.path" :label="`PAGE:${item.path}`">{{ item.title }}</el-checkbox></div></div></el-checkbox-group></div></el-drawer>
+
+  <div v-if="modules.includes('METRICS')" class="metric-grid">
     <div class="metric metric--primary">
       <div class="metric-top"><span class="muted">今日挂号数</span><el-icon><Calendar /></el-icon></div>
       <div class="metric-value">{{ data.todayCount || 0 }}</div>
@@ -35,7 +49,7 @@
     </div>
   </div>
 
-  <div class="content-panel trend-panel">
+  <div v-if="modules.includes('TREND')" class="content-panel trend-panel">
     <div class="panel-heading">
       <div>
         <h3>最近 7 天挂号趋势</h3>
@@ -53,7 +67,7 @@
     <el-empty v-else description="暂无趋势数据" :image-size="72" />
   </div>
 
-  <div class="content-panel recent">
+  <div v-if="modules.includes('RECENT')" class="content-panel recent">
     <div class="panel-heading">
       <div>
         <h3>最近挂号记录</h3>
@@ -75,22 +89,63 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ArrowRight, Bell, Calendar, CircleCheck, Phone, Tickets } from '@element-plus/icons-vue';
-import { getDashboard } from '../api/admin';
+import DashboardPagePreview from '../components/DashboardPagePreview.vue';
+import { ElMessage } from 'element-plus';
+import { createDashboardTodo, deleteDashboardTodo, getDashboard, getDashboardPreferences, getDashboardTodos, saveDashboardPreferences, updateDashboardTodo, type DashboardModule, type DashboardTodo } from '../api/admin';
+import { dashboardMenuGroups } from '../constants/dashboardMenuModules';
+import { useAuthStore } from '../stores/auth';
+import { useRouter } from 'vue-router';
 
+const auth = useAuthStore();
+const router = useRouter();
 const data = ref<Record<string, any>>({});
+const dashboardError = ref('');
+const modules = ref<DashboardModule[]>(['PAGE:/consultations/callbacks', 'PAGE:/consultations']);
+const todos = ref<DashboardTodo[]>([]);
+const activeTodos = computed(() => todos.value.filter(todo => !todo.completed));
+const completedTodos = computed(() => todos.value.filter(todo => todo.completed));
+const showTodoForm = ref(false);
+const completedDialog = ref(false);
+const moduleDrawer = ref(false);
+const moduleSearch = ref('');
+const todoSaving = ref(false);
+const todoForm = reactive<{ title: string; dueAt: string; priority: DashboardTodo['priority'] }>({ title: '', dueAt: '', priority: 'NORMAL' });
+const priorityLabel = (value: DashboardTodo['priority']) => ({ LOW: '低', NORMAL: '普通', HIGH: '高', URGENT: '紧急' })[value];
+const priorityTag = (value: DashboardTodo['priority']) => ({ LOW: 'info', NORMAL: 'primary', HIGH: 'warning', URGENT: 'danger' } as const)[value];
+const formatDue = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false });
+async function saveModules() { try { modules.value = (await saveDashboardPreferences(modules.value)).modules; } catch { ElMessage.error('模块设置保存失败'); } }
+async function addTodo() { if (!todoForm.title.trim() || !todoForm.dueAt) return ElMessage.warning('请填写待办内容和时间'); todoSaving.value = true; try { await createDashboardTodo({ title: todoForm.title.trim(), dueAt: new Date(todoForm.dueAt).toISOString(), priority: todoForm.priority }); todos.value = await getDashboardTodos(); todoForm.title = ''; todoForm.dueAt = ''; showTodoForm.value = false; } finally { todoSaving.value = false; } }
+async function toggleTodo(todo: DashboardTodo) { await updateDashboardTodo(todo.id, { completed: !todo.completed }); todos.value = await getDashboardTodos(); }
+async function removeTodo(id: string) { await deleteDashboardTodo(id); todos.value = await getDashboardTodos(); }
 const trend = computed(() => (data.value.trend || []) as Array<{ date: string; count: number }>);
 const recent = computed(() => data.value.recentAppointments || []);
 const successRate = computed(() => `${Math.round(Number(data.value.notificationSuccessRate || 0) * 100)}%`);
 const maxTrendCount = computed(() => Math.max(1, ...trend.value.map((item) => item.count)));
+const permittedMenuGroups = computed(() => dashboardMenuGroups.map(group => ({ ...group, items: group.items.filter(item => {
+  const route = router.resolve(item.path);
+  if (!route.matched.length || route.path !== item.path) return false;
+  const permission = String(route.matched[route.matched.length - 1].meta.permission || '');
+  return !permission || auth.hasPermission(permission);
+}) })).filter(group => group.items.length));
+const filteredMenuGroups = computed(() => permittedMenuGroups.value.map(group => ({ ...group, items: group.items.filter(item => item.title.includes(moduleSearch.value.trim())) })).filter(group => group.items.length));
+const selectedMenuModules = computed(() => permittedMenuGroups.value.flatMap(group => group.items.filter(item => modules.value.includes(`PAGE:${item.path}`)).map(item => ({ ...item, group: group.name }))));
 
 function barWidth(count: number) {
   return `${Math.max(3, Math.round((count / maxTrendCount.value) * 100))}%`;
 }
 
+async function loadDashboardData() {
+  try { data.value = await getDashboard(); dashboardError.value = ''; }
+  catch { dashboardError.value = '仪表盘数据加载失败，请重试'; }
+}
 onMounted(async () => {
-  data.value = await getDashboard();
+  const [dashboard, preferences, todoRows] = await Promise.allSettled([getDashboard(), getDashboardPreferences(), getDashboardTodos()]);
+  if (dashboard.status === 'fulfilled') data.value = dashboard.value;
+  else dashboardError.value = '仪表盘数据加载失败，请重试';
+  if (preferences.status === 'fulfilled') modules.value = preferences.value.modules;
+  if (todoRows.status === 'fulfilled') todos.value = todoRows.value;
 });
 </script>
 
@@ -214,6 +269,15 @@ onMounted(async () => {
 .recent {
   margin-top: 16px;
 }
+.dashboard-actions { display:flex; align-items:center; gap:10px; }
+.module-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }.module-options :deep(.el-checkbox){min-width:0;margin-right:0}
+.todos-panel { margin-bottom:16px; }.todos-panel>.panel-heading{gap:8px;flex-wrap:wrap}
+.todo-grid{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;padding-bottom:6px;scrollbar-width:thin}.todo-grid>.todo-card{flex:0 0 260px}.todo-heading-actions{display:flex;align-items:center;gap:8px}.todo-heading-actions .el-button+.el-button{margin-left:0}.todo-dialog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:12px;max-height:60vh;overflow-y:auto;padding:2px}
+.todo-card{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:145px;padding:14px;border:1px solid var(--admin-border);border-top:4px solid #7b9ab0;border-radius:10px;background:#fff}
+.todo-card.todo-low{border-top-color:#8aa0af}.todo-card.todo-high{border-top-color:#d29245}.todo-card.todo-urgent{border-top-color:#c74b4b}.todo-card.completed{opacity:.62}.todo-card.completed .todo-title{text-decoration:line-through}
+.todo-card-top,.todo-card-bottom,.todo-create-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}.todo-title{min-width:0;overflow-wrap:anywhere;line-height:1.5}.todo-card time{color:var(--admin-text-muted);font-size:12px;overflow-wrap:anywhere}.todo-card-bottom{margin-top:auto}.todo-create{border-style:dashed;background:var(--admin-bg-subtle,#f8fafc)}.todo-create-actions .el-select{min-width:0;flex:1}
+.dashboard-embedded-modules{display:grid;gap:16px;margin-bottom:16px}.embedded-module{min-width:0;overflow:hidden}.embedded-module-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.embedded-module-heading a{flex:none;color:var(--admin-primary);font-size:13px;text-decoration:none}
+.module-picker{display:grid;gap:12px}.module-picker h3,.module-picker h4{margin:10px 0 2px}.module-group{padding-top:8px;border-top:1px solid var(--admin-border)}
 
 .status-pill {
   display: inline-flex;
@@ -226,6 +290,8 @@ onMounted(async () => {
 }
 
 @media (max-width: 640px) {
+  .dashboard-heading { align-items:flex-start; gap:8px; }.dashboard-actions { flex-wrap:wrap; justify-content:flex-end; }
+  .todo-grid>.todo-card{flex-basis:min(84vw,280px)}.todo-card{min-height:130px}.todo-dialog-grid{grid-template-columns:1fr}.todo-heading-actions{flex-wrap:wrap;justify-content:flex-end}.module-options{grid-template-columns:1fr 1fr}.embedded-module-heading{flex-wrap:wrap}
   .updated-at,
   .legend {
     display: none;

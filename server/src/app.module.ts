@@ -19,11 +19,16 @@ import { PublicPageController } from './public-page.controller';
 import { EnterpriseModule } from './modules/enterprise/enterprise.module';
 import { WebsiteModule } from './modules/website/website.module';
 import { TencentAdsLeadsModule } from './modules/tencent-ads-leads/tencent-ads-leads.module';
+import { OperationsModule } from './modules/operations/operations.module';
+import { DataScopeModule } from './common/data-scope/data-scope.module';
+import { ConsultationModule } from './modules/consultation/consultation.module';
+import { WechatGroupNotificationsModule } from './modules/wechat-group-notifications/wechat-group-notifications.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    DataScopeModule,
     RedisModule,
     CryptoModule,
     AuthModule,
@@ -38,7 +43,10 @@ import { TencentAdsLeadsModule } from './modules/tencent-ads-leads/tencent-ads-l
     AdminModule,
     EnterpriseModule,
     WebsiteModule,
-    TencentAdsLeadsModule
+    TencentAdsLeadsModule,
+    OperationsModule,
+    ConsultationModule,
+    WechatGroupNotificationsModule
   ],
   controllers: [PublicPageController],
   providers: [

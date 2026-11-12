@@ -9,6 +9,9 @@ import { AdminService } from './admin.service';
 export class AdminAuthController {
   constructor(private readonly admin: AdminService) {}
 
+  @Get('/login-preference')
+  loginPreference() { return this.admin.adminLoginPreference(); }
+
   @Post('/login')
   login(@Body() dto: AdminLoginDto, @Req() request: Request) {
     return this.admin.login(dto, request.ip, request.headers['user-agent']);

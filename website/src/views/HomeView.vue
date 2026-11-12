@@ -1,61 +1,49 @@
 <template>
-  <div v-if="!data" class="page-loading container" aria-live="polite"><span></span><span></span><span></span><p>正在加载专业服务内容…</p></div>
+  <div v-if="!data" class="page-loading container" aria-live="polite"><span></span><span></span><span></span><p>正在整理今日口腔资讯…</p></div>
   <template v-else>
-  <section class="hero-section">
-    <div class="hero-glow"></div>
-    <div class="container hero-grid">
-      <div class="hero-copy">
-        <p class="eyebrow">{{data?.settings.eyebrow}}</p>
-        <h1>{{data?.settings.heroTitle}}</h1>
-        <p class="hero-lead">{{data?.settings.heroDescription}}</p>
-        <div class="hero-actions"><a class="button button-primary" :href="data?.settings.appointmentUrl">{{data?.settings.appointmentText}}</a><RouterLink class="button button-ghost" to="/doctors">了解医生团队</RouterLink></div>
-        <div class="trust-row"><span><b>规范</b>诊疗流程</span><span><b>专业</b>医生团队</span><span><b>便捷</b>线上预约</span></div>
-      </div>
-      <div class="hero-visual">
-        <img v-if="heroImage" :src="heroImage" alt="重庆种博士口腔专业诊疗环境" fetchpriority="high" />
-        <div v-else class="hero-placeholder"><div class="visual-seal">ZBS</div><p>数字化口腔诊疗</p><span>DIGITAL DENTAL CARE</span></div>
-        <div class="hero-note"><small>就诊服务</small><strong>从咨询到复诊<br>全流程用心陪伴</strong></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="section services-preview">
-    <div class="container">
-      <div class="section-heading"><div><p class="eyebrow">CLINICAL SERVICES</p><h2>一站式口腔诊疗服务</h2></div><RouterLink to="/services" class="text-link">查看全部科室 →</RouterLink></div>
-      <div class="service-grid">
-        <RouterLink v-for="(item,index) in data.categories.slice(0,8)" :key="item.id" :to="`/services#category-${item.id}`" class="service-card service-card-simple" :class="{ 'has-icon': Boolean(item.icon) }">
-          <span class="service-number">{{String(index+1).padStart(2,'0')}}</span><img v-if="item.icon" :src="item.icon" :alt="item.name" loading="lazy" /><h3>{{item.name}}</h3><span class="card-link">查看科室</span>
+    <section class="home-intro">
+      <div class="container intro-grid">
+        <div class="intro-copy">
+          <p class="eyebrow">{{ data.settings.siteTagline }}</p>
+          <h1>{{ data.settings.heroTitle }}</h1>
+          <p class="intro-lead">{{ data.settings.heroDescription }}</p>
+          <form class="home-search" @submit.prevent="submitSearch"><label class="sr-only" for="home-keyword">搜索口腔资讯</label><input id="home-keyword" v-model="keyword" type="search" placeholder="搜索牙龈出血、儿童龋齿、矫正……" /><button type="submit">搜索资讯</button></form>
+          <div class="topic-row"><span>资讯分类</span><RouterLink v-for="category in categories" :key="category.id" :to="{ path: '/articles', query: { category: category.id } }">{{ category.name }}</RouterLink></div>
+        </div>
+        <RouterLink v-if="leadArticle" :to="`/articles/${leadArticle.slug}`" class="lead-story">
+          <div class="lead-cover" :class="{ placeholder: !leadArticle.coverUrl }"><img v-if="leadArticle.coverUrl" :src="leadArticle.coverUrl" :alt="leadArticle.title" fetchpriority="high" /><span v-else>今日<br>值得读</span></div>
+          <div class="lead-body"><p>重点阅读 · {{ formatDate(leadArticle.publishedAt) }}</p><h2>{{ leadArticle.title }}</h2><span>{{ leadArticle.digest }}</span><b>阅读全文 →</b></div>
         </RouterLink>
+        <div v-else class="lead-story lead-story-empty"><div><b>首篇资讯正在准备中</b><p>发布后的内容会自动出现在这里。</p></div></div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section authority-section">
-    <div class="container authority-grid">
-      <div class="authority-panel"><p class="eyebrow">PROFESSIONAL CARE</p><h2>专业不是一句口号，<br>而是每个诊疗环节的标准</h2><p>从初诊检查、方案沟通到治疗与复查，坚持清晰告知、规范操作与持续健康管理。</p><ul><li><strong>01</strong><span>充分沟通病情与可选方案</span></li><li><strong>02</strong><span>重视器械消毒与院感管理</span></li><li><strong>03</strong><span>建立治疗后的复查与维护建议</span></li></ul></div>
-      <div class="authority-quote"><span>“</span><blockquote>把患者的理解与安心，放在每一次诊疗之前。</blockquote><p>重庆种博士口腔 · 服务理念</p></div>
-    </div>
-  </section>
+    <section class="section latest-section">
+      <div class="container">
+        <div class="section-heading"><div><h2>最新口腔资讯</h2></div><RouterLink to="/articles" class="text-link">查看全部 →</RouterLink></div>
+        <div v-if="otherArticles.length" class="story-grid">
+          <RouterLink v-for="(article, index) in otherArticles" :key="article.id" :to="`/articles/${article.slug}`" class="story-card">
+            <div class="story-cover" :class="{ placeholder: !article.coverUrl }"><img v-if="article.coverUrl" :src="article.coverUrl" :alt="article.title" loading="lazy" /><span v-else>{{ String(index + 1).padStart(2, '0') }}</span></div>
+            <div class="story-body"><time>{{ formatDate(article.publishedAt) }}</time><h3>{{ article.title }}</h3><p>{{ article.digest || '阅读这篇口腔健康资讯。' }}</p><b>继续阅读</b></div>
+          </RouterLink>
+        </div>
+        <div v-else class="empty-news">更多口腔资讯正在编辑中。</div>
+      </div>
+    </section>
 
-  <section v-if="data?.doctors.length" class="section">
-    <div class="container"><div class="section-heading"><div><p class="eyebrow">MEDICAL TEAM</p><h2>专业医生团队</h2></div><RouterLink to="/doctors" class="text-link">查看全部医生 →</RouterLink></div><div class="doctor-grid">
-      <RouterLink v-for="doctor in data.doctors.slice(0,4)" :key="doctor.id" :to="`/doctors/${doctor.id}`" class="doctor-card"><div class="doctor-photo"><img v-if="doctor.avatar" :src="doctor.avatar" :alt="`${doctor.name}${doctor.title}`" loading="lazy" /><span v-else class="doctor-initial">{{doctor.name.slice(0,1)}}</span></div><div class="doctor-info"><p>{{doctor.departments?.map(d=>d.name).join(' · ') || doctor.department?.name}}</p><h3>{{doctor.name}} <small>{{doctor.title}}</small></h3><span>{{doctor.displayText || doctor.specialty}}</span><b>查看医生详情 →</b></div></RouterLink>
-    </div></div>
-  </section>
-
-  <section v-if="data?.articles.length" class="section article-preview">
-    <div class="container"><div class="section-heading"><div><p class="eyebrow">ORAL HEALTH NEWS</p><h2>口腔资讯</h2></div><RouterLink to="/articles" class="text-link">更多资讯内容 →</RouterLink></div><div class="article-grid">
-      <RouterLink v-for="article in data.articles.slice(0,3)" :key="article.id" :to="`/articles/${article.slug}`" class="article-card"><div class="article-cover"><img v-if="article.coverUrl" :src="article.coverUrl" :alt="article.title" loading="lazy" /><span v-else>ORAL<br>HEALTH</span></div><div class="article-body"><time>{{formatDate(article.publishedAt)}}</time><h3>{{article.title}}</h3><p>{{article.digest || '了解专业、实用的口腔健康知识。'}}</p></div></RouterLink>
-    </div></div>
-  </section>
-
-  <section class="cta-section"><div class="container cta-inner"><div><p class="eyebrow">APPOINTMENT</p><h2>让专业医生，更早了解您的需求</h2><p>在线提交预约信息，工作人员将与您联系确认就诊安排。</p></div><a class="button button-light" :href="data?.settings.appointmentUrl">立即在线预约</a></div></section>
+    <section class="editorial-note"><div class="container editorial-inner"><span>内容原则</span><h2>讲依据，也讲人话。</h2><p>我们尽量交代信息适用的人群、边界和就医提示，不用夸张标题制造焦虑。</p></div></section>
   </template>
 </template>
-
 <script setup lang="ts">
-import { computed } from 'vue';
-import { RouterLink } from 'vue-router';
+import { computed, ref } from 'vue';
+import { useRouter, RouterLink } from 'vue-router';
 import { formatDate, useSite } from '../site';
-const {state}=useSite();const data=computed(()=>state.data);const heroImage=computed(()=>data.value?.banners[0]?.imageUrl || '');
+const { state } = useSite();
+const router = useRouter();
+const keyword = ref('');
+const data = computed(() => state.data);
+const leadArticle = computed(() => data.value?.articles[0]);
+const otherArticles = computed(() => data.value?.articles.slice(1, 7) || []);
+const categories = computed(() => data.value?.categories.slice(0, 6) || []);
+function submitSearch() { void router.push({ path: '/articles', query: keyword.value.trim() ? { keyword: keyword.value.trim() } : {} }); }
 </script>

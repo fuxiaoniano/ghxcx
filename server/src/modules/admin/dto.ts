@@ -6,7 +6,9 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsBoolean,
   Max,
+  Matches,
   MinLength,
   Min,
   MaxLength
@@ -18,7 +20,9 @@ export const ADMIN_PERMISSIONS = [
   'VIEW_FULL_PHONE',
   'EXPORT_FULL_PHONE',
   'MANAGE_APPOINTMENTS',
-  'MANAGE_CONFIGS',
+  'PROMOTION_MANAGE',
+  'WECHAT_MANAGE',
+  'SYSTEM_MANAGE',
   'MANAGE_ADMINS',
   // 企业官网升级权限继续复用原管理员 permissionsJson 字段。
   'HOME_MANAGE',
@@ -26,7 +30,22 @@ export const ADMIN_PERMISSIONS = [
   'DOCTOR_MANAGE',
   'PACKAGE_MANAGE',
   'APPOINTMENT_MANAGE'
+  ,'BUSINESS_LEADS', 'BUSINESS_APPOINTMENTS', 'BUSINESS_USERS', 'BUSINESS_NOTIFICATIONS'
+  ,'PROMOTION_HOME', 'PROMOTION_DAILY', 'PROMOTION_WEEKLY', 'PROMOTION_MONTHLY', 'PROMOTION_FILTER', 'PROMOTION_DAILY_REPORT', 'PROMOTION_WEEKLY_REPORT', 'PROMOTION_MONTHLY_REPORT', 'PROMOTION_ACCOUNTS', 'PROMOTION_SYNC', 'PROMOTION_FIELDS', 'PROMOTION_SALARY', 'PROMOTION_OPERATIONS'
+  ,'PROMOTION_ARRIVAL_PATIENT_VIEW', 'PROMOTION_ARRIVAL_PATIENT_EDIT', 'PROMOTION_ARRIVAL_PATIENT_DELETE', 'PROMOTION_ARRIVAL_PATIENT_FIELDS'
+  ,'PROMOTION_CREATIVE_BATCH_VIEW', 'PROMOTION_CREATIVE_BATCH_CREATE', 'PROMOTION_CREATIVE_BATCH_RETRY', 'PROMOTION_CREATIVE_BATCH_CANCEL', 'PROMOTION_CREATIVE_TEMPLATE_VIEW', 'PROMOTION_CREATIVE_ASSET_VIEW', 'PROMOTION_CREATIVE_RESULT_EXPORT'
+  ,'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_VIEW', 'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CREATE', 'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_RETRY', 'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_CANCEL', 'PROMOTION_MULTI_ACCOUNT_CREATIVE_BATCH_RESULT_EXPORT', 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_VIEW', 'PROMOTION_CREATIVE_DEFAULT_COMPONENT_MANAGE', 'PROMOTION_CREATIVE_ASSET_CROSS_ACCOUNT_USE', 'PROMOTION_CREATIVE_ASSET_DISTRIBUTION'
+  ,'PROMOTION_SMART_MONITOR_VIEW', 'PROMOTION_SMART_MONITOR_STATUS', 'PROMOTION_SMART_MONITOR_DELETE', 'PROMOTION_SMART_MONITOR_REPLACE', 'PROMOTION_SMART_MONITOR_AUTO'
+  ,'CONTENT_HOME', 'CONTENT_DEPARTMENTS', 'CONTENT_DOCTORS', 'CONTENT_PACKAGES', 'CONTENT_MEDIA', 'CONTENT_LINKS'
+  ,'WEBSITE_SETTINGS', 'WEBSITE_PAGES', 'WEBSITE_CATEGORIES', 'WEBSITE_ARTICLES'
+  ,'WECHAT_MENU', 'WECHAT_AUTO_REPLY'
+  ,'SYSTEM_MEMBERS', 'SYSTEM_APPOINTMENT_NOTIFY', 'SYSTEM_OFFICIAL_BINDING', 'SYSTEM_CONFIGS', 'SYSTEM_FOLLOWUP', 'SYSTEM_WEBSITE_ANALYTICS', 'SYSTEM_AUDIT'
+  ,'SYSTEM_ROLES'
+  ,'WECHAT_GROUP_NOTIFY_VIEW', 'WECHAT_GROUP_NOTIFY_ACCOUNT_BIND', 'WECHAT_GROUP_NOTIFY_ROUTE_MANAGE', 'WECHAT_GROUP_NOTIFY_TEST_SEND', 'WECHAT_GROUP_NOTIFY_RECORDS', 'WECHAT_GROUP_NOTIFY_RETRY', 'WECHAT_GROUP_NOTIFY_FULL_PHONE'
+  ,'CONSULTATION_VIEW', 'CONSULTATION_CHANNEL_REPORT', 'CONSULTATION_TEAM_REPORT', 'CONSULTATION_SCHEDULE_VIEW', 'CONSULTATION_SCHEDULE_MANAGE', 'CONSULTATION_DELETE', 'CONSULTATION_CREATE', 'CONSULTATION_EDIT', 'CONSULTATION_FOLLOW_UP', 'CONSULTATION_IMPORT', 'CONSULTATION_EXPORT', 'CONSULTATION_EXPORT_FULL_PHONE', 'CONSULTATION_ASSIGN', 'CONSULTATION_SETTINGS'
 ] as const;
+
+export const ADMIN_DATA_SCOPES = ['SELF', 'ASSIGNED_MEMBERS', 'TEAM', 'ALL'] as const;
 
 export class AdminLoginDto {
   @IsString()
@@ -36,6 +55,17 @@ export class AdminLoginDto {
   @IsString()
   @IsNotEmpty()
   password!: string;
+}
+
+export class ChangeOwnPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  newPassword!: string;
 }
 
 export class UpdateAppointmentStatusDto {
@@ -107,12 +137,26 @@ export class OfficialAutoReplyDto {
   autoReply!: Record<string, unknown>;
 }
 
+export class UpdateOfficialAccountBindingDto {
+  @IsIn([true, false]) enabled!: boolean;
+  @IsString() @MaxLength(64) appId!: string;
+  @IsOptional() @IsString() @MaxLength(255) appSecret?: string;
+  @IsOptional() @IsString() @MaxLength(255) token?: string;
+  @IsOptional() @IsString() @MaxLength(64) encodingAesKey?: string;
+}
+
+export class UpdateAdminLoginPreferenceDto {
+  @IsIn([true, false]) defaultWechatLogin!: boolean;
+}
+
 export class UpdateAdminUserDto {
   @IsString()
   @IsNotEmpty()
+  @MinLength(2)
   @MaxLength(64)
+  @Matches(/^[\p{L}\p{N}._-]+$/u, { message: '登录账号只能包含中文、字母、数字、点、下划线和短横线' })
   @IsOptional()
-  nickname?: string;
+  username?: string;
 
   @IsString()
   @MinLength(8)
@@ -122,6 +166,10 @@ export class UpdateAdminUserDto {
   @IsIn(Object.values(AdminRole))
   @IsOptional()
   role?: AdminRole;
+
+  @IsString()
+  @IsOptional()
+  customRoleId?: string | null;
 
   @IsArray()
   @IsIn(ADMIN_PERMISSIONS, { each: true })
@@ -135,6 +183,143 @@ export class UpdateAdminUserDto {
   @IsIn([true, false])
   @IsOptional()
   notifyEnabled?: boolean;
+
+  @IsIn(ADMIN_DATA_SCOPES)
+  @IsOptional()
+  dataScope?: typeof ADMIN_DATA_SCOPES[number];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  dataScopeMemberIds?: string[];
+
+  @IsString()
+  @IsOptional()
+  teamId?: string | null;
+
+  @IsBoolean()
+  @IsOptional()
+  consultationReceivable?: boolean;
+}
+
+export class CreateAdminUserDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @MaxLength(64)
+  @Matches(/^[\p{L}\p{N}._-]+$/u, { message: '登录账号只能包含中文、字母、数字、点、下划线和短横线' })
+  username!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  password!: string;
+
+  @IsIn(Object.values(AdminRole))
+  role!: AdminRole;
+
+  @IsString()
+  @IsOptional()
+  customRoleId?: string;
+
+  @IsArray()
+  @IsIn(ADMIN_PERMISSIONS, { each: true })
+  permissions!: string[];
+
+  @IsIn([true, false])
+  @IsOptional()
+  notifyEnabled?: boolean;
+
+  @IsIn(ADMIN_DATA_SCOPES)
+  @IsOptional()
+  dataScope?: typeof ADMIN_DATA_SCOPES[number];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  dataScopeMemberIds?: string[];
+
+  @IsString()
+  @IsOptional()
+  teamId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  consultationReceivable?: boolean;
+}
+
+export class CreateAdminRoleDefinitionDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @MaxLength(64)
+  name!: string;
+
+  @IsString()
+  @MaxLength(255)
+  @IsOptional()
+  description?: string;
+
+  @IsArray()
+  @IsIn(ADMIN_PERMISSIONS, { each: true })
+  permissions!: string[];
+
+  @IsIn(ADMIN_DATA_SCOPES)
+  @IsOptional()
+  dataScope?: typeof ADMIN_DATA_SCOPES[number];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  dataScopeMemberIds?: string[];
+}
+
+export class UpdateAdminRoleDefinitionDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @MaxLength(64)
+  @IsOptional()
+  name?: string;
+
+  @IsString()
+  @MaxLength(255)
+  @IsOptional()
+  description?: string;
+
+  @IsArray()
+  @IsIn(ADMIN_PERMISSIONS, { each: true })
+  @IsOptional()
+  permissions?: string[];
+
+  @IsIn(ADMIN_DATA_SCOPES)
+  @IsOptional()
+  dataScope?: typeof ADMIN_DATA_SCOPES[number];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  dataScopeMemberIds?: string[];
+}
+
+export class DeleteAdminUserDto {
+  @IsString()
+  @IsNotEmpty()
+  successorAdminId!: string;
+}
+
+export class CreateAdminTeamDto {
+  @IsString() @IsNotEmpty() @MaxLength(80) name!: string;
+  @IsOptional() @IsString() parentId?: string | null;
+  @IsOptional() @IsString() leaderAdminId?: string | null;
+  @IsOptional() @IsIn(Object.values(AdminStatus)) status?: AdminStatus;
+}
+
+export class UpdateAdminTeamDto {
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(80) name?: string;
+  @IsOptional() @IsString() parentId?: string | null;
+  @IsOptional() @IsString() leaderAdminId?: string | null;
+  @IsOptional() @IsIn(Object.values(AdminStatus)) status?: AdminStatus;
 }
 
 export class CreateAdminWechatInviteDto {
@@ -206,6 +391,14 @@ export class UpdateAppointmentNotifyConfigDto {
   @IsString()
   @IsOptional()
   templateId?: string;
+
+  @IsIn([true, false])
+  @IsOptional()
+  assignmentEnabled?: boolean;
+
+  @IsString()
+  @IsOptional()
+  assignmentTemplateId?: string;
 }
 
 export class UpdateFollowupForwardConfigDto {

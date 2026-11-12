@@ -1,11 +1,217 @@
-# Project Maintenance Rules
+# Interface writing
 
-## GitHub synchronization
+Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
 
-- The canonical backup repository is `https://github.com/fuxiaoniano/ghxcx.git`.
-- After every completed code, configuration, database migration, or documentation update, run the checks appropriate to the changed area.
-- Review the working tree and stage only files that belong to the completed update.
-- Commit the verified update with a concise task-specific message, then push the current branch to `origin` before reporting completion.
-- Never commit `.env` files, credentials, AppSecret values, access tokens, database passwords, SSH keys, uploaded user data, local browser profiles, deployment archives, or temporary screenshots.
-- Keep `.env.example` limited to placeholders and documented variable names.
-- If a push cannot be completed because GitHub authentication or network access is unavailable, report that explicitly instead of claiming synchronization succeeded.
+避免不必要的次要标签和描述，让布局本身来传达信息。
+
+# 项目说明
+
+`wechat-appointment` 是“傅小念的运营工作台”项目，主要包含：
+
+- `server/`：NestJS、Prisma、MySQL、Redis 后端，负责挂号留资、成员与权限、网咨数据、通知、推广数据、腾讯广告账户/素材/创意及异步任务。
+- `admin/`：Vue 3 + Element Plus 管理后台。
+- `website/`：公开网站和留资页面。
+- `miniprogram/`：原生微信小程序。
+- 根目录部署文件：Docker Compose、部署说明、上线检查及跨项目脚本。
+
+修改时必须保持现有业务流程、接口契约、数据含义、权限边界和历史数据兼容。腾讯广告 API 必须复用现有 Client、Token/User Token 和账户授权机制；不得在前端传递凭证。涉及通知、腾讯广告写操作、生产数据删除及破坏性迁移时，必须取得明确授权并保留审计证据。
+
+当前只允许向运维资产清单标记为“当前生产”的服务器部署。已退役服务器停止版本更新和日常维护，不得再部署代码、静态资源、数据库迁移或配置变更；只有用户明确要求执行灾难回滚时才可操作。生产地址和登录信息不得写入仓库。
+
+# 更新与修复日志要求
+
+从 2026-11-06 起，每一次代码、配置、数据库、部署或文档更新都必须在本文件的“更新与修复日志”中追加记录，不得只写提交信息或聊天说明。记录应在完成本次修改时同步更新，并至少包含：
+
+- 日期和变更主题；
+- 修改模块及关键文件；
+- 问题原因和处理方式；
+- 数据库/接口/权限兼容性影响；
+- 实际执行的测试及结果；
+- 部署状态、生产镜像或版本（如适用）；
+- 未验证的外部依赖和残余风险。
+
+不得记录 Token、Secret、完整鉴权头、用户隐私、生产数据库内容或未经脱敏的第三方响应。日志只记录可核验事实；尚未完成或未实测的项目必须明确标注，不得写成已完成。
+
+# 更新与修复日志
+
+## 2026-11-12｜GitHub 默认分支根目录同步纠正
+
+- 问题原因：本地工作分支跟踪 `master`，而 GitHub 仓库默认分支为 `main`；此前已验证版本被推送到非默认分支，导致仓库首页继续渲染 `main` 中的早期 README 和旧品牌文案。
+- 处理方式：将当前已测试、已部署的 `wechat-appointment` 项目树同步到 `main` 根目录，保留 `main` 既有提交历史和独立 `design-system/` 目录；移除已被当前文档替代且含旧入口信息的历史根目录文档。默认分支的 README、代码、配置和小程序回退文案与生产版本保持一致。
+- 验证要求：推送后核对远程默认分支指针、README 首行、旧品牌/旧域名全树搜索以及 `main` 与已发布项目树差异；本次只纠正仓库分支和文档展示，不重新部署服务端、不修改数据库或生产业务。
+
+## 2026-11-12｜品牌清理、仓库文档更新与三端同步
+
+- 品牌清理：管理后台继续统一使用“傅小念的运营工作台”；小程序首页、落地页、公众号关注页、预约成功页、项目描述和 Swagger 标题移除旧机构品牌，使用“傅小念口腔”或工作台名称。删除仅用于历史内容替换的一次性脚本，测试样例改为中性文案。生产数据库只读核对 `system_configs`、`landing_pages`、官网页面、资讯和分类，旧品牌及旧域名命中数均为 0；未改写审计历史。
+- 文档更新：重写 `README.md`、`CHECKLIST.md` 和 `CODE_CHECK_REPORT.md`，覆盖当前工作台、网咨、推广数据、患者收费、腾讯广告、内容与权限模块；新增 `docs/README.md` 区分当前文档与历史专项记录。历史智能监控文档中的平台对象和请求追踪值已脱敏，各专项文档增加状态说明。部署文档和本文件不再记录生产 IP 或登录方式。
+- 兼容性：没有数据库模型、迁移、接口路径、权限值或业务数据语义变更。小程序旧品牌只存在于本地默认/回退文案，生产动态配置优先级不变；服务端仍使用原微信、腾讯 Token/User Token 和账户授权流程。
+- 本地验证：服务端 ESLint、TypeScript、Nest 构建通过，63 套 395 项 Jest 测试通过；Prisma schema validate 通过；管理后台和 website 类型检查及生产构建通过；小程序 TypeScript 通过；生产依赖安全审计未发现已知漏洞；`git diff --check` 通过。Vite 首次在沙箱内因 Windows `spawn EPERM` 被拦截，改用受控构建权限后成功，不属于代码失败。
+- 轻量部署：以既有生产镜像为基础只覆盖服务端 `dist`，新镜像为 `wechat-appointment-server:brand-doc-sync-20261112`；管理后台与 website 采用原子静态目录切换，仅保留当前一份静态回滚目录。未安装依赖、未在服务器编译 TypeScript、未执行迁移或业务写操作。首次脚本使用旧 Docker 不支持的 `--cpus` 参数并在切换前退出，移除该参数后成功发布。
+- 生产复核：37 个迁移最新，Nginx 配置通过，服务端/管理后台/website/公开配置入口返回预期状态，未登录受保护接口返回 401；两套静态入口 SHA-256 与本地一致，容器稳定运行且启动日志无致命/未处理/Prisma 错误标记。小程序源码已同步但需在微信开发者工具中另行上传发布，未执行真实腾讯广告写操作或真实通知发送。
+
+## 2026-11-12｜新服务器历史发布清理与部署目标固定
+
+- 部署目标：生产域名已解析至当前生产服务器，项目规则固定以后只向该活动目标部署；已退役服务器停止版本更新和日常维护，不再同步代码或配置。
+- 清理策略：保留活动镜像 `wechat-appointment-server:cutover-20261111`、MySQL/Redis 活动卷、项目源码、上传文件、证书、当前管理后台/官网/微信校验文件，以及 `server-backups/final-cutover-20261111` 一份最终回滚点和前端各一份最新回滚目录。
+- 删除范围：清除旧 Docker 镜像标签与未引用层、全部 Docker 构建缓存、历史发布包和 staging、旧数据库/Compose 备份、旧管理后台与官网静态副本、迁移 `/tmp` 中转文件。云厂商系统代理、系统日志和运行依赖不在清理范围内。
+- 安全保护：清理脚本执行前强制核对活动镜像、容器运行状态及最终数据库/上传/Redis 备份；所有递归删除目标均解析绝对路径并限制在项目目录、`/var/www` 指定前缀或 `/tmp` 指定文件中。清理后重新检查 Nginx、容器、磁盘和公网入口。
+- 实际结果：根分区已用空间由约 19 GB 降至 16 GB，可用空间由 29 GB 增至 32 GB；Docker 构建缓存由 2.504 GB 清零，只剩当前服务、MySQL、Redis 三个活动镜像。项目目录由约 1.2 GB 降至 90 MB，`/var/www` 由约 133 MB 降至 8.4 MB，最终备份为 44 MB。三个容器全程未重启，后端重启次数为 0；37 个迁移最新，77 个上传文件清单哈希未变，Nginx 通过，公网后台/官网/公开接口/上传文件/微信校验文件均命中新 IP 并返回预期状态。
+
+## 2026-11-11｜新服务器最终数据切换与旧入口无缝代理
+
+- 发布与切换：在当前生产服务器以 384 MB、0.5 CPU 限额构建增量镜像 `wechat-appointment-server:cutover-20261111`，原子发布最新版管理后台和官网；服务端、管理后台、官网构建及小程序类型检查通过。已退役服务器后端已停止，防止定时任务和业务写入产生双主分叉。
+- 最终数据：停止旧后端后导出 MySQL、Redis 与上传目录，在新旧两端均保留回滚备份。恢复时显式使用 `utf8mb4` 并关闭恢复会话的外键检查，避免中文多字节误判和按表名恢复的外键顺序问题；没有扩字段、截断业务值或跳过错误行。恢复后 75 张表的行数和逐表数据哈希全部一致，77 个上传文件的路径/内容清单哈希一致，37 个 Prisma 迁移均为最新。
+- 入口兼容：切换期间已退役入口的 Nginx 通过固定上游、SNI 和受信任 CA 链安全代理至新机；证书校验保持开启并使用深度 3，未关闭 TLS 验证。DNS 尚未切换时公网管理后台 200、未登录管理接口 401、公开配置 200；新入口直连同样通过。原 Nginx 和 Compose 配置均已备份，可回滚。
+- 证书与网络：新机 80/443 公网连通，微信与腾讯 API 出站连通；`wechat.fuxiaonian.net` 与 `wechatadmin.fuxiaonian.net` 证书有效，Certbot 模拟续期成功。当前两个 A 记录仍指向旧 IP，TTL 约 3 分钟，后续可同时改为新 IP。
+- 部署脚本：新增分阶段发布、最终导出/导入、逐表哈希、旧入口代理激活和只读审计脚本；官网发布目录明确为 `/var/www/website`，微信校验文件目录 `/var/www/wechat-verify` 保持独立，避免静态资源误覆盖校验文件。
+- 外部平台边界：服务器侧已完成切换准备；微信小程序仍需确认 `wechat.fuxiaonian.net` 已加入合法域名并发布包含新 API 基址的版本，公众号/腾讯开放平台若启用了出口 IP 白名单需加入新 IP。新机用微信浏览器请求进行只读 Token/JS-SDK 刷新时确认当前生产公众号未绑定或缺少 AppID/AppSecret，页面按既有逻辑降级为普通分享；需在管理后台“公众号绑定”页补齐后，扫码登录、公众号通知和 JS-SDK 才具备联调条件。未发送真实通知，也未代填或输出密钥。
+
+## 2026-11-11｜旧项目域名退役与新服务器切换预检
+
+- 域名替换：小程序 API 基址、合法域名提示、后端默认公开基址、微信授权测试和 README 入口统一替换为 `wechat.fuxiaonian.net` / `wechatadmin.fuxiaonian.net`；删除仅用于把图片回写到旧域名的历史 SQL 脚本。
+- 生产数据：修改前对旧服务器权威 MySQL 完成一致性逻辑备份，备份位于 `/opt/wechat-appointment/migration-backups/domain-replacement-20261111-162818/database-before.sql.gz`。通过事务将系统配置、留资页、首页素材、科室图标、医生图片、套餐及图片库的业务 URL 替换为新域名，逐表复核后可执行业务引用均为 0。审计日志保留历史原文，不作为当前业务链接使用。
+- 服务器清理：新旧服务器均已删除未启用的旧项目域名 Nginx 备份配置和已过期的 Let's Encrypt 证书；两台服务器 `nginx -t` 通过，启用站点和证书续期配置中已无旧域名引用。当前仅保留 `wechat.fuxiaonian.net` 与 `wechatadmin.fuxiaonian.net` 证书。
+- 新服务器预检：当前生产服务器的 `.env`、Compose、Nginx、后台、官网和 77 个上传文件与迁移源哈希一致，37 个 Prisma 迁移为最新；内部后台 200、未登录管理接口 401、公开配置 200、无签名微信回调 403，微信和腾讯 API 出站网络正常。
+- 切换阻断：新服务器云防火墙尚未放行 80/443，公网连接超时；镜像恢复后新旧数据库已出现日志差异，因此尚不允许直接切 DNS。已停止新服务器后端容器，保留 MySQL/Redis/Nginx 供预检，旧服务器继续承载线上业务。
+- 验证结果：项目活动源码中已无旧项目域名引用；小程序 TypeScript 检查通过，后端微信成员授权 3 项测试通过，服务端构建类型检查通过。尚需放行新服务器 80/443、完成小程序合法域名配置与新版发布、执行最终停写数据库同步后，才能切换 DNS/CDN 源站。
+
+## 2026-11-10｜管理后台移动端响应式判定修复
+
+- 问题原因：管理后台布局仅使用 `max-width: 900px` 判定移动端。iPad 横屏、Safari“请求桌面网站”及部分高分辨率触屏设备会报告更宽的布局视口，导致侧边栏和页面控件被误判为桌面端，表现为移动端适配失效。
+- 修复：布局判定改为“900px 内窄屏，或 1366px 内的真实粗指针触屏设备”，并由 Vue 状态给根布局设置统一的 `is-mobile-layout` 类。CSS 侧边抽屉、遮罩、主内容偏移与 JavaScript 使用同一状态，同时监听视口、横竖屏和指针能力变化。
+- 兼容性：不修改路由、菜单、权限、页面标签和业务组件；非触屏桌面端仍按原 900px 断点工作，不改变原有宽屏侧边栏。
+- 关键文件：`admin/src/views/Layout.vue`、`admin/src/style.css`。
+- 验证结果：管理后台 `vue-tsc --noEmit` 类型检查通过，Vite 生产构建通过，共转换 1844 个模块；仅有既有第三方 PURE 注释和大分包提示。生产环境修复前的入口与本地上一版构建哈希一致，已排除静态资源回退；本次尚未部署，未修改后端、数据库或外部接口。
+
+## 2026-11-08｜移动端左侧导航展开按钮失效修复
+
+- 根因：移动导航点击逻辑依赖组件挂载时记录的 `window.innerWidth`，Safari 标签恢复、页面缩放、横竖屏切换或可视视口变化后可能出现 CSS 已进入移动布局、JavaScript 仍按桌面折叠处理的状态，因此按钮图标可见但侧栏不展开。
+- 修复：移动端判定统一改用与 CSS 相同的 `(max-width: 900px)` 媒体查询，并在每次点击时实时同步；补充媒体查询变化、窗口调整、横竖屏、页面恢复和 `visualViewport` 监听。菜单按钮改为原生按钮并增加 `aria-expanded`、触控优化和明确焦点样式；路由切换及 Escape 键会安全关闭移动导航。
+- 兼容性：不修改菜单、权限、路由和页面标签逻辑；桌面端仍保存原有侧栏收起状态，移动端继续使用抽屉侧栏及遮罩关闭。
+- 关键文件：`admin/src/views/Layout.vue` 及静态轻量部署验证脚本。
+- 验证结果：管理后台类型检查和生产构建通过，共转换 1844 个模块；仅存在既有第三方 PURE 注释和大分包提示。
+- 部署状态：已采用纯静态轻量方式部署生产管理后台，未重启后端、未执行数据库迁移。新旧后台目录原子切换并保留一份回滚副本；本地与线上入口文件 SHA-256 一致，公网入口 200、Nginx 校验和部署后二次检查通过，线上构建产物已确认包含 `mobile-nav-open` 导航逻辑。
+
+## 2026-11-08｜管理后台移动端日期选择器全局键盘遮挡修复
+
+- 问题原因：Element Plus 日期选择器内部仍是可编辑文本输入框，手机点击日期时会先唤起系统软键盘；键盘遮挡日期面板，收起键盘又会触发输入框失焦并关闭面板。该行为影响管理后台全部日期、日期范围和日期时间选择器，不是单页问题。
+- 全局修复：在管理后台入口安装统一的移动日期保护器，对 768px 以下或粗指针触屏设备中的所有 `.el-date-editor` 输入框动态设置只读和 `inputmode=none`。输入框仍由 Element Plus 原组件处理点击并打开日期面板，但不再唤起手机键盘；MutationObserver 同步覆盖路由懒加载、弹窗和后续动态渲染组件。桌面端恢复原始可编辑状态，保留键盘输入日期能力。
+- 兼容性：不逐页修改 51 处日期组件，不改变字段值、日期格式、表单校验、接口参数或业务逻辑；只影响触屏/窄屏环境的输入方式。组件卸载清理逻辑会恢复原始 `readonly` 和 `inputmode` 属性。
+- 关键文件：`admin/src/utils/mobileDatePickerGuard.ts`、`admin/src/main.ts`、`admin/src/style.css` 及静态轻量部署验证脚本。
+- 验证结果：管理后台类型检查和生产构建通过；构建共转换 1844 个模块。仅存在既有第三方 PURE 注释和大分包提示，不影响构建结果。
+- 部署状态：已采用纯静态轻量方式部署生产管理后台，未重建或重启后端、未执行数据库迁移。新旧后台目录原子切换并保留一份回滚副本；本地与线上 `index.html` SHA-256 一致，公网入口 200、Nginx 配置校验和部署后二次检查通过，线上构建产物已确认包含全局日期保护器。
+
+## 2026-11-07｜患者收费模板示例与账户 ID 自动归属
+
+- 模板字段：患者收费导入模板取消账户名称、项目和渠道来源，只保留“账户ID”；这里的账户 ID 使用腾讯平台户号（文档中仅使用虚构示例），系统据此在当前成员有权账户范围内自动补齐账户名称、项目和渠道来源。
+- 示例与防误导入：主导入工作表第二行增加完整示例数据，并以固定前缀标记；未修改模板直接上传时服务端自动忽略示例行，不会产生假患者记录。覆盖示例内容后可作为正常数据导入。
+- 账户选择：模板为“账户ID”列提供当前成员可访问账户的下拉选项，选项来自既有账户数据范围，不下发 Token 或凭证。旧模板中的账户名称、长账户描述和“名称 · 户号”仍保留兼容读取；匹配结果不唯一时继续阻断，不猜测账户。
+- 关键文件：`server/src/modules/operations/promotion-arrival-patients.service.ts`、`server/test/promotion-arrival-import.spec.ts` 及轻量部署脚本。
+- 验证结果：服务端类型检查、ESLint、构建通过，63 套、395 项测试全部通过；5 项导入测试覆盖示例跳过、账户 ID 自动归属、旧名称格式兼容、唯一户号匹配及重复就诊类型排除。
+- 部署状态：已使用轻量增量镜像 `wechat-appointment-server:patient-charges-template-id-20261107` 部署生产服务器；切换前完成数据库与 Compose 配置备份，构建限制为 384 MB、0.5 CPU。生产 37 个迁移均为最新，未登录接口返回 401，Nginx、容器、启动日志和部署后二次健康检查通过，复核时后端约占 127 MiB。未使用真实患者数据测试。
+
+## 2026-11-07｜患者收费导入账户名称匹配兼容
+
+- 根因：管理后台账户下拉和用户常用导入内容展示为“账户名称 · 账户编号”，患者收费导入初版只接受纯账户名称完全相等，导致有权限账户仍提示无法匹配。
+- 修复：在当前成员有权推广账户范围内兼容纯账户名称、纯账户编号、“名称 · 编号”“名称（编号）”等常用格式；可选账户 ID 仍可用于精确匹配。同名账户继续要求账户 ID，不扩大账户数据范围，不允许借导入读取或写入无权账户。
+- 关键文件：`server/src/modules/operations/promotion-arrival-patients.service.ts`、`server/test/promotion-arrival-import.spec.ts` 及轻量部署脚本。
+- 验证结果：服务端类型检查、ESLint、构建通过，63 套、392 项测试全部通过；导入测试已覆盖“账户名称 · 平台户号”格式并确认自动回填真实项目与渠道来源。
+- 部署状态：已使用轻量增量镜像 `wechat-appointment-server:patient-charges-account-match-20261107` 部署生产服务器；切换前完成数据库与 Compose 配置备份，构建限制为 384 MB、0.5 CPU。生产 37 个迁移均为最新，未登录接口返回 401，Nginx、容器、启动日志和部署后二次健康检查通过，复核时后端约占 108 MiB。未使用真实患者数据测试。
+
+## 2026-11-07｜患者收费工具栏、重复就诊类型与导入账户匹配修复
+
+- 页面排版：将“患者收费”标题、项目/渠道/账户/日期筛选、查询重置和录入/导入导出操作合并为同一条桌面工具栏；中等宽度允许工具栏自身横向查看而不挤压控件，手机端仍按标题、折叠筛选和两列操作区安全分层。
+- 重复字段：历史自定义字段中存在与新固定字段同名的“就诊类型”，导致列表、表单、导入和导出可能出现两项。前端固定只展示正式就诊类型；服务端在自定义字段校验、模板、导入和导出中统一排除所有与固定字段重名的历史字段，字段管理入口仍保留该历史字段以便管理员识别或删除，不删除历史值。
+- 导入规则：患者收费导入模板取消“项目”和“渠道来源”列，仅保留账户名称及可选账户 ID；服务端在当前人员有权账户范围内按账户名称匹配，并从真实推广账户自动写入项目和渠道来源。同名账户必须填写账户 ID，账户 ID 与账户名称不一致时不会导入，避免误归属。
+- 兼容性：无数据库迁移，不修改统计口径、现有权限值、接口路径和历史收费数据；旧模板中额外存在项目、渠道来源列时会被安全忽略，仍以真实账户归属为准。
+- 关键文件：`admin/src/views/PromotionArrivalPatients.vue`、`server/src/modules/operations/promotion-arrival-patients.service.ts`、`server/test/promotion-arrival-import.spec.ts` 及轻量部署验证脚本。
+- 验证结果：服务端类型检查、ESLint、构建通过，63 套、392 项测试全部通过；新增 2 项测试验证模板列去重、取消项目/渠道来源及按账户名称回填归属；管理后台类型检查和生产构建通过。构建仅存在既有第三方 PURE 注释和大分包提示。
+- 部署状态：已使用轻量增量镜像 `wechat-appointment-server:patient-charges-toolbar-20261107` 部署生产服务器；切换前完成数据库与 Compose 配置备份，构建限制为 384 MB、0.5 CPU。生产 37 个迁移均为最新；管理后台本地与线上入口文件 SHA-256 一致，未登录接口返回 401，Nginx、容器、启动日志和部署后二次健康检查通过，复核时后端约占 111 MiB。未使用真实患者信息导入，未执行腾讯广告或通知外部写操作。
+
+## 2026-11-07｜“到院患者”升级为“患者收费”及人数去重统计
+
+- 页面与录入：原“推广数据 / 到院患者”可见名称统一调整为“患者收费”，原接口路径和权限值保持不变，避免已有授权失效；新增就诊类型并限定为“初诊/复诊”，历史明细通过非空默认值兼容为初诊。
+- 导入导出：患者收费页面将录入、自定义字段、模板下载、明细导入、明细导出和筛选合并在同一卡片；支持最多 1000 条 `.xlsx` 明细导入、逐行校验与错误汇总，模板使用独立填写说明页且不附带会被误导入的示例患者。导出沿用当前筛选和账户数据范围，普通查看人员仅导出脱敏手机号，只有超级管理员或具备完整手机号导出权限的人员可导出明文手机号；导入、导出均记录脱敏审计。
+- 统计口径：患者收费中的手机号按全历史哈希去重，最早一条收费明细计 1 次到院；该最早记录的成交金额或实收金额任一大于 0 时计 1 次成交。相同手机号第二次及以后不再增加到院/成交人数，但每笔成交金额和实收金额仍按账户与到院日期完整汇总。统计仍为读取时派生，不回写或覆盖腾讯平台日报。
+- 移动端：录入、自定义字段、下载、导入和导出在手机端使用两列操作区，筛选默认折叠；明细改用完整卡片，操作按钮等宽展示，弹窗限制在视口内滚动，避免按钮挤压和内容重叠。
+- 数据库与兼容：新增安全迁移 `20261107000200_promotion_patient_charges`，只为 `promotion_arrival_patients` 增加带默认值的 `visitType` 字段；不删除、不重写既有患者、推广日报、权限或账户凭证数据。保留 `/api/admin/operations/arrival-patients` 路径及 `PROMOTION_ARRIVAL_PATIENT_*` 权限标识。
+- 关键文件：`server/prisma/schema.prisma`、`server/prisma/migrations/20261107000200_promotion_patient_charges/migration.sql`、`server/src/modules/operations/promotion-arrival-patients.*`、`server/src/modules/operations/operations.service.ts`、`server/test/promotion-arrival-statistics.spec.ts`、`admin/src/views/PromotionArrivalPatients.vue`、`admin/src/api/admin.ts`、菜单、权限文案和部署验证脚本。
+- 验证结果：Prisma schema 校验通过；服务端类型检查、ESLint 和构建通过；62 套、390 项测试全部通过，其中新增同手机号首笔计人数、后续仅累计金额的回归测试；管理后台类型检查和生产构建通过。前端构建仅存在既有第三方 PURE 注释及大分包提示。
+- 部署状态：已使用轻量增量镜像 `wechat-appointment-server:patient-charges-20261107` 部署生产服务器；切换前完成数据库与 Compose 配置备份，镜像构建限制为 384 MB、0.5 CPU。新增迁移执行成功，生产共 37 个迁移且状态为最新；管理后台本地与线上入口文件 SHA-256 一致，未登录访问患者收费接口返回 401，Nginx 配置校验、容器健康和部署后二次日志检查通过，复核时后端约占 125 MiB。未使用真实患者信息测试，未执行腾讯广告或通知外部写操作。
+
+## 2026-11-07｜推广数据“到院患者”与统计自动合并
+
+- 新增独立页面“推广数据 / 到院患者”，支持按成员推广账户数据范围录入、筛选、分页、编辑和删除患者到院记录；字段包括姓名、电话、项目、渠道来源、账户名称、到院日期、成交金额、实收金额、网电、咨询师，并提供文本、数字、日期三类自定义字段管理。桌面端使用完整表格，移动端使用卡片列表和默认折叠筛选区。
+- 数据与隐私：项目、渠道来源和账户名称由服务端依据所选推广账户写入快照，禁止前端伪造归属；手机号沿用现有 AES 加密、哈希检索、脱敏显示和 `VIEW_FULL_PHONE` 权限，不在普通日志或审计中记录明文。所有列表、录入、修改、删除均重新校验账户数据范围。
+- 统计口径：患者明细不直接改写平台日报，而是在读取日/周/月统计、数据筛选、数据首页和推广日报时按“账户 + 到院日期”实时合并，避免平台同步覆盖或编辑/删除造成重复累计。每位患者计入 1 次到院；成交金额大于 0 时计入 1 次成交；成交金额汇总到新增“成交金额”系统字段；实收金额汇总到“实收”。没有对应日报时生成明确标记为到院明细的派生统计行，不允许从日统计入口误编辑或删除。
+- 数据库与权限：新增 `promotion_arrival_patients`、`promotion_arrival_fields` 两张表及账户、日期、手机号哈希索引，不删除或重写历史数据；新增查看、录入编辑、删除、自定义字段管理四项独立权限，超级管理员继续按既有规则拥有全部权限，普通成员不会被默认扩大权限。
+- 关键文件：`server/prisma/schema.prisma`、`server/prisma/migrations/20261107000100_promotion_arrival_patients/migration.sql`、`server/src/modules/operations/promotion-arrival-patients.*`、`server/src/modules/operations/operations.service.ts`、`admin/src/views/PromotionArrivalPatients.vue`、推广统计页面/API/权限/路由及部署验证脚本。
+- 验证结果：Prisma schema 静态校验通过；服务端 Lint、类型检查和构建通过，62 套、389 项完整测试全部通过；新增 2 项统计合并测试覆盖已有日报叠加和无日报派生行；管理后台类型检查与生产构建通过。打包仅有既有第三方 PURE 注释和大分包提示。
+- 部署状态：已使用轻量增量镜像 `wechat-appointment-server:arrival-patients-20261107` 部署生产服务器；切换前完成数据库备份，构建限制为 384 MB、0.5 CPU。新增迁移执行成功，生产共 36 个迁移且状态为最新；管理后台本地与线上入口文件 SHA-256 一致，未登录访问新接口返回 401，Nginx 校验、容器启动日志和二次健康检查通过，复核时后端约占 111 MiB。真实患者数据未用于测试，未执行腾讯广告或通知外部写操作；普通成员需由管理员显式授予新增权限后才会看到页面。
+
+## 2026-11-07｜网咨表单序号、今日回访口径与移动端操作区修复
+
+- 网咨表单列表：桌面表格和移动端卡片均增加连续序号，序号按当前页码和每页条数计算，翻页后继续递增；不改变列表筛选、排序、选择和批量操作逻辑。
+- 今日回访统计：修复“今日已完成回访”误统计今天任意跟进记录的问题。现在仅统计跟进前原计划回访时间属于今天的表单，按表单去重后再用当前成员数据范围复核；临时跟进、其他日期回访不再计入。复用现有跟进审计快照，不新增表、不迁移历史数据、不改变跟进保存流程。
+- 移动端与平板布局：推广日报/周报/月报在中等宽度下提前将标题和操作区分行，日期、快捷日期、编辑和生成按钮允许安全换行；手机端使用两列操作布局。网咨表单顶部操作在 420px 以下改为两列，避免按钮被压缩、文字换行和相互重叠。
+- 同类页面检查：推广数据日统计和周/月统计已有 1250px 提前分行及手机网格规则，工资测算已有手机网格规则；本次未改变这些已具备防挤压布局的页面。推广日报原先仅在 760px 以下分行，是截图中平板宽度重叠的直接原因，已针对性修复。
+- 关键文件：`server/src/modules/consultation/consultation.service.ts`、`server/test/consultation-callbacks.spec.ts`、`admin/src/views/ConsultationForms.vue`、`admin/src/views/PromotionDailyReport.vue`、`scripts/deploy-consultation-callback-ui-20261107.sh`、`scripts/verify-consultation-callback-ui-20261107.sh`。
+- 验证结果：新增 2 项今日回访统计测试；服务端 61 套、387 项测试全部通过，服务端 ESLint 和类型检查通过，管理后台类型检查与生产构建通过。构建仅有既有的第三方 PURE 注释和大分包提示，不影响构建结果。
+- 兼容性与部署：无数据库迁移、无接口字段变更、无权限扩大。已使用轻量增量镜像 `wechat-appointment-server:callback-ui-20261107` 部署生产服务器，构建限制为 384 MB、0.5 CPU；保留上一版后端镜像和一份管理后台静态回滚目录。首次发布脚本的健康探测误用了旧的公开页及回访接口路径，业务服务本身已正常切换；随后按实际路由修正脚本并重新验收。最终后端、管理后台和未登录 401 鉴权检查通过，35 个迁移均为最新，Nginx 校验通过，管理后台本地与线上 `index.html` SHA-256 一致，复核时后端约占 99 MiB。尚未在真实移动设备浏览器完成逐像素视觉验收。
+
+## 2026-11-05｜网咨数据、仪表盘与管理后台展示更新
+
+- 网咨批量导入：标准模板新增“最新跟进记录”列并保留“首次跟进记录”；校验预览同步显示最新跟进内容。服务端解析、DTO、管理后台 API 和导入弹窗同步调整，避免模板字段与预览字段不一致。
+- 网咨批量分配：支持同时选择多条表单和多名网咨人员，按所选人员顺序轮流分配；服务端逐条校验数据范围和表单有效性，返回成功、失败及各成员分配数量，并分别通知新的跟进人。新增分配预览，执行前可查看可分配数量和轮流分配结果。
+- 移动端网咨列表：全部表单和今日需回访改为卡片式展示；筛选区在窄屏默认折叠；增加移动端刷新、全选本页、详情、跟进、转交和更多操作入口。按钮使用不换行和最小点击区域，标签、长名称、手机号、时间及自定义字段避免相互挤压。
+- 网咨报表：日期筛选、查询、展开全部和收起全部调整为同一操作区；表格层级仍沿用原有统计口径和权限，不修改报表数据语义。
+- 仪表盘：默认模块改为“今日需回访”和“全部表单”，嵌入页面仅展示核心列表内容；今日和逾期回访按表单 ID 去重，避免同一记录重复出现。管理后台仍允许按登录账号自定义模块，移动端同步适配。
+- 创意页面展示：单账户新建创意的“刷新平台素材”移动到素材列表标题同行；本页全选入口与多账户批量新建保持同一位置和交互，不修改创意创建、预检或提交逻辑。
+- 品牌清理：登录页、浏览器标题和管理后台入口统一使用“傅小念的运营工作台”，移除旧品牌可见元素；新增 `admin/public/admin-favicon.png` 并在 `admin/index.html` 引用。
+- 关键文件：`server/src/modules/consultation/consultation.service.ts`、`server/src/modules/consultation/dto.ts`、`admin/src/api/admin.ts`、`admin/src/views/ConsultationForms.vue`、`admin/src/views/ConsultationCallbacks.vue`、`admin/src/views/ConsultationReport.vue`、`server/src/modules/admin/dashboard-workspace.service.ts`、`admin/src/views/Dashboard.vue`、`admin/src/components/DashboardPagePreview.vue`、`admin/src/views/PromotionCreativeBatch.vue`、`admin/src/views/MultiAccountCreativeBatch.vue`、`admin/src/views/Login.vue`、`admin/index.html`。
+- 测试与兼容性：新增网咨导入字段、多人轮流分配和仪表盘默认模块/账号隔离测试；原有表单数据、权限边界、单人转交、创意创建接口和任务语义保持不变。管理后台构建通过。
+
+## 2026-11-05｜上线前安全、通知与腾讯创意可靠性审查
+
+- 目标成本语义：素材列表旧 `TARGET_CONVERSION_COST` 排序错误地使用实际转化成本；服务端改为拒绝该错误语义并保留 `ACTUAL_CPA`（实际转化成本）排序，避免把报表计算值解释成营销单元目标成本。
+- CORS：生产环境不再在白名单为空时允许任意来源携带凭据；保留服务端和同源场景需要的无 `Origin` 请求，并新增来源匹配测试。部署前只读检查确认生产后台域名已配置。
+- 定时同步：推广数据定时同步增加 Redis 租约、租约续期、完成标记和短期重试窗口，降低多实例重复同步风险；明确区分轮询频率与腾讯报表粒度，未修改报表累计值语义。
+- 限流：Redis `INCR` 与过期设置改为 Lua 原子操作，并处理无 TTL 的历史限流键，避免进程中断留下永久限流。
+- 官网安全：生产环境不再允许通过 URL `demo=1` 开启持久演示数据；演示模式仅限开发环境。
+- 通知重试：拒绝重试已成功记录；工作人员失败记录仅重试原接收人，不再遍历全部人员；按挂号和接收人使用 Redis 互斥，并以数据库条件更新领取记录。公众号请求超时或业务响应不明确时不自动切换备用渠道，避免结果不明时重复通知。
+- 依赖安全：修复 body-parser、multer、follow-redirects 的高危生产依赖公告，升级 `sanitize-html` 至 2.18.1 并调整 Jest ESM 转换；当天生产依赖高危审计未再报告高危项。当时仍有 file-type、NestJS core、fast-xml-parser、uuid 的中危公告，后续于 2026-11-06 完成兼容升级和复核。
+- 腾讯创意核验：单账户批量创意获得腾讯创意 ID 后必须按 ID 回读并核对账户/营销单元、规格、类型和关键组件；查不到或字段不一致保持结果不明，不得标记最终成功。带 ID 查询不再用同名其他创意代替；无 ID 且结果不确定时禁止因超时或暂时查不到而自动重建。
+- 关键文件：`server/src/common/utils/cors-origin.ts`、`server/src/main.ts`、`server/src/common/guards/rate-limit.guard.ts`、`server/src/modules/operations/promotion-data-sync.service.ts`、`server/src/modules/operations/promotion-creative-batch.service.ts`、`server/src/modules/notifications/notifications.service.ts`、`website/src/api.ts`、`server/jest.config.js`、依赖清单及相关测试。
+- 验证结果：阶段性完整后端测试从 59 套/355 项扩展到 60 套/368 项并通过；服务端 Lint、类型检查和构建通过；管理后台、website 构建及小程序类型检查通过；Prisma schema 使用占位 MySQL URL 校验通过。未在当天执行破坏性迁移、真实腾讯广告写操作或真实微信通知发送。
+- 当日部署：创意回读核验版本以轻量镜像 `wechat-appointment-server:creative-verify-20261105` 部署；上传文件哈希、模块加载、公开接口、未登录接口 401 和管理后台入口检查通过，保留部署前 Compose 备份。
+- 当时残余风险：生产 Redis 网络分区/多实例故障、真实公众号通知、真实腾讯账户回读、全视口视觉验收和小程序真机未联调；创意工作器中间态恢复与挂号后通知持久化在当日尚未完成，后续修复记录见 2026-11-06 条目。
+
+## 2026-11-06｜上线前可靠性与依赖安全修复
+
+- 修改模块：单账户批量创意、多账户批量创意、挂号创建后通知任务、通知幂等、Prisma 模型及服务端依赖。
+- 关键文件：`server/src/modules/operations/promotion-creative-batch.service.ts`、`server/src/modules/operations/multi-account-creative-batch.service.ts`、`server/src/modules/appointments/appointments.service.ts`、`server/src/modules/notifications/notifications.service.ts`、`server/prisma/schema.prisma`、`server/prisma/migrations/20261106000100_appointment_post_create_jobs/migration.sql`、相关测试及依赖清单。
+- 原因与处理：腾讯创建请求仅受理或结果不明时不得伪装成功、不得盲目重提；改为平台回读确认、稳定状态机、条件更新和异常任务恢复。挂号创建后的公众号/回访通知不再仅依赖进程内异步任务，新增持久化 `AppointmentPostCreateJob`、领取租约、未知状态保护及通知幂等检查。
+- 兼容性：新增表和索引，不删除或重写历史数据；原公众号、小程序、腾讯 Token/User Token 与旧创意任务模型保持兼容。迁移不回补历史挂号，避免历史通知被重新发送。
+- 依赖安全：升级 NestJS 11 兼容版本及存在生产安全公告的依赖；生产依赖审计结果为无已知漏洞。
+- 验证结果：服务端 60 个测试套件、383 项测试通过；服务端类型检查、Lint、构建通过；管理后台和 website 构建通过；小程序类型检查通过；Prisma generate 与 schema validate 通过。
+- 部署状态：已通过轻量方式部署到生产服务器，当前镜像为 `wechat-appointment-server:prelaunch-complete-20261106`。构建限制为 384 MB 内存、0.5 CPU；切换前备份数据库（74 MB，包含完成标记）和 Compose 配置。Prisma 共识别 34 个迁移且状态为最新；新增迁移记录存在。内部公开接口返回 200、未登录管理接口返回 401、管理后台公网首页返回 200，容器启动日志未发现真实运行错误。
+- 部署复核：服务容器状态为 `running`，复核时后端内存约 112 MiB、CPU 约 0%；管理后台与 website 的本地构建产物和生产 `index.html` SHA-256 一致，因此未重复发布静态文件。
+- 项目治理：扩充本文件的项目说明、关键安全边界和更新日志规范，并依据代码、测试及审查记录补录 2026-11-05 的功能更新与上线审查；以后每次代码、配置、迁移、部署或文档变更必须同步追加详细记录。
+- 未验证项：未对真实腾讯账户执行创建/暂停/删除等写操作，未发送真实微信通知；当前自动化环境未完成全视口浏览器视觉验收。
+
+## 2026-11-06｜上线前审查收口：凭证、通知持久化与生产构建
+
+- 腾讯 User Token：授权发起和回调改为后端一次性 Redis state；浏览器不再接收、保存或提交 User Token，回调后的前端 URL 只保留成功/取消/失败状态。Token 仍使用原加密表、原账户授权和刷新流程，不新增第二套凭证系统。生产网关对该精确回调关闭访问日志，避免查询串进入普通访问日志。
+- 网咨分配通知：单条转交和批量轮流分配在负责人更新的同一事务内写入 `ConsultationAssignmentNoticeJob`；工作器条件领取并记录 SENT、FAILED、SKIPPED 或 UNKNOWN。进程在发送中中断时转为 UNKNOWN，不盲目重发。新增迁移 `20261106000200_consultation_assignment_notice_jobs`，只新增表、外键和索引，不改写历史表单。
+- 企业挂号：医生挂号和套餐申请改为与挂号记录同事务创建既有 `AppointmentPostCreateJob`，继续由原通知、回访服务执行，避免企业入口仍依赖进程内 fire-and-forget。
+- 生产构建安全与性能：website 关闭生产 source map；管理后台 vendor 包拆分为 Vue 核心、Element Plus 和通用依赖缓存块，路由和页面仍保持原懒加载，不改变页面或接口行为。
+- 权限与数据语义复核：腾讯线索详情、完整手机号、更新接口均执行成员数据范围校验；推广日报按 ID 更新/删除/归档均二次校验账户范围；多账户任务和默认组件按目标账户范围校验。智能监控的 `actualCpa` 与 `targetCpa` 独立，推广累计报表按唯一时段 upsert，不重复累加同一小时快照。
+- 验证：服务端 Lint、类型检查和构建通过；60 套、385 项测试通过；管理后台与 website 生产构建、小程序类型检查、52 个后台页面结构回归、Prisma generate/validate 通过；生产依赖审计未发现已知漏洞。真实腾讯写操作、真实公众号发送、小程序真机及破坏性备份恢复仍未执行，不能以模拟结果代替。
+- 部署状态：已轻量部署镜像 `wechat-appointment-server:prelaunch-final2-20261106`。首次增量镜像虽包含新 schema，但沿用了旧 Prisma Client，启动日志发现新任务模型不可用；未将该状态视为完成，随即在镜像构建中执行 `prisma generate` 并重新发布。最终 35 个迁移全部最新，容器运行约 109 MiB，Nginx 校验、公开入口 200、未登录管理接口 401 和启动错误日志检查通过。
+- 部署一致性：管理后台 `index.html` SHA-256 为 `4bd5c084...6fc46`，website 为 `9384b3bf...44c9e`，与本地构建一致；后端运行最终镜像，两套静态资源、Prisma schema/迁移、网关回调规则、审查文档和部署脚本均已同步。临时发布包已删除，保留本次数据库及配置备份和一份静态回滚目录。
+
+## 2026-11-06｜最新版仓库同步
+
+- 将本次已部署的管理后台、后端、website、Prisma 迁移、自动化测试、审查报告和正式轻量部署/验证脚本整理为一次版本提交，目标分支为现有 `origin/master`；实际远程推送状态以 Git 提交和远程分支核验结果为准。
+- 仓库同步排除本地依赖缓存、数据库/服务器备份、临时部署目录、构建缓存、外部 SDK 副本以及历史诊断/一次性生产探测脚本，避免泄漏环境数据或把无关大文件纳入版本库。
+- 同步前依据最终生产版本完成 60 套/385 项后端测试、三端构建/类型检查、Prisma 校验、依赖安全审计与生产摘要一致性核对；同步动作不改变已部署业务行为或数据库数据。

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, TencentAdLeadStatus } from '@prisma/client';
 import dayjs from 'dayjs';
@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { UpdateTencentAdLeadDto } from './dto';
+import { DataScopeService } from '../../common/data-scope/data-scope.service';
 
 type TencentPayload = Record<string, unknown>;
 
@@ -20,7 +21,8 @@ export class TencentAdsLeadsService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly crypto: CryptoService,
-    private readonly audit: AuditLogsService
+    private readonly audit: AuditLogsService,
+    @Optional() private readonly dataScopes?: DataScopeService
   ) {}
 
   async receive(payload: TencentPayload, signature?: string, signatureAlgorithm?: string) {
@@ -62,10 +64,12 @@ export class TencentAdsLeadsService {
     }
   }
 
-  async list(query: Record<string, string>) {
+  async list(query: Record<string, string>, user?: AdminCurrentUser) {
     const page = this.positiveInt(query.page, 1, 1000000);
     const pageSize = this.positiveInt(query.pageSize, 20, 100);
     const where: Prisma.TencentAdLeadWhereInput = {};
+    const scope = user && this.dataScopes ? await this.dataScopes.ownershipWhere(user, 'assignedToAdminId', 'createdByAdminId') : {};
+    if (Object.keys(scope).length) where.AND = [scope as Prisma.TencentAdLeadWhereInput];
     if (query.status && Object.values(TencentAdLeadStatus).includes(query.status as TencentAdLeadStatus)) {
       where.status = query.status as TencentAdLeadStatus;
     }
@@ -99,9 +103,10 @@ export class TencentAdsLeadsService {
     return { total, page, pageSize, list: rows.map((row) => this.listItem(row)) };
   }
 
-  async detail(id: string) {
+  async detail(id: string, user?: AdminCurrentUser) {
     const row = await this.prisma.tencentAdLead.findUnique({ where: { id } });
     if (!row) throw new BusinessException(404401, '腾讯广告线索不存在', 404);
+    if (user && this.dataScopes) await this.dataScopes.assertOwned(user, row, 'assignedToAdminId', 'createdByAdminId', '无权访问该广告线索');
     const { phoneEncrypted: _phoneEncrypted, phoneHash: _phoneHash, ...safe } = row;
     return { ...safe, statusText: this.statusText(row.status) };
   }
@@ -112,6 +117,7 @@ export class TencentAdsLeadsService {
     }
     const row = await this.prisma.tencentAdLead.findUnique({ where: { id } });
     if (!row) throw new BusinessException(404401, '腾讯广告线索不存在', 404);
+    if (this.dataScopes) await this.dataScopes.assertOwned(user, row, 'assignedToAdminId', 'createdByAdminId', '无权访问该广告线索');
     const phone = row.phoneEncrypted ? this.crypto.decryptPhone(row.phoneEncrypted) : '';
     await this.audit.create({
       adminUserId: user.adminUserId,
@@ -134,6 +140,11 @@ export class TencentAdsLeadsService {
   ) {
     const before = await this.prisma.tencentAdLead.findUnique({ where: { id } });
     if (!before) throw new BusinessException(404401, '腾讯广告线索不存在', 404);
+    if (this.dataScopes) await this.dataScopes.assertOwned(user, before, 'assignedToAdminId', 'createdByAdminId', '无权访问该广告线索');
+    if (dto.assignedToAdminId) {
+      const target = await this.prisma.adminUser.findFirst({ where: { id: dto.assignedToAdminId, status: 'ACTIVE', deletedAt: null } });
+      if (!target) throw new BusinessException(400402, '目标负责人不存在或已停用');
+    }
     const updated = await this.prisma.tencentAdLead.update({
       where: { id },
       data: {
@@ -141,7 +152,8 @@ export class TencentAdsLeadsService {
         ineffectiveReason: dto.status === TencentAdLeadStatus.INVALID
           ? (dto.ineffectiveReason || null)
           : null,
-        adminRemark: dto.adminRemark ?? before.adminRemark
+        adminRemark: dto.adminRemark ?? before.adminRemark,
+        ...(dto.assignedToAdminId !== undefined ? { assignedToAdminId: dto.assignedToAdminId || null } : {})
       }
     });
     await this.audit.create({
@@ -162,7 +174,7 @@ export class TencentAdsLeadsService {
       ip,
       userAgent: Array.isArray(userAgent) ? userAgent.join(',') : userAgent
     });
-    return this.detail(id);
+    return this.detail(id, user);
   }
 
   receiverConfig() {

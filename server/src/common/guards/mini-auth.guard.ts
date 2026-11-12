@@ -22,7 +22,7 @@ export class MiniAuthGuard implements CanActivate {
     }
     try {
       const payload = this.jwt.verify(token, {
-        secret: this.config.get<string>('JWT_SECRET') || 'dev-mini-secret'
+        secret: this.jwtSecret()
       });
       const user = await this.prisma.user.findUnique({ where: { id: payload.userId } });
       if (!user || user.status !== UserStatus.ACTIVE) {
@@ -33,6 +33,13 @@ export class MiniAuthGuard implements CanActivate {
     } catch {
       throw new UnauthorizedException('登录已过期，请重新登录');
     }
+  }
+
+  private jwtSecret(): string {
+    const value = this.config.get<string>('JWT_SECRET');
+    if (value) return value;
+    if (this.config.get<string>('NODE_ENV') !== 'production') return 'dev-mini-secret';
+    throw new UnauthorizedException('鉴权配置不可用');
   }
 
   private extractBearer(request: Request): string | null {
