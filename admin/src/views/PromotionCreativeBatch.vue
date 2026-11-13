@@ -137,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
@@ -336,7 +336,12 @@ function formatSpend(value?: number | null) { return value == null ? '暂无归�
 function taskStatusLabel(status: string) { return ({ PENDING: '等待处理', PROCESSING: '处理中', VALIDATING: '校验中', PREPARING_ASSETS: '准备素材', SUBMITTING: '提交中', PLATFORM_ACCEPTED: '平台已接受', VERIFYING: '回查中', PARTIAL_SUCCESS: '部分成功', SUCCEEDED: '成功', FAILED: '失败', UNKNOWN: '待确认', SKIPPED: '已跳过', CANCELLED: '已取消' } as Record<string, string>)[status] || status; }
 function taskStatusType(status: string) { return ['SUCCEEDED'].includes(status) ? 'success' : ['FAILED', 'CANCELLED'].includes(status) ? 'danger' : ['UNKNOWN', 'PARTIAL_SUCCESS'].includes(status) ? 'warning' : 'info'; }
 function formatTime(value: string) { return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)); }
-onMounted(init); onUnmounted(stopPolling);
+onMounted(init);
+onActivated(() => {
+  if (currentTask.value && ['PENDING', 'PROCESSING'].includes(currentTask.value.status) && !pollTimer) startPolling();
+});
+onDeactivated(stopPolling);
+onUnmounted(stopPolling);
 </script>
 
 <style scoped>

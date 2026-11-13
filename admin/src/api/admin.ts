@@ -1259,25 +1259,30 @@ export interface WebsiteArticleItem {
   id: string; slug: string; title: string; categoryId: string; category?: { id: string; name: string; slug: string }; author?: string; digest?: string; coverUrl?: string;
   seoTitle?: string; seoKeywords?: string; seoDescription?: string;
   contentHtml?: string; originalUrl?: string; sourceType: 'MANUAL' | 'WECHAT';
-  status: 'ACTIVE' | 'DISABLED'; viewCount: number; publishedAt?: string; lastSyncedAt?: string;
+  status: 'ACTIVE' | 'DISABLED'; viewCount: number; publishedAt?: string; lastSyncedAt?: string; mediaId?: string;
 }
 export interface WebsiteArticleCategoryItem {
   id: string; name: string; slug: string; description?: string; sort: number;
   status: 'ACTIVE' | 'DISABLED'; _count?: { articles: number };
 }
 export type WebsiteArticlePayload = Pick<WebsiteArticleItem, 'title' | 'categoryId' | 'author' | 'digest' | 'seoTitle' | 'seoKeywords' | 'seoDescription' | 'coverUrl' | 'contentHtml' | 'originalUrl' | 'publishedAt' | 'status'>;
-const websiteAdminBase = '/api/admin/website';
-export const getWebsiteSettings = () => http.get<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`);
-export const updateWebsiteSettings = (settings: WebsiteSettings) => http.patch<unknown, WebsiteSettings>(`${websiteAdminBase}/settings`, { settings });
-export const getWebsiteArticleCategories = () => http.get<unknown, WebsiteArticleCategoryItem[]>(`${websiteAdminBase}/categories`);
-export const createWebsiteArticleCategory = (data: Omit<WebsiteArticleCategoryItem, 'id' | '_count'>) => http.post<unknown, WebsiteArticleCategoryItem>(`${websiteAdminBase}/categories`, data);
-export const updateWebsiteArticleCategory = (id: string, data: Partial<WebsiteArticleCategoryItem>) => http.patch<unknown, WebsiteArticleCategoryItem>(`${websiteAdminBase}/categories/${id}`, data);
-export const deleteWebsiteArticleCategory = (id: string) => http.delete(`${websiteAdminBase}/categories/${id}`);
-export const getWebsiteArticles = (status?: 'ACTIVE' | 'DISABLED') => http.get<unknown, { total: number; list: WebsiteArticleItem[] }>(`${websiteAdminBase}/articles`, { params: { page: 1, pageSize: 50, status } });
-export const getWebsiteArticle = (id: string) => http.get<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`);
-export const createWebsiteArticle = (data: WebsiteArticlePayload) => http.post<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles`, data);
-export const updateWebsiteArticle = (id: string, data: Partial<WebsiteArticlePayload>) => http.patch<unknown, WebsiteArticleItem>(`${websiteAdminBase}/articles/${id}`, data);
-export const deleteWebsiteArticle = (id: string) => http.delete(`${websiteAdminBase}/articles/${id}`);
+export type ContentSiteKey = 'main' | 'afterbeat';
+const websiteAdminBase = (site: ContentSiteKey = 'main') => site === 'afterbeat' ? '/api/admin/afterbeat' : '/api/admin/website';
+export const getWebsiteSettings = (site: ContentSiteKey = 'main') => http.get<unknown, WebsiteSettings>(`${websiteAdminBase(site)}/settings`);
+export const updateWebsiteSettings = (settings: WebsiteSettings, site: ContentSiteKey = 'main') => http.patch<unknown, WebsiteSettings>(`${websiteAdminBase(site)}/settings`, { settings });
+export const getWebsiteArticleCategories = (site: ContentSiteKey = 'main') => http.get<unknown, WebsiteArticleCategoryItem[]>(`${websiteAdminBase(site)}/categories`);
+export const createWebsiteArticleCategory = (data: Omit<WebsiteArticleCategoryItem, 'id' | '_count'>, site: ContentSiteKey = 'main') => http.post<unknown, WebsiteArticleCategoryItem>(`${websiteAdminBase(site)}/categories`, data);
+export const updateWebsiteArticleCategory = (id: string, data: Partial<WebsiteArticleCategoryItem>, site: ContentSiteKey = 'main') => http.patch<unknown, WebsiteArticleCategoryItem>(`${websiteAdminBase(site)}/categories/${id}`, data);
+export const deleteWebsiteArticleCategory = (id: string, site: ContentSiteKey = 'main') => http.delete(`${websiteAdminBase(site)}/categories/${id}`);
+export const getWebsiteArticles = (status?: 'ACTIVE' | 'DISABLED', site: ContentSiteKey = 'main') => http.get<unknown, { total: number; list: WebsiteArticleItem[] }>(`${websiteAdminBase(site)}/articles`, { params: { page: 1, pageSize: 50, status } });
+export const getWebsiteArticle = (id: string, site: ContentSiteKey = 'main') => http.get<unknown, WebsiteArticleItem>(`${websiteAdminBase(site)}/articles/${id}`);
+export const createWebsiteArticle = (data: WebsiteArticlePayload, site: ContentSiteKey = 'main') => http.post<unknown, WebsiteArticleItem>(`${websiteAdminBase(site)}/articles`, data);
+export const updateWebsiteArticle = (id: string, data: Partial<WebsiteArticlePayload>, site: ContentSiteKey = 'main') => http.patch<unknown, WebsiteArticleItem>(`${websiteAdminBase(site)}/articles/${id}`, data);
+export const deleteWebsiteArticle = (id: string, site: ContentSiteKey = 'main') => http.delete(`${websiteAdminBase(site)}/articles/${id}`);
+export interface WebsiteOfficialDraftSyncSettings { enabled: boolean; headerHtml: string; footerHtml: string; }
+export const getWebsiteOfficialDraftSync = (site: ContentSiteKey = 'main') => http.get<unknown, WebsiteOfficialDraftSyncSettings>(`${websiteAdminBase(site)}/official-draft-sync`);
+export const updateWebsiteOfficialDraftSync = (data: WebsiteOfficialDraftSyncSettings, site: ContentSiteKey = 'main') => http.patch<unknown, WebsiteOfficialDraftSyncSettings>(`${websiteAdminBase(site)}/official-draft-sync`, data);
+export const syncWebsiteArticleToOfficialDraft = (id: string, site: ContentSiteKey = 'main') => http.post<unknown, WebsiteArticleItem & { officialDraftMediaId: string }>(`${websiteAdminBase(site)}/articles/${id}/official-draft`);
 
 const consultationBase = '/api/admin/consultations';
 export const getConsultationMetadata = () => http.get<unknown, ConsultationMetadata>(`${consultationBase}/metadata`);

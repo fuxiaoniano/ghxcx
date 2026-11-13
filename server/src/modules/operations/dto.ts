@@ -52,6 +52,7 @@ export class PromotionDailyMetricDto {
   @Type(() => Number) @IsInt() @Min(0) validLeads!: number;
   @Type(() => Number) @IsInt() @Min(0) appointments!: number;
   @Type(() => Number) @IsInt() @Min(0) transactions!: number;
+  /** @deprecated 金额只从患者收费汇总；保留字段仅用于兼容旧版管理后台请求。 */
   @Type(() => Number) @IsNumber() @Min(0) revenue!: number;
   @IsOptional() @IsObject() customMetrics?: Record<string, number | string>;
   @IsOptional() @IsString() @MaxLength(500) remark?: string;

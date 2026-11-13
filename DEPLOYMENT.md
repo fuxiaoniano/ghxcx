@@ -6,6 +6,7 @@
 
 - 后端：`https://api.example.com`
 - 后台：`https://admin.example.com`
+- 独立热点资讯站：`https://afterbeat.example.com`
 
 请替换成你自己的域名。
 
@@ -14,7 +15,7 @@
 1. 购买 2 核 4G 或以上云服务器。
 2. 系统选择 Ubuntu 22.04 LTS。
 3. 安全组放行端口：`22`、`80`、`443`。
-4. 准备两个域名并解析到服务器 IP：`api.example.com`、`admin.example.com`。
+4. 准备域名并解析到服务器 IP：`api.example.com`、`admin.example.com`；启用独立热点资讯站时再增加 `afterbeat.example.com`。
 
 ## 2. 安装 Docker
 
@@ -104,6 +105,15 @@ VITE_API_BASE_URL=https://api.example.com npm run build
 
 构建产物在 `admin/dist`。
 
+独立热点资讯站复用 `website/` 源码，但必须使用独立站点标识和根路径构建，避免读取原官网数据：
+
+```bash
+cd /opt/wechat-appointment/website
+VITE_SITE_KEY=afterbeat npm run build -- --outDir dist-afterbeat --base /
+```
+
+将 `website/dist-afterbeat` 部署为独立域名的站点根目录；其 `/api/` 和 `/uploads/` 继续反向代理到现有后端。不要把它覆盖到原官网的 `/website/` 目录。
+
 ## 9. 安装 Nginx
 
 ```bash
@@ -184,6 +194,7 @@ sudo systemctl reload nginx
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d api.example.com -d admin.example.com
+sudo certbot --nginx -d afterbeat.example.com
 ```
 
 检查自动续期：

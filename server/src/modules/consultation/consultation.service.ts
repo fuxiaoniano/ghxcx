@@ -270,7 +270,12 @@ export class ConsultationService {
     if (dto.nextFollowUpAt !== undefined) data.nextFollowUpAt = dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null;
     if (dto.invalidReason !== undefined) data.invalidReason = dto.invalidReason?.trim() || null;
     if (dto.customData !== undefined) data.customData = await this.validateCustomData(dto.customData, false) as Prisma.InputJsonValue;
-    this.validateInvalidReason(category, dto.invalidReason === undefined ? before.invalidReason : dto.invalidReason);
+    // Tag-only and other unrelated partial updates must not be blocked by legacy
+    // invalid forms that predate the required invalid-reason field. Keep the
+    // requirement when callers explicitly change the status or reason.
+    if (dto.statusId !== undefined || dto.invalidReason !== undefined) {
+      this.validateInvalidReason(category, dto.invalidReason === undefined ? before.invalidReason : dto.invalidReason);
+    }
     const tags = dto.tagIds === undefined ? null : await this.activeTags(dto.tagIds);
     const updated = await this.prisma.$transaction(async (tx) => {
       if (tags) {

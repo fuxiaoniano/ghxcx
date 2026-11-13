@@ -1,7 +1,7 @@
 import { computed, reactive } from 'vue';
-import { Bootstrap, websiteApi } from './api';
+import { Bootstrap, SITE_KEY, websiteApi } from './api';
 
-const CACHE_KEY = 'fxn-oral-news-bootstrap-v1';
+const CACHE_KEY = `fxn-${SITE_KEY}-news-bootstrap-v1`;
 const cached = readCache();
 const state = reactive<{ data: Bootstrap | null; loading: boolean; error: string }>({ data: cached, loading: false, error: '' });
 let pending: Promise<void> | null = null;
@@ -33,9 +33,10 @@ export interface SeoMetadata {
 }
 export function setSeo(metadata: SeoMetadata) {
   document.title = metadata.title;
-  setMeta('name', 'description', metadata.description || '傅小念口腔资讯，用清晰、可靠的内容讲明白日常护理、牙周健康、儿童口腔、矫正和修复知识。');
-  setMeta('name', 'keywords', metadata.keywords || '口腔健康,牙齿护理,牙周健康,儿童口腔,牙齿矫正');
-  setMeta('name', 'author', metadata.author || '傅小念口腔资讯');
+  const fallbackName = SITE_KEY === 'afterbeat' ? 'AfterBeat' : '傅小念口腔资讯';
+  setMeta('name', 'description', metadata.description || (SITE_KEY === 'afterbeat' ? 'AfterBeat 热点新闻与趋势观察。' : '傅小念口腔资讯，用清晰、可靠的内容讲明白口腔健康知识。'));
+  setMeta('name', 'keywords', metadata.keywords || (SITE_KEY === 'afterbeat' ? '热点新闻,趋势观察,科技,生活' : '口腔健康,牙齿护理,牙周健康,儿童口腔,牙齿矫正'));
+  setMeta('name', 'author', metadata.author || fallbackName);
   setMeta('property', 'og:title', metadata.title); setMeta('property', 'og:description', metadata.description || '把口腔知识讲清楚。');
   setMeta('property', 'og:type', metadata.type || 'website'); setMeta('property', 'og:image', absoluteUrl(metadata.image));
   setMeta('property', 'article:published_time', metadata.publishedAt || '');
@@ -49,8 +50,8 @@ export function setArticleSchema(article: { title: string; digest?: string; auth
     '@context': 'https://schema.org', '@type': 'Article', headline: article.title,
     description: article.digest || '', image: article.coverUrl ? [absoluteUrl(article.coverUrl)] : undefined,
     datePublished: article.publishedAt, dateModified: article.publishedAt,
-    author: { '@type': 'Person', name: article.author || '傅小念口腔资讯' },
-    publisher: { '@type': 'Organization', name: '傅小念口腔资讯', url: websiteUrl('/') },
+    author: { '@type': 'Person', name: article.author || (SITE_KEY === 'afterbeat' ? 'AfterBeat' : '傅小念口腔资讯') },
+    publisher: { '@type': 'Organization', name: SITE_KEY === 'afterbeat' ? 'AfterBeat' : '傅小念口腔资讯', url: websiteUrl('/') },
     mainEntityOfPage: websiteUrl(`/articles/${article.slug}`)
   });
 }

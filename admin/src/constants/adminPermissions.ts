@@ -90,6 +90,12 @@ export const adminPermissionGroups = [
     { value: 'WEBSITE_CATEGORIES', label: '资讯分类', pages: '官网内容 / 资讯分类' },
     { value: 'WEBSITE_ARTICLES', label: '口腔资讯', pages: '官网内容 / 口腔资讯' },
   ] },
+  { label: 'AfterBeat', items: [
+    { value: 'AFTERBEAT_MANAGE', label: 'AfterBeat 全部权限', pages: 'AfterBeat / 包含页面设置、全部资讯分类和全部热点新闻' },
+    { value: 'AFTERBEAT_SETTINGS', label: '页面设置', pages: 'AfterBeat / 页面设置' },
+    { value: 'AFTERBEAT_CATEGORIES', label: '资讯分类', pages: 'AfterBeat / 资讯分类' },
+    { value: 'AFTERBEAT_ARTICLES', label: '热点新闻', pages: 'AfterBeat / 热点新闻' },
+  ] },
   { label: '微信运营', items: [
     { value: 'WECHAT_MENU', label: '公众号菜单', pages: '微信运营 / 公众号菜单' },
     { value: 'WECHAT_AUTO_REPLY', label: '自动回复', pages: '微信运营 / 自动回复' },

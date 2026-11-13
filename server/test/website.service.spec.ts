@@ -4,8 +4,10 @@ import { WebsiteService } from '../src/modules/website/website.service';
 describe('WebsiteService article management', () => {
   function createService() {
     const prisma = {
+      systemConfig: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
       websiteArticleCategory: {
         findUnique: jest.fn().mockResolvedValue({ id: 'wac_implant', name: '种植修复' }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'wac_implant', name: '种植修复', siteKey: 'main' }),
         findMany: jest.fn().mockResolvedValue([{ id: 'wac_implant', name: '种植修复' }])
       },
       wechatArticle: {
@@ -27,10 +29,12 @@ describe('WebsiteService article management', () => {
       }
     };
     const auditLogs = { create: jest.fn().mockResolvedValue(undefined) };
+    const official = { createArticleDraft: jest.fn() };
     return {
-      service: new WebsiteService(prisma as any, auditLogs as any),
+      service: new WebsiteService(prisma as any, auditLogs as any, official as any),
       prisma,
-      auditLogs
+      auditLogs,
+      official
     };
   }
 
@@ -63,7 +67,7 @@ describe('WebsiteService article management', () => {
 
   it('allows historical imported articles to be maintained after sync removal', async () => {
     const { service, prisma } = createService();
-    prisma.wechatArticle.findUnique.mockResolvedValue({
+    prisma.wechatArticle.findFirst.mockResolvedValue({
       id: 'wx-article',
       wechatArticleId: 'media-id:0',
       title: '公众号文章',
@@ -86,7 +90,7 @@ describe('WebsiteService article management', () => {
 
   it('allows synchronized articles to be hidden without changing their content', async () => {
     const { service, prisma } = createService();
-    prisma.wechatArticle.findUnique.mockResolvedValue({
+    prisma.wechatArticle.findFirst.mockResolvedValue({
       id: 'wx-article',
       wechatArticleId: 'media-id:0',
       title: '公众号文章',
@@ -111,7 +115,7 @@ describe('WebsiteService article management', () => {
 
   it('allows historical imported articles to be deleted', async () => {
     const { service, prisma } = createService();
-    prisma.wechatArticle.findUnique.mockResolvedValue({
+    prisma.wechatArticle.findFirst.mockResolvedValue({
       id: 'wx-article',
       wechatArticleId: 'media-id:0',
       title: '历史资讯',
@@ -127,9 +131,9 @@ describe('WebsiteService article management', () => {
 
     await service.articles({ page: 1, pageSize: 50, status: ContentStatus.DISABLED }, true);
 
-    expect(prisma.wechatArticle.count).toHaveBeenCalledWith({ where: { status: ContentStatus.DISABLED } });
+    expect(prisma.wechatArticle.count).toHaveBeenCalledWith({ where: { siteKey: 'main', status: ContentStatus.DISABLED } });
     expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { status: ContentStatus.DISABLED }
+      where: { siteKey: 'main', status: ContentStatus.DISABLED }
     }));
   });
 
@@ -137,8 +141,16 @@ describe('WebsiteService article management', () => {
     const { service, prisma } = createService();
     await service.categories(true);
     await service.articles({ page: 1, pageSize: 50 }, true);
-    expect(prisma.websiteArticleCategory.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
-    expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+    expect(prisma.websiteArticleCategory.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { siteKey: 'main' } }));
+    expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { siteKey: 'main' } }));
+  });
+
+  it('isolates AfterBeat categories and articles from the main website', async () => {
+    const { service, prisma } = createService();
+    await service.categories(true, 'afterbeat');
+    await service.articles({ page: 1, pageSize: 50 }, true, 'afterbeat');
+    expect(prisma.websiteArticleCategory.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { siteKey: 'afterbeat' } }));
+    expect(prisma.wechatArticle.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { siteKey: 'afterbeat' } }));
   });
 
   it('increments only the total read count when a published article is opened', async () => {

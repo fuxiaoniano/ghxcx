@@ -105,6 +105,17 @@ describe('WechatOfficialAccountService auto reply', () => {
     mockedReadFile.mockReset();
   });
 
+  it('keeps images already hosted by the official WeChat article CDN', async () => {
+    const { service } = createService();
+    const upload = jest.spyOn(service as any, 'uploadDraftArticleImage');
+    const source = 'https://mmbiz.qpic.cn/mmbiz_png/example/0?wx_fmt=png';
+
+    const html = await (service as any).convertDraftHtml(`<p>头部</p><img src="${source}">`, 'access-token');
+
+    expect(html).toContain(source);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it('sends the original subscribe text and a mini-program text link together', async () => {
     const { service } = createService();
 

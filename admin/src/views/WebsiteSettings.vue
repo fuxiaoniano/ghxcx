@@ -1,6 +1,6 @@
 <template>
   <div class="page-heading">
-    <div><h1 class="page-title">官网设置</h1><p>维护资讯网站名称、首页说明、内容主题和搜索展示信息，保存后官网立即生效。</p></div>
+    <div><h1 class="page-title">{{ isAfterbeat ? '页面设置' : '官网设置' }}</h1><p>维护资讯网站名称、首页说明、内容主题和搜索展示信息，保存后立即生效。</p></div>
   </div>
   <div class="content-panel">
     <el-form class="settings-form" label-width="116px">
@@ -20,8 +20,8 @@
       <h2 class="section-title section-title--spaced">页脚与搜索信息</h2>
       <el-form-item label="页脚简介"><el-input v-model="settings.footerDescription" type="textarea" :rows="2" maxlength="500" show-word-limit /></el-form-item>
       <el-form-item label="备案号"><el-input v-model="settings.icpNumber" placeholder="取得备案后填写" /></el-form-item>
-      <el-alert title="文章的 SEO 标题、关键词和描述请在“口腔资讯”中逐篇设置；官网已自动生成规范链接、结构化数据和 Sitemap。" type="info" :closable="false" show-icon />
-      <el-form-item class="save-row"><el-button type="primary" :loading="saving" @click="save"><el-icon><Check /></el-icon>保存官网设置</el-button></el-form-item>
+      <el-alert :title="`文章的 SEO 标题、关键词和描述请在“${isAfterbeat ? '热点新闻' : '口腔资讯'}”中逐篇设置；站点已自动生成规范链接、结构化数据和 Sitemap。`" type="info" :closable="false" show-icon />
+      <el-form-item class="save-row"><el-button type="primary" :loading="saving" @click="save"><el-icon><Check /></el-icon>保存页面设置</el-button></el-form-item>
     </el-form>
   </div>
 </template>
@@ -30,15 +30,17 @@ import { onMounted, reactive, ref } from 'vue';
 import { Check } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { getWebsiteSettings, updateWebsiteSettings, type WebsiteSettings } from '../api/admin';
+const props = withDefaults(defineProps<{ site?: 'main' | 'afterbeat' }>(), { site: 'main' });
+const isAfterbeat = props.site === 'afterbeat';
 const saving = ref(false);
 const settings = reactive<WebsiteSettings>({
   brandName: '', siteTagline: '', heroTitle: '', heroDescription: '', topics: '',
   footerDescription: '', icpNumber: '', defaultAuthor: ''
 });
-async function load() { Object.assign(settings, await getWebsiteSettings()); }
+async function load() { Object.assign(settings, await getWebsiteSettings(props.site)); }
 async function save() {
   saving.value = true;
-  try { Object.assign(settings, await updateWebsiteSettings(settings)); ElMessage.success('官网设置已保存'); }
+  try { Object.assign(settings, await updateWebsiteSettings(settings, props.site)); ElMessage.success('页面设置已保存'); }
   finally { saving.value = false; }
 }
 onMounted(load);

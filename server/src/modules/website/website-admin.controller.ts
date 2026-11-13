@@ -32,6 +32,8 @@ export class WebsiteAdminController {
   @Delete('/categories/:id') @Permissions('WEBSITE_CATEGORIES') deleteCategory(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.deleteCategory(id, this.audit(user, req)); }
   @Get('/articles') @Permissions('WEBSITE_ARTICLES') articles(@Query() query: WebsiteArticleQueryDto) { return this.website.articles(query, true); }
   @Get('/articles/:id') @Permissions('WEBSITE_ARTICLES') article(@Param('id') id: string) { return this.website.adminArticle(id); }
+  @Get('/official-draft-sync') @Permissions('WEBSITE_ARTICLES') officialDraftSync() { return this.website.officialDraftSyncSettings(); }
+  @Patch('/official-draft-sync') @Permissions('WEBSITE_ARTICLES') updateOfficialDraftSync(@Body() body: { enabled?: boolean; headerHtml?: string; footerHtml?: string }, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.updateOfficialDraftSync(body, this.audit(user, req)); }
   @Post('/article-cover')
   @Permissions('WEBSITE_ARTICLES')
   @UseInterceptors(FileInterceptor('file', {
@@ -59,6 +61,7 @@ export class WebsiteAdminController {
   }
   @Post('/articles') @Permissions('WEBSITE_ARTICLES') createArticle(@Body() dto: CreateWebsiteArticleDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.createArticle(dto, this.audit(user, req)); }
   @Patch('/articles/:id') @Permissions('WEBSITE_ARTICLES') updateArticle(@Param('id') id: string, @Body() dto: UpdateWebsiteArticleDto, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.updateArticle(id, dto, this.audit(user, req)); }
+  @Post('/articles/:id/official-draft') @Permissions('WEBSITE_ARTICLES') syncOfficialDraft(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.syncArticleToOfficialDraft(id, this.audit(user, req)); }
   @Delete('/articles/:id') @Permissions('WEBSITE_ARTICLES') deleteArticle(@Param('id') id: string, @CurrentUser() user: AdminCurrentUser, @Req() req: Request) { return this.website.deleteArticle(id, this.audit(user, req)); }
   private audit(user: AdminCurrentUser, req: Request) {
     return { adminUserId: user.adminUserId, ip: req.ip, userAgent: String(req.headers['user-agent'] || '') };

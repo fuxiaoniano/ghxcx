@@ -1,6 +1,6 @@
 <template>
   <div class="page-heading">
-    <div><h1 class="page-title">资讯分类</h1><p>维护官网文章分类、排序和展示状态；已有文章的分类不可直接删除。</p></div>
+    <div><h1 class="page-title">资讯分类</h1><p>维护{{ isAfterbeat ? '热点新闻' : '官网文章' }}分类、排序和展示状态；已有文章的分类不可直接删除。</p></div>
     <el-button type="primary" @click="editCategory()"><el-icon><Plus /></el-icon>新增分类</el-button>
   </div>
   <div class="content-panel">
@@ -17,7 +17,7 @@
   <el-dialog v-model="dialogVisible" :title="form.id ? '编辑资讯分类' : '新增资讯分类'" width="min(620px, calc(100vw - 32px))">
     <el-form label-width="92px">
       <el-form-item label="分类名称" required><el-input v-model="form.name" maxlength="40" /></el-form-item>
-      <el-form-item label="分类路径" required><el-input v-model="form.slug" maxlength="60" placeholder="例如：children-dentistry" /><div class="field-tip">只能使用小写字母、数字和连字符，保存后建议不要频繁修改。</div></el-form-item>
+      <el-form-item label="分类路径" required><el-input :model-value="form.slug" maxlength="60" placeholder="输入分类名称后自动生成" @input="handleSlugInput" /><div class="field-tip">根据分类名称自动生成；也可使用小写字母、数字和连字符修改。</div></el-form-item>
       <el-form-item label="分类说明"><el-input v-model="form.description" type="textarea" :rows="3" maxlength="300" show-word-limit /></el-form-item>
       <el-form-item label="排序"><el-input-number v-model="form.sort" :min="0" :max="9999" /></el-form-item>
       <el-form-item label="官网展示"><el-switch v-model="form.active" /></el-form-item>
@@ -26,32 +26,48 @@
   </el-dialog>
 </template>
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref, watch } from 'vue';
 import { Delete, Edit, Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { createWebsiteArticleCategory, deleteWebsiteArticleCategory, getWebsiteArticleCategories, updateWebsiteArticleCategory, type WebsiteArticleCategoryItem } from '../api/admin';
+import { generateCategorySlug, isValidCategorySlug, normalizeCategorySlug } from '../utils/categorySlug';
+const props = withDefaults(defineProps<{ site?: 'main' | 'afterbeat' }>(), { site: 'main' });
+const isAfterbeat = props.site === 'afterbeat';
 const categories = ref<WebsiteArticleCategoryItem[]>([]); const dialogVisible = ref(false); const saving = ref(false);
 const form = reactive({ id: '', name: '', slug: '', description: '', sort: 0, active: true });
-async function load() { categories.value = await getWebsiteArticleCategories(); }
+const slugIsAutomatic = ref(true);
+async function load() { categories.value = await getWebsiteArticleCategories(props.site); }
 function editCategory(row?: WebsiteArticleCategoryItem) {
+  slugIsAutomatic.value = !row;
   Object.assign(form, { id: row?.id || '', name: row?.name || '', slug: row?.slug || '', description: row?.description || '', sort: row?.sort || 0, active: row?.status !== 'DISABLED' });
   dialogVisible.value = true;
 }
+function handleSlugInput(value: string) {
+  slugIsAutomatic.value = false;
+  form.slug = normalizeCategorySlug(value);
+}
+watch(() => form.name, (name) => {
+  if (slugIsAutomatic.value) form.slug = generateCategorySlug(name, props.site);
+});
 async function saveCategory() {
-  if (!form.name.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug)) return ElMessage.warning('请填写分类名称和正确的分类路径');
+  const name = form.name.trim();
+  const slug = normalizeCategorySlug(form.slug) || generateCategorySlug(name, props.site);
+  if (!name) return ElMessage.warning('请填写分类名称');
+  if (!isValidCategorySlug(slug)) return ElMessage.warning('分类路径只能使用小写字母、数字和连字符');
   saving.value = true;
   try {
-    const data = { name: form.name.trim(), slug: form.slug, description: form.description, sort: form.sort, status: form.active ? 'ACTIVE' as const : 'DISABLED' as const };
-    if (form.id) await updateWebsiteArticleCategory(form.id, data); else await createWebsiteArticleCategory(data);
+    form.slug = slug;
+    const data = { name, slug, description: form.description, sort: form.sort, status: form.active ? 'ACTIVE' as const : 'DISABLED' as const };
+    if (form.id) await updateWebsiteArticleCategory(form.id, data, props.site); else await createWebsiteArticleCategory(data, props.site);
     dialogVisible.value = false; await load(); ElMessage.success('资讯分类已保存');
   } finally { saving.value = false; }
 }
 async function toggleCategory(row: WebsiteArticleCategoryItem, value: string | number | boolean) {
-  await updateWebsiteArticleCategory(row.id, { status: value ? 'ACTIVE' : 'DISABLED' }); row.status = value ? 'ACTIVE' : 'DISABLED'; ElMessage.success('分类状态已更新');
+  await updateWebsiteArticleCategory(row.id, { status: value ? 'ACTIVE' : 'DISABLED' }, props.site); row.status = value ? 'ACTIVE' : 'DISABLED'; ElMessage.success('分类状态已更新');
 }
 async function removeCategory(row: WebsiteArticleCategoryItem) {
   await ElMessageBox.confirm(`确认删除分类“${row.name}”？`, '删除确认', { type: 'warning' });
-  await deleteWebsiteArticleCategory(row.id); await load(); ElMessage.success('资讯分类已删除');
+  await deleteWebsiteArticleCategory(row.id, props.site); await load(); ElMessage.success('资讯分类已删除');
 }
 onMounted(load);
 </script>

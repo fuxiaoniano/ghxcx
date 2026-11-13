@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY server/dist/ /app/dist/
+COPY server/prisma/ /app/prisma/

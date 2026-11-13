@@ -1,10 +1,10 @@
 <template>
   <div class="page-heading">
     <div>
-      <h1 class="page-title">口腔资讯</h1>
-      <p>编辑发布口腔资讯，并逐篇完善 SEO/GEO 标题、摘要、关键词、作者和来源。</p>
+      <h1 class="page-title">{{ articleName }}</h1>
+      <p>编辑发布{{ articleName }}，并逐篇完善 SEO/GEO 标题、摘要、关键词、作者和来源。</p>
     </div>
-    <div class="heading-actions"><el-button @click="generatorVisible = true">交给 Codex 生成</el-button><el-button type="primary" @click="editArticle()"><el-icon><Plus /></el-icon>新增资讯</el-button></div>
+    <div class="heading-actions"><el-button @click="syncSettingsVisible = true">公众号草稿设置</el-button><el-button @click="generatorVisible = true">交给 Codex 生成</el-button><el-button type="primary" @click="editArticle()"><el-icon><Plus /></el-icon>新增资讯</el-button></div>
   </div>
 
   <div class="content-panel">
@@ -17,7 +17,7 @@
         <el-radio-button value="DISABLED">不展示</el-radio-button>
       </el-radio-group>
     </div>
-    <el-table class="article-table" :data="articles" row-key="id" empty-text="暂无口腔资讯">
+    <el-table class="article-table" :data="articles" row-key="id" :empty-text="`暂无${articleName}`">
       <el-table-column label="封面" width="90"><template #default="{ row }"><el-image v-if="row.coverUrl" :src="row.coverUrl" class="article-cover" fit="cover" /></template></el-table-column>
       <el-table-column prop="title" label="资讯标题" min-width="260" show-overflow-tooltip />
       <el-table-column label="分类" width="120"><template #default="{ row }"><el-tag size="small">{{ row.category?.name || '未分类' }}</el-tag></template></el-table-column>
@@ -26,10 +26,12 @@
       <el-table-column prop="viewCount" label="总阅读量" width="100" align="center" />
       <el-table-column label="SEO" width="90"><template #default="{ row }"><el-tag :type="row.seoTitle || row.seoDescription ? 'success' : 'info'">{{ row.seoTitle || row.seoDescription ? '已配置' : '默认' }}</el-tag></template></el-table-column>
       <el-table-column label="官网展示" width="110"><template #default="{ row }"><el-switch :model-value="row.status === 'ACTIVE'" @change="toggleArticle(row, $event)" /></template></el-table-column>
-      <el-table-column label="操作" width="246" fixed="right">
+      <el-table-column label="公众号草稿" width="120"><template #default="{ row }"><el-tag :type="row.mediaId ? 'success' : 'info'">{{ row.mediaId ? '已同步' : '未同步' }}</el-tag></template></el-table-column>
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
           <div class="operation-actions">
             <el-button text @click="previewArticle(row)">预览</el-button>
+            <el-button text type="primary" @click="syncArticle(row)">同步草稿</el-button>
             <el-button text type="primary" @click="editArticle(row)"><el-icon><Edit /></el-icon>编辑</el-button>
             <el-button text type="danger" @click="removeArticle(row)"><el-icon><Delete /></el-icon>删除</el-button>
           </div>
@@ -38,7 +40,7 @@
     </el-table>
   </div>
 
-  <el-dialog v-model="dialogVisible" :title="articleForm.id ? '编辑口腔资讯' : '新增口腔资讯'" width="min(920px, calc(100vw - 32px))" top="4vh">
+  <el-dialog v-model="dialogVisible" :title="`${articleForm.id ? '编辑' : '新增'}${articleName}`" width="min(920px, calc(100vw - 32px))" top="4vh">
     <el-form label-width="104px">
       <h2 class="form-section-title">文章内容</h2>
       <el-form-item label="资讯标题" required><el-input v-model="articleForm.title" maxlength="255" show-word-limit /></el-form-item>
@@ -74,6 +76,16 @@
     </template>
   </el-dialog>
 
+  <el-dialog v-model="syncSettingsVisible" title="公众号草稿设置" width="min(760px, calc(100vw - 32px))">
+    <el-alert title="启用后，每次保存资讯会同步创建一份公众号草稿；不会自动发表。头部和尾部仅写入公众号草稿，不会改动官网文章。" type="info" :closable="false" show-icon />
+    <el-form label-position="top" class="sync-settings-form">
+      <el-form-item><el-switch v-model="syncSettings.enabled" active-text="保存资讯时自动同步到草稿箱" /></el-form-item>
+      <el-form-item label="默认头部内容（HTML）"><HtmlEditor v-model="syncSettings.headerHtml" /></el-form-item>
+      <el-form-item label="默认尾部内容（HTML）"><HtmlEditor v-model="syncSettings.footerHtml" /></el-form-item>
+    </el-form>
+    <template #footer><el-button @click="syncSettingsVisible = false">取消</el-button><el-button type="primary" :loading="syncSettingsSaving" @click="saveSyncSettings">保存设置</el-button></template>
+  </el-dialog>
+
   <el-dialog v-model="previewVisible" title="文章预览" width="min(860px, calc(100vw - 32px))" top="4vh">
     <article v-if="previewItem" class="article-preview">
       <p class="article-preview__meta">{{ previewItem.category?.name || '未分类' }} · {{ formatTime(previewItem.publishedAt) }}</p>
@@ -84,7 +96,7 @@
     </article>
   </el-dialog>
 
-  <el-dialog v-model="generatorVisible" title="交给 Codex 生成口腔资讯" width="min(680px, calc(100vw - 32px))">
+  <el-dialog v-model="generatorVisible" :title="`交给 Codex 生成${articleName}`" width="min(680px, calc(100vw - 32px))">
     <el-alert title="这里会生成一段明确的任务要求。复制后发送到当前 Codex 对话，我会生成完整文章并直接同步为后台草稿，不会未经审核自动发布。" type="info" :closable="false" show-icon />
     <el-form class="generator-form" label-width="92px">
       <el-form-item label="文章分类" required><div class="category-picker"><el-select v-model="generatorForm.categoryId" placeholder="请选择分类" style="width: 100%"><el-option v-for="category in activeCategories" :key="category.id" :label="category.name" :value="category.id" /></el-select><el-button @click="openCategoryDialog('generator')">新增分类</el-button></div></el-form-item>
@@ -98,23 +110,28 @@
   <el-dialog v-model="categoryDialogVisible" title="新增资讯分类" width="min(520px, calc(100vw - 32px))" append-to-body>
     <el-form label-width="88px">
       <el-form-item label="分类名称" required><el-input v-model="newCategory.name" maxlength="40" /></el-form-item>
-      <el-form-item label="分类路径" required><el-input v-model="newCategory.slug" maxlength="60" placeholder="例如：children-dentistry" /></el-form-item>
+      <el-form-item label="分类路径" required><el-input :model-value="newCategory.slug" maxlength="60" placeholder="输入分类名称后自动生成" @input="handleNewCategorySlugInput" /><div class="field-tip">根据分类名称自动生成，也可手动修改。</div></el-form-item>
     </el-form>
     <template #footer><el-button @click="categoryDialogVisible = false">取消</el-button><el-button type="primary" :loading="categorySaving" @click="saveNewCategory">保存并选用</el-button></template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { Delete, Edit, Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import HtmlEditor from '../components/HtmlEditor.vue';
 import MediaPicker from '../components/MediaPicker.vue';
 import { useAuthStore } from '../stores/auth';
+import { generateCategorySlug, isValidCategorySlug, normalizeCategorySlug } from '../utils/categorySlug';
 import {
   createWebsiteArticle, createWebsiteArticleCategory, deleteWebsiteArticle, getWebsiteArticle, getWebsiteArticleCategories, getWebsiteArticles, getWebsiteSettings,
-  updateWebsiteArticle, type WebsiteArticleCategoryItem, type WebsiteArticleItem, type WebsiteArticlePayload
+  updateWebsiteArticle, getWebsiteOfficialDraftSync, updateWebsiteOfficialDraftSync, syncWebsiteArticleToOfficialDraft, type WebsiteArticleCategoryItem, type WebsiteArticleItem, type WebsiteArticlePayload
 } from '../api/admin';
+
+const props = withDefaults(defineProps<{ site?: 'main' | 'afterbeat' }>(), { site: 'main' });
+const isAfterbeat = props.site === 'afterbeat';
+const articleName = isAfterbeat ? '热点新闻' : '口腔资讯';
 
 const articles = ref<WebsiteArticleItem[]>([]);
 const auth = useAuthStore();
@@ -125,11 +142,15 @@ const dialogVisible = ref(false);
 const previewVisible = ref(false);
 const previewItem = ref<WebsiteArticleItem>();
 const generatorVisible = ref(false);
+const syncSettingsVisible = ref(false);
+const syncSettingsSaving = ref(false);
+const syncSettings = reactive({ enabled: false, headerHtml: '', footerHtml: '' });
 const categories = ref<WebsiteArticleCategoryItem[]>([]);
 const categoryDialogVisible = ref(false);
 const categorySaving = ref(false);
 const categoryDestination = ref<'article' | 'generator'>('article');
 const newCategory = reactive({ name: '', slug: '' });
+const newCategorySlugIsAutomatic = ref(true);
 const activeCategories = computed(() => categories.value.filter((item) => item.status === 'ACTIVE'));
 const articleForm = reactive({
   id: '', title: '', categoryId: '', author: '', digest: '', coverUrl: '', contentHtml: '', originalUrl: '', publishedAt: '',
@@ -138,14 +159,19 @@ const articleForm = reactive({
 const generatorForm = reactive({ categoryId: '', topic: '', audience: '', notes: '' });
 
 async function load() {
-  const [categoryRows, result] = await Promise.all([getWebsiteArticleCategories(), getWebsiteArticles()]);
+  const [categoryRows, result, draftSettings] = await Promise.all([
+    getWebsiteArticleCategories(props.site),
+    getWebsiteArticles(undefined, props.site),
+    getWebsiteOfficialDraftSync(props.site).catch(() => ({ enabled: false, headerHtml: '', footerHtml: '' }))
+  ]);
   categories.value = categoryRows;
   articles.value = result.list;
+  Object.assign(syncSettings, draftSettings);
   // 文章权限不要求官网设置权限；设置读取失败不能隐藏已有分类和文章。
   defaultAuthor.value = auth.user?.nickname || auth.user?.username || '';
-  if (auth.hasPermission('WEBSITE_SETTINGS')) {
+  if (auth.hasPermission(isAfterbeat ? 'AFTERBEAT_SETTINGS' : 'WEBSITE_SETTINGS')) {
     try {
-      const settings = await getWebsiteSettings();
+      const settings = await getWebsiteSettings(props.site);
       defaultAuthor.value = settings.defaultAuthor || settings.brandName || defaultAuthor.value;
     } catch {
       // 资讯权限与官网设置权限独立，设置读取失败不影响分类和文章。
@@ -155,18 +181,29 @@ async function load() {
 
 function openCategoryDialog(destination: 'article' | 'generator') {
   categoryDestination.value = destination;
+  newCategorySlugIsAutomatic.value = true;
   Object.assign(newCategory, { name: '', slug: '' });
   categoryDialogVisible.value = true;
 }
 
+function handleNewCategorySlugInput(value: string) {
+  newCategorySlugIsAutomatic.value = false;
+  newCategory.slug = normalizeCategorySlug(value);
+}
+
+watch(() => newCategory.name, (name) => {
+  if (newCategorySlugIsAutomatic.value) newCategory.slug = generateCategorySlug(name, props.site);
+});
+
 async function saveNewCategory() {
   const name = newCategory.name.trim();
-  const slug = newCategory.slug.trim();
-  if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return ElMessage.warning('请填写分类名称和正确的分类路径');
+  const slug = normalizeCategorySlug(newCategory.slug) || generateCategorySlug(name, props.site);
+  if (!name) return ElMessage.warning('请填写分类名称');
+  if (!isValidCategorySlug(slug)) return ElMessage.warning('分类路径只能使用小写字母、数字和连字符');
   categorySaving.value = true;
   try {
-    const category = await createWebsiteArticleCategory({ name, slug, sort: 0, status: 'ACTIVE' });
-    categories.value = await getWebsiteArticleCategories();
+    const category = await createWebsiteArticleCategory({ name, slug, sort: 0, status: 'ACTIVE' }, props.site);
+    categories.value = await getWebsiteArticleCategories(props.site);
     if (categoryDestination.value === 'article') articleForm.categoryId = category.id;
     else generatorForm.categoryId = category.id;
     categoryDialogVisible.value = false;
@@ -177,16 +214,16 @@ async function saveNewCategory() {
 }
 
 async function loadArticles() {
-  const result = await getWebsiteArticles(statusFilter.value === 'ALL' ? undefined : statusFilter.value);
+  const result = await getWebsiteArticles(statusFilter.value === 'ALL' ? undefined : statusFilter.value, props.site);
   articles.value = result.list;
 }
 
 async function editArticle(row?: WebsiteArticleItem) {
-  const detail = row ? await getWebsiteArticle(row.id) : undefined;
+  const detail = row ? await getWebsiteArticle(row.id, props.site) : undefined;
   Object.assign(articleForm, {
     id: detail?.id || '', title: detail?.title || '', categoryId: detail?.categoryId || activeCategories.value[0]?.id || '', author: detail?.author || defaultAuthor.value,
     digest: detail?.digest || '', coverUrl: detail?.coverUrl || '',
-    contentHtml: detail?.contentHtml || '<p>请在这里撰写口腔资讯正文。</p>',
+    contentHtml: detail?.contentHtml || `<p>请在这里撰写${articleName}正文。</p>`,
     originalUrl: detail?.originalUrl || '', publishedAt: detail?.publishedAt || new Date().toISOString(),
     seoTitle: detail?.seoTitle || '', seoKeywords: detail?.seoKeywords || '', seoDescription: detail?.seoDescription || '',
     active: detail?.status !== 'DISABLED'
@@ -195,7 +232,7 @@ async function editArticle(row?: WebsiteArticleItem) {
 }
 
 async function previewArticle(row: WebsiteArticleItem) {
-  previewItem.value = await getWebsiteArticle(row.id);
+  previewItem.value = await getWebsiteArticle(row.id, props.site);
   previewVisible.value = true;
 }
 
@@ -210,26 +247,42 @@ async function saveArticle() {
       seoKeywords: articleForm.seoKeywords, seoDescription: articleForm.seoDescription,
       status: articleForm.active ? 'ACTIVE' : 'DISABLED'
     };
-    if (articleForm.id) await updateWebsiteArticle(articleForm.id, data);
-    else await createWebsiteArticle(data);
+    if (articleForm.id) await updateWebsiteArticle(articleForm.id, data, props.site);
+    else await createWebsiteArticle(data, props.site);
     dialogVisible.value = false;
     await loadArticles();
-    ElMessage.success('口腔资讯已保存');
+    ElMessage.success(`${articleName}已保存`);
   } finally {
     saving.value = false;
   }
 }
 
 async function removeArticle(row: WebsiteArticleItem) {
-  await ElMessageBox.confirm(`确认删除口腔资讯“${row.title}”？`, '删除确认', { type: 'warning' });
-  await deleteWebsiteArticle(row.id);
+  await ElMessageBox.confirm(`确认删除${articleName}“${row.title}”？`, '删除确认', { type: 'warning' });
+  await deleteWebsiteArticle(row.id, props.site);
   await loadArticles();
-  ElMessage.success('口腔资讯已删除');
+  ElMessage.success(`${articleName}已删除`);
+}
+
+async function saveSyncSettings() {
+  syncSettingsSaving.value = true;
+  try {
+    Object.assign(syncSettings, await updateWebsiteOfficialDraftSync({ ...syncSettings }, props.site));
+    syncSettingsVisible.value = false;
+    ElMessage.success(syncSettings.enabled ? '已开启保存自动同步草稿箱' : '已关闭自动同步，仍可逐篇手动同步');
+  } finally { syncSettingsSaving.value = false; }
+}
+
+async function syncArticle(row: WebsiteArticleItem) {
+  await ElMessageBox.confirm(`将“${row.title}”转换并写入公众号草稿箱？不会自动发表。`, '同步公众号草稿', { type: 'warning' });
+  const result = await syncWebsiteArticleToOfficialDraft(row.id, props.site);
+  row.mediaId = result.officialDraftMediaId;
+  ElMessage.success('已写入公众号草稿箱，请前往公众号后台审核发表');
 }
 
 async function toggleArticle(row: WebsiteArticleItem, value: string | number | boolean) {
   const status = value ? 'ACTIVE' : 'DISABLED';
-  await updateWebsiteArticle(row.id, { status });
+  await updateWebsiteArticle(row.id, { status }, props.site);
   row.status = status;
   ElMessage.success(value ? '文章已在官网展示' : '文章已从官网隐藏');
   if (statusFilter.value !== 'ALL' && statusFilter.value !== status) await loadArticles();
@@ -242,7 +295,7 @@ function formatTime(value?: string) {
 async function copyGeneratorPrompt() {
   const category = categories.value.find((item) => item.id === generatorForm.categoryId);
   if (!category || !generatorForm.topic.trim()) return ElMessage.warning('请选择分类并填写文章主题');
-  const prompt = `请生成一篇口腔健康资讯并直接同步到“傅小念的运营工作台”草稿箱。\n分类：${category.name}（categoryId: ${category.id}）\n主题：${generatorForm.topic.trim()}\n目标读者：${generatorForm.audience.trim() || '普通公众'}\n补充要求：${generatorForm.notes.trim() || '内容科学、清晰，不使用营销或保证疗效表述；包含摘要、SEO标题、关键词、SEO描述、分级正文和就医提示。'}\n封面要求：必须调用 imagegen 图片生成技能，生成与文章主题准确匹配的横版资讯封面；画面专业、自然、适合口腔健康科普，允许在图片中加入与主题相关、清晰易读的简短中文标题或提示文字，但不得添加 Logo、水印或夸张医疗效果。将封面保存为 jpg 或 webp，压缩到 500KB 以内，并通过 coverImagePath 随文章同步；封面只用于文章封面，不得插入资讯正文。\n同步要求：作者必须使用本次同步时登录管理后台的账号名称，不接受手工填写其他作者。\n生成后只保存为草稿，等待人工审核，不要直接发布。`;
+  const prompt = `请生成一篇${articleName}并直接同步到“傅小念的运营工作台”草稿箱。\n站点：${isAfterbeat ? 'AfterBeat' : '官网内容'}\n分类：${category.name}（categoryId: ${category.id}）\n主题：${generatorForm.topic.trim()}\n目标读者：${generatorForm.audience.trim() || '普通公众'}\n补充要求：${generatorForm.notes.trim() || '内容清晰、可靠；包含摘要、SEO标题、关键词、SEO描述和分级正文。'}\n封面要求：生成与主题准确匹配的横版资讯封面，保存为 jpg 或 webp，压缩到 500KB 以内。\n同步要求：作者使用当前登录账号名称。\n生成后只保存为草稿，等待人工审核，不要直接发布。`;
   await navigator.clipboard.writeText(prompt);
   ElMessage.success('生成任务已复制，请粘贴到当前 Codex 对话');
 }

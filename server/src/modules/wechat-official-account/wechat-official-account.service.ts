@@ -39,6 +39,7 @@ interface TemporaryMediaResult {
   errcode?: number;
   errmsg?: string;
 }
+interface WechatApiResult { errcode?: number; errmsg?: string; media_id?: string; url?: string; }
 
 export interface OfficialOauthIdentity {
   oaOpenId: string;
@@ -312,6 +313,67 @@ export class WechatOfficialAccountService implements OnModuleInit {
       errcode: response.data.errcode || 0,
       errmsg: response.data.errmsg || 'ok'
     };
+  }
+
+  /** Creates a draft only; it never publishes or mass-sends an article. */
+  async createArticleDraft(input: { title: string; author: string; digest: string; coverUrl: string; contentHtml: string; contentSourceUrl: string }) {
+    if (!input.coverUrl) throw new BusinessException(400230, '同步公众号草稿需要文章封面');
+    const accessToken = await this.getAccessToken();
+    const thumbMediaId = await this.uploadPermanentArticleImage(input.coverUrl, accessToken);
+    const content = await this.convertDraftHtml(input.contentHtml, accessToken);
+    if (!content.trim()) throw new BusinessException(400231, '公众号草稿正文不能为空');
+    const response = await axios.post<WechatApiResult>(`https://api.weixin.qq.com/cgi-bin/draft/add?access_token=${accessToken}`, { articles: [{ title: input.title.slice(0, 64), author: input.author.slice(0, 16), digest: input.digest.slice(0, 120), content, content_source_url: input.contentSourceUrl.slice(0, 1024), thumb_media_id: thumbMediaId, need_open_comment: 0, only_fans_can_comment: 0 }] }, { timeout: 20000 });
+    if (response.data.errcode || !response.data.media_id) throw new BusinessException(500230, `写入公众号草稿箱失败：${response.data.errmsg || response.data.errcode || '未返回草稿 ID'}`);
+    return { mediaId: response.data.media_id };
+  }
+
+  private async convertDraftHtml(html: string, accessToken: string) {
+    const sources = [...html.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi)].map((match) => match[1]);
+    const replacements = new Map<string, string>();
+    for (const source of [...new Set(sources)]) {
+      replacements.set(source, this.isWechatHostedArticleImage(source) ? source : await this.uploadDraftArticleImage(source, accessToken));
+    }
+    return html.replace(/<img\b([^>]*\bsrc\s*=\s*["'])([^"']+)(["'][^>]*)>/gi, (_all, before, source, after) => `${before}${replacements.get(source) || source}${after}`);
+  }
+
+  private isWechatHostedArticleImage(source: string) {
+    try {
+      const parsed = new URL(source);
+      return parsed.protocol === 'https:' && parsed.hostname === 'mmbiz.qpic.cn';
+    } catch {
+      return false;
+    }
+  }
+
+  private async uploadPermanentArticleImage(url: string, accessToken: string) {
+    const image = await this.downloadOwnImage(url); const form = new FormData(); form.append('media', new Blob([Uint8Array.from(image.buffer)], { type: image.mimeType }), image.filename);
+    const response = await axios.post<WechatApiResult>(`https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${accessToken}&type=image`, form, { timeout: 30000 });
+    if (response.data.errcode || !response.data.media_id) throw new BusinessException(500231, `上传公众号封面失败：${response.data.errmsg || response.data.errcode || '未返回素材 ID'}`);
+    return response.data.media_id;
+  }
+
+  private async uploadDraftArticleImage(url: string, accessToken: string) {
+    const image = await this.downloadOwnImage(url); const form = new FormData(); form.append('media', new Blob([Uint8Array.from(image.buffer)], { type: image.mimeType }), image.filename);
+    const response = await axios.post<WechatApiResult>(`https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token=${accessToken}`, form, { timeout: 30000 });
+    if (response.data.errcode || !response.data.url) throw new BusinessException(500232, `上传公众号正文图片失败：${response.data.errmsg || response.data.errcode || '未返回图片地址'}`);
+    return response.data.url;
+  }
+
+  private async downloadOwnImage(url: string) {
+    let parsed: URL; try { parsed = new URL(url); } catch { throw new BusinessException(400232, '文章图片地址无效'); }
+    const base = this.config.get<string>('SERVER_BASE_URL') || ''; let baseOrigin = '';
+    try { baseOrigin = new URL(base).origin; } catch { throw new BusinessException(500232, '服务公开地址未配置，无法同步图片'); }
+    if (!/^https?:$/.test(parsed.protocol) || parsed.origin !== baseOrigin) throw new BusinessException(400232, '公众号同步仅支持本站上传的图片');
+    const response = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+      timeout: 20000,
+      maxRedirects: 0,
+      maxContentLength: 8 * 1024 * 1024,
+      maxBodyLength: 8 * 1024 * 1024
+    });
+    const buffer = Buffer.from(response.data); const mimeType = String(response.headers['content-type'] || 'image/jpeg').split(';')[0];
+    if (!mimeType.startsWith('image/') || !buffer.length) throw new BusinessException(400232, '文章图片不是有效图片');
+    return { buffer, mimeType, filename: basename(parsed.pathname) || 'image.jpg' };
   }
 
   async sendSubscribeMiniProgramCard(oaOpenId: string, autoReply: OfficialAutoReplyConfig) {

@@ -12,6 +12,8 @@ export interface Bootstrap { settings: WebsiteSettings; categories: ArticleCateg
 import { demoArticles, demoBootstrap } from './demo';
 
 const API_BASE = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+export const SITE_KEY = import.meta.env.VITE_SITE_KEY === 'afterbeat' ? 'afterbeat' : 'main';
+const CONTENT_API = SITE_KEY === 'afterbeat' ? '/api/afterbeat' : '/api/website';
 const DEMO_REQUESTED = import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === '1';
 if (DEMO_REQUESTED) sessionStorage.setItem('fxn-website-demo', '1');
 const DEMO_MODE = import.meta.env.DEV && (import.meta.env.VITE_DEMO_MODE === 'true' || DEMO_REQUESTED || sessionStorage.getItem('fxn-website-demo') === '1');
@@ -28,13 +30,13 @@ export async function api<T>(path: string): Promise<T> {
   return payload as T;
 }
 export const websiteApi = {
-  bootstrap: () => DEMO_MODE ? Promise.resolve(demoBootstrap) : api<Bootstrap>('/api/website/bootstrap'),
+  bootstrap: () => DEMO_MODE ? Promise.resolve(demoBootstrap) : api<Bootstrap>(`${CONTENT_API}/bootstrap`),
   articles: (page = 1, keyword = '', categoryId = '') => DEMO_MODE
     ? Promise.resolve(demoArticleList(page, keyword, categoryId))
-    : api<{ total: number; page: number; pageSize: number; list: Article[] }>(`/api/website/articles?page=${page}&pageSize=12&keyword=${encodeURIComponent(keyword)}&categoryId=${encodeURIComponent(categoryId)}`),
+    : api<{ total: number; page: number; pageSize: number; list: Article[] }>(`${CONTENT_API}/articles?page=${page}&pageSize=12&keyword=${encodeURIComponent(keyword)}&categoryId=${encodeURIComponent(categoryId)}`),
   article: (slug: string) => DEMO_MODE
     ? Promise.resolve(demoArticles.find((item) => item.slug === slug)).then((item) => item || Promise.reject(new Error('文章不存在')))
-    : api<Article>(`/api/website/articles/${encodeURIComponent(slug)}`)
+    : api<Article>(`${CONTENT_API}/articles/${encodeURIComponent(slug)}`)
 };
 function demoArticleList(page: number, keyword: string, categoryId: string) {
   const normalized = keyword.trim().toLowerCase();

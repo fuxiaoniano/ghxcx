@@ -35,6 +35,10 @@ export const dashboardMenuGroups: DashboardMenuGroup[] = [
     { path: '/website-settings', title: '官网设置' }, { path: '/website-categories', title: '资讯分类' },
     { path: '/website-articles', title: '口腔资讯' }
   ] },
+  { name: 'AfterBeat', items: [
+    { path: '/afterbeat-settings', title: '页面设置' }, { path: '/afterbeat-categories', title: '资讯分类' },
+    { path: '/afterbeat-articles', title: '热点新闻' }
+  ] },
   { name: '微信运营', items: [
     { path: '/official-menu', title: '公众号菜单' }, { path: '/official-auto-reply', title: '自动回复' },
     { path: '/official-binding', title: '公众号绑定' }

@@ -817,7 +817,7 @@ export class OperationsService {
   }
 
   private metricData(dto: PromotionDailyMetricDto): Prisma.PromotionDailyMetricUncheckedCreateInput {
-    return { accountId: dto.accountId, statDate: this.date(dto.statDate), spend: dto.spend, impressions: dto.impressions, clicks: dto.clicks, leads: dto.leads, validLeads: dto.validLeads, appointments: dto.appointments, transactions: dto.transactions, revenue: dto.revenue, customMetrics: (dto.customMetrics && Object.keys(dto.customMetrics).length ? dto.customMetrics : Prisma.JsonNull), remark: dto.remark?.trim() || null };
+    return { accountId: dto.accountId, statDate: this.date(dto.statDate), spend: dto.spend, impressions: dto.impressions, clicks: dto.clicks, leads: dto.leads, validLeads: dto.validLeads, appointments: dto.appointments, transactions: dto.transactions, revenue: 0, customMetrics: (dto.customMetrics && Object.keys(dto.customMetrics).length ? dto.customMetrics : Prisma.JsonNull), remark: dto.remark?.trim() || null };
   }
 
   private async dateWhere(query: DateRangeQueryDto, user?: AdminCurrentUser): Promise<Prisma.PromotionDailyMetricWhereInput> {
@@ -833,8 +833,8 @@ export class OperationsService {
   }
 
   /**
-   * 患者收费是独立业务明细，读取统计时按账户和日期合并，避免平台日报同步覆盖患者数据，
-   * 也避免患者编辑/删除时对累计值进行不可逆加减。
+   * 患者收费是成交金额、实收金额的唯一统计来源，按账户和日期合并。
+   * 到院和成交人数始终使用日统计中的人工录入值，不能根据收费记录或手机号推导。
    */
   private async mergedMetrics(query: DateRangeQueryDto, user?: AdminCurrentUser): Promise<any[]> {
     const metrics = await this.prisma.promotionDailyMetric.findMany({ where: await this.dateWhere(query, user), include: { account: true }, orderBy: [{ statDate: 'asc' }, { account: { name: 'asc' } }] });
@@ -853,14 +853,10 @@ export class OperationsService {
       include: { account: true },
       orderBy: { arrivalDate: 'asc' },
     });
-    const phoneHashes = [...new Set(arrivals.map((item: any) => item.phoneHash).filter((value: unknown): value is string => typeof value === 'string' && Boolean(value)))];
-    const allChargesForPhones = phoneHashes.length ? await arrivalDelegate.findMany({ where: { phoneHash: { in: phoneHashes } }, select: { id: true, phoneHash: true }, orderBy: [{ arrivalDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] }) : [];
-    const firstChargeByPhone = new Map<string, string>();
-    for (const item of allChargesForPhones) if (!firstChargeByPhone.has(item.phoneHash)) firstChargeByPhone.set(item.phoneHash, item.id);
     const byKey = new Map<string, any>();
     for (const metric of metrics) {
       const key = `${metric.accountId}:${dayjs(metric.statDate).format('YYYY-MM-DD')}`;
-      byKey.set(key, { ...metric, transactionAmount: 0, patientArrivalCount: 0, patientOnly: false });
+      byKey.set(key, { ...metric, transactionAmount: 0, revenue: 0, patientOnly: false });
     }
     for (const patient of arrivals) {
       const date = dayjs(patient.arrivalDate).format('YYYY-MM-DD');
@@ -869,14 +865,10 @@ export class OperationsService {
         id: `arrival:${key}`, accountId: patient.accountId, statDate: patient.arrivalDate,
         spend: 0, impressions: 0, clicks: 0, leads: 0, validLeads: 0, appointments: 0, transactions: 0, revenue: 0,
         transactionAmount: 0, customMetrics: {}, remark: null, syncSource: 'ARRIVAL_PATIENTS', syncedAt: null, isArchived: false,
-        createdAt: patient.createdAt, updatedAt: patient.updatedAt, account: patient.account, patientArrivalCount: 0, patientOnly: true,
+        createdAt: patient.createdAt, updatedAt: patient.updatedAt, account: patient.account, patientOnly: true,
       };
-      const firstCharge = !patient.phoneHash || firstChargeByPhone.get(patient.phoneHash) === patient.id;
-      if (firstCharge) current.appointments = Number(current.appointments) + 1;
-      if (firstCharge && (Number(patient.transactionAmount) > 0 || Number(patient.receivedAmount) > 0)) current.transactions = Number(current.transactions) + 1;
       current.transactionAmount = Number(current.transactionAmount || 0) + Number(patient.transactionAmount || 0);
       current.revenue = Number(current.revenue) + Number(patient.receivedAmount || 0);
-      current.patientArrivalCount = Number(current.patientArrivalCount || 0) + (firstCharge ? 1 : 0);
       current.chargeRecordCount = Number(current.chargeRecordCount || 0) + 1;
       byKey.set(key, current);
     }
